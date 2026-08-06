@@ -248,3 +248,86 @@ class TestReset:
 
         rip.reset()
         assert rip.current() is None
+
+
+class TestGeraeteschalter:
+    def test_ohne_laufwerk_kein_rip_bereich(self, monkeypatch):
+        """Beide Dienste laufen dasselbe Image -- das Gerät entscheidet.
+
+        Ohne diese Prüfung böte der Upload-Dienst einen Knopf an, der nur
+        scheitern kann.
+        """
+        monkeypatch.setattr(rip.settings, "cdrom_device", "/gibt/es/nicht")
+        assert rip.tools_available()["device"] is False
+
+    def test_mit_laufwerk(self, monkeypatch):
+        monkeypatch.setattr(rip.settings, "cdrom_device", "/dev/null")
+        assert rip.tools_available()["device"] is True
+
+
+class TestMatchNachDemRip:
+    """Die zentrale Behauptung dieses Features, gegen echte Dateien geprüft.
+
+    Eine gerippte CD hat keine Tags -- die Zuordnung Datei→Track hängt damit
+    allein an den Spieldauern. Dass das trifft, ist die Begründung für den
+    ganzen DiscID-Umweg und gehört belegt, nicht behauptet.
+    """
+
+    #: Spieldauern der Testvektor-CD in Sekunden (Sektoren aus dem TOC / 75).
+    LAENGEN = [202.84, 226.01, 190.37, 224.29, 227.67, 199.64]
+
+    #: Der Release, den MusicBrainz zu dieser DiscID nennt.
+    MBID = "d3dc4be9-9749-4959-99e5-133d0cb467fe"
+
+    @pytest.mark.network
+    def test_release_id_ordnet_die_tracks_richtig_zu(self, tmp_path):
+        from tests.flacfixture import write_flac
+
+        from backend import matching
+
+        # So sieht ein frischer Rip aus: richtige Längen, keine Titel -- aber
+        # die Tracknummer, die flac beim Packen mitbekommt.
+        import mediafile
+
+        pfade = []
+        for i, laenge in enumerate(self.LAENGEN, start=1):
+            pfad = write_flac(tmp_path / f"{i:02d} Track {i}.flac", seconds=laenge)
+            medien = mediafile.MediaFile(pfad)
+            medien.track = i
+            medien.save()
+            pfade.append(pfad)
+
+        match = matching.find_candidate_by_id(pfade, self.MBID, mbid=self.MBID)
+        assert match is not None, "Zu dieser Release-ID muss ein Match kommen"
+
+        kandidat = matching.serialize_candidate(match, 0)
+        assert len(kandidat.pairings) == len(self.LAENGEN)
+
+        # Der Kern: Datei n muss zu Track n gehören. Die Paare zählen, nicht
+        # die Trackliste -- die ist ohnehin nach Nummer sortiert.
+        zuordnung = {p.filename: p.new_track for p in kandidat.pairings}
+        erwartet = {f"{i:02d} Track {i}.flac": i for i in range(1, 7)}
+        assert zuordnung == erwartet, f"falsch zugeordnet: {zuordnung}"
+        # Passt die Zuordnung, stimmen auch die Spieldauern auf die Sekunde.
+        assert all(abs(p.length_delta) < 1 for p in kandidat.pairings)
+
+    @pytest.mark.network
+    def test_ohne_tracknummer_geht_die_zuordnung_daneben(self, tmp_path):
+        """Die Gegenprobe -- sie begründet, warum beim Rippen getaggt wird."""
+        from tests.flacfixture import write_flac
+
+        from backend import matching
+
+        pfade = [
+            write_flac(tmp_path / f"{i:02d} Track {i}.flac", seconds=laenge)
+            for i, laenge in enumerate(self.LAENGEN, start=1)
+        ]
+
+        match = matching.find_candidate_by_id(pfade, self.MBID, mbid=self.MBID)
+        kandidat = matching.serialize_candidate(match, 0)
+        zuordnung = {p.filename: p.new_track for p in kandidat.pairings}
+        erwartet = {f"{i:02d} Track {i}.flac": i for i in range(1, 7)}
+        assert zuordnung != erwartet, (
+            "Ohne Tracknummer trifft die Zuordnung zufällig -- dann wäre die "
+            "Begründung für das Tagging beim Rippen hinfällig"
+        )

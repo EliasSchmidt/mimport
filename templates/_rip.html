@@ -2,7 +2,17 @@
    alle zwei Sekunden neu; im Endzustand fehlt der Auslöser und es hört auf. #}
 <div id="rip-inner">
 
-    {% if not tools.cdparanoia or not tools.flac %}
+    {% if not tools.device %}
+    <div class="banner info">
+        <strong>Kein Laufwerk eingebunden</strong>
+        <p>
+            Unter <span class="mono">{{ device }}</span> ist kein Gerät
+            erreichbar. Audio-CDs liest nur der Dienst, in den das Laufwerk
+            hereingereicht wurde.
+        </p>
+    </div>
+
+    {% elif not tools.cdparanoia or not tools.flac %}
     <div class="banner warn">
         <strong>Werkzeuge fehlen</strong>
         <p>
@@ -71,8 +81,15 @@
 
     {% if job.releases %}
     <p class="hint">
-        MusicBrainz kennt diese CD. Eine gerippte CD hat keine Tags – über die
-        Release-ID trifft der Match trotzdem genau.
+        MusicBrainz kennt diese CD. Über die Release-ID trifft der Match genau,
+        obwohl eine gerippte CD keine Tags hat – die Tracknummern stehen in den
+        Dateien, danach richtet sich die Zuordnung.
+    </p>
+    <p class="hint">
+        <strong>Die Sicherheit wird trotzdem niedrig ausfallen</strong> (grob ein
+        Drittel): beets kann keine Titel vergleichen, weil auf der CD keine
+        stehen. Das ist hier kein Warnzeichen – entscheidend ist, dass die
+        Spieldauern und die Tracknummern passen.
     </p>
     <div class="actions">
         {% for release in job.releases %}

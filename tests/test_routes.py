@@ -425,14 +425,18 @@ class TestRip:
         from backend import rip
 
         monkeypatch.setattr(
-            rip, "tools_available", lambda: {"cdparanoia": True, "flac": True}
+            rip,
+            "tools_available",
+            lambda: {"cdparanoia": True, "flac": True, "device": True},
         )
 
     def test_fehlende_werkzeuge_werden_gemeldet(self, client, monkeypatch):
         from backend import rip
 
         monkeypatch.setattr(
-            rip, "tools_available", lambda: {"cdparanoia": False, "flac": False}
+            rip,
+            "tools_available",
+            lambda: {"cdparanoia": False, "flac": False, "device": True},
         )
         response = client.get("/rip")
         assert "Werkzeuge fehlen" in response.text

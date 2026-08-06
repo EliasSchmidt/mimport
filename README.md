@@ -164,6 +164,17 @@ ist die gid meist 24; nachsehen ist billiger als raten.
 Kennt MusicBrainz die CD nicht, bleibt die Eingabe von Hand — Künstler und Album
 stehen ja bereits als Felder bereit.
 
+**Beim Packen wird die Tracknummer gesetzt**, und das ist nicht kosmetisch. Ohne
+sie ordnet beets die Dateien allein nach Spieldauer den Tracks des Releases zu —
+bei ähnlich langen Stücken kommt dabei eine vertauschte Reihenfolge heraus.
+Nachgemessen: ohne Tracknummer landet Datei 1 auf Track 6, mit ihr stimmt jede
+Zuordnung auf die Sekunde. Beides steht als Test in `tests/test_rip.py`.
+
+**Die Sicherheit fällt nach einem Rip niedrig aus — etwa ein Drittel — und das
+ist in Ordnung.** beets kann keine Titel vergleichen, weil auf einer Audio-CD
+keine stehen; dieser Abzug bleibt zwangsläufig. Aussagekräftig sind hier die
+Spieldauern und die Tracknummern, nicht die Prozentzahl.
+
 Der Rip läuft im Hintergrund, die Oberfläche fragt den Stand alle zwei Sekunden
 ab. **Ein Laufwerk heißt ein Auftrag**: mehr Verwaltung als „läuft gerade einer?"
 braucht es nicht.

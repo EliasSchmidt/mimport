@@ -144,8 +144,23 @@ def _rip_track(nummer: int, ziel: Path) -> None:
                 f"{(ergebnis.stderr or '').strip()[-200:]}"
             )
 
+        # Die Tracknummer muss mit. Sie ist das Einzige, was eine frisch
+        # gerippte Datei über sich weiß, und ohne sie ordnet beets die Dateien
+        # allein nach Spieldauer den Tracks zu -- bei ähnlich langen Stücken
+        # kommt dabei eine vertauschte Reihenfolge heraus. Mit ihr trifft die
+        # Zuordnung exakt. Direkt beim Packen gesetzt, damit es kein zweiter
+        # Schreibvorgang wird.
         packen = _run(
-            [settings.flac_bin, "--best", "--silent", "-f", "-o", str(ziel), str(wav)],
+            [
+                settings.flac_bin,
+                "--best",
+                "--silent",
+                "-f",
+                f"--tag=TRACKNUMBER={nummer}",
+                "-o",
+                str(ziel),
+                str(wav),
+            ],
             timeout=settings.rip_track_timeout,
         )
         if packen.returncode != 0 or not ziel.exists():
@@ -267,7 +282,13 @@ def reset() -> None:
 
 
 def tools_available() -> dict[str, bool]:
-    """Sind cdparanoia und flac vorhanden?
+    """Ist alles da, was zum Rippen nötig ist?
+
+    Das Laufwerk zählt mit: beide Dienste laufen dasselbe Image, cdparanoia ist
+    also überall vorhanden. Nur wo das Gerät auch hereingereicht wurde, ergibt
+    der Rip-Bereich Sinn -- sonst böte der Upload-Dienst einen Knopf an, der
+    nur scheitern kann. Wie beim Daten-CD-Pfad entscheidet die Umgebung, nicht
+    ein Schalter.
 
     Dieselbe Naht wie ``fingerprint_available()``: eine Stelle, die Tests
     ersetzen können, statt ``shutil`` global zu verbiegen.
@@ -275,4 +296,5 @@ def tools_available() -> dict[str, bool]:
     return {
         "cdparanoia": shutil.which(settings.cdparanoia_bin) is not None,
         "flac": shutil.which(settings.flac_bin) is not None,
+        "device": Path(settings.cdrom_device).exists(),
     }

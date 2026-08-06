@@ -40,7 +40,14 @@ def _upload_allowance() -> tuple[int, str]:
     Der freie Platz ist die einzige Grenze, die wirklich schützt: eine
     konfigurierte Obergrenze nützt nichts, wenn das Dateisystem aus anderen
     Gründen schon voll ist. Die beiden anderen sind Politik darüber.
+
+    Bewusst ohne Reservierung: zwei gleichzeitige Uploads sehen denselben
+    Stand und dürfen beide los, zusammen also mehr als das Budget. Das ist
+    hingenommen, nicht übersehen -- mimport bedient einen Nutzer auf
+    ``127.0.0.1``, und der Sicherheitsabstand zum vollen Dateisystem federt
+    den Überhang ab.
     """
+    sessions.ensure_root()
     frei = settings.staging_free_bytes() - settings.min_free_bytes
     budget = settings.max_staging_bytes - sessions.usage_bytes()
     grenzen = [

@@ -289,3 +289,25 @@ class TestVerbindungsabbruch:
             )
 
         assert list(isoliertes_staging.iterdir()) == []
+
+    def test_fehlende_staging_wurzel_wird_neu_angelegt(
+        self, client, isoliertes_staging
+    ):
+        """Verschwindet der Staging-Ordner, darf das keinen Dauerfehler geben.
+
+        Ohne angelegte Wurzel scheitert die Platzabfrage und mimport würde
+        jeden Upload mit einer irreführenden Meldung über Speicherplatz
+        abweisen, statt den Ordner einfach wieder anzulegen.
+        """
+        import shutil
+
+        shutil.rmtree(isoliertes_staging, ignore_errors=True)
+        assert not isoliertes_staging.exists()
+
+        response = client.post(
+            "/upload",
+            files={"files": ("a.flac", b"fLaC\x00\x00\x00\x22", "audio/flac")},
+        )
+        assert response.status_code == 200
+        assert "Speicherplatz" not in response.text
+        assert isoliertes_staging.is_dir()

@@ -94,7 +94,14 @@ class StagingSession:
         return not self.audio_paths
 
 
-def _staging_root() -> Path:
+def ensure_root() -> Path:
+    """Die Staging-Wurzel, notfalls frisch angelegt.
+
+    Muss aufgerufen werden, bevor irgendetwas den Platz vermisst: ohne den
+    Ordner scheitert ``disk_usage`` und mimport würde jeden Upload mit einer
+    Meldung über zu wenig Speicherplatz abweisen, statt den Ordner einfach
+    wieder anzulegen.
+    """
     root = settings.staging_root
     root.mkdir(parents=True, exist_ok=True)
     return root
@@ -103,7 +110,7 @@ def _staging_root() -> Path:
 def create_session() -> StagingSession:
     """Legt eine neue Session mit einem zufälligen Namen an."""
     session_id = secrets.token_urlsafe(18)
-    directory = _staging_root() / session_id
+    directory = ensure_root() / session_id
     directory.mkdir(parents=True, exist_ok=False)
     return StagingSession(session_id=session_id, directory=directory)
 
@@ -113,7 +120,7 @@ def get_session(session_id: str) -> StagingSession:
     if not SESSION_ID_RE.match(session_id or ""):
         raise SessionError("Ungültige Session-ID")
 
-    root = _staging_root().resolve()
+    root = ensure_root().resolve()
     directory = (root / session_id).resolve()
     # Doppelt geprüft: Format oben, tatsächlicher Pfad hier.
     if not directory.is_relative_to(root):
@@ -184,9 +191,13 @@ def sweep_expired(max_age_hours: int, keep: str | None = None) -> int:
     blieben sonst für immer liegen und füllen mit der Zeit das Dateisystem.
 
     Aufgerufen wird das beim Start und vor jedem neuen Upload -- das genügt und
-    erspart einen Hintergrunddienst. ``keep`` schützt die gerade laufende
-    Sitzung. Die Frist ist absichtlich großzügig: zwischen Upload und
-    Entscheidung darf eine lange Pause liegen.
+    erspart einen Hintergrunddienst. Die Frist ist absichtlich großzügig:
+    zwischen Upload und Entscheidung darf eine lange Pause liegen.
+
+    Dass der laufende Upload nicht selbst weggeräumt wird, sichert die
+    Reihenfolge: der Sweep läuft, *bevor* die neue Session angelegt wird.
+    ``keep`` ist nur die Rückfalloption für Aufrufer, die das nicht einhalten
+    können -- die eigentliche Garantie ist die Reihenfolge.
     """
     root = settings.staging_root
     if max_age_hours <= 0 or not root.is_dir():

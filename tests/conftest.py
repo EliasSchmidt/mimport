@@ -32,4 +32,10 @@ def isoliertes_staging(tmp_path, monkeypatch):
     from backend import config
 
     monkeypatch.setattr(config.settings, "staging_root", tmp_path / "staging")
+    # Ohne das hinge die halbe Suite am freien Platz der Maschine, auf der sie
+    # läuft: der Upload prüft gegen ``min_free_bytes`` (2 GB), und auf einem
+    # knappen Rechner -- etwa dem Zielserver -- würden Tests scheitern, die mit
+    # Speicherplatz nichts zu tun haben. Wer die Grenze prüfen will, setzt sie
+    # im Test selbst.
+    monkeypatch.setattr(config.settings, "min_free_bytes", 0)
     return tmp_path / "staging"

@@ -152,6 +152,11 @@ Und es geht dabei um mehr als den Upload-Bereich: `mimport-staging` und
 Docker-Dateisystem. Ein vollgeschriebenes Staging nimmt die `library.db` mit —
 deshalb der Sicherheitsabstand, und deshalb ist er großzügig voreingestellt.
 
+Zwei *gleichzeitige* Uploads sehen denselben Stand und dürfen beide los, zusammen
+also etwas mehr als das Budget. Das ist hingenommen, nicht übersehen: mimport
+bedient einen Nutzer auf `127.0.0.1`, und der Sicherheitsabstand fängt den
+Überhang auf. Eine Reservierung wäre Aufwand ohne Gegenwert.
+
 Dazu kommt das Aufräumen. Sessions, die `MIMPORT_SESSION_TTL_HOURS` lang nicht
 angefasst wurden, verschwinden — geprüft beim Start und vor jedem neuen Upload,
 ohne Hintergrunddienst. Die Frist ist bewusst lang, weil zwischen Upload und

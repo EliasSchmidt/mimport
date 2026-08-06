@@ -203,7 +203,7 @@ class TestSweepExpired:
 
     def test_fremde_ordner_bleiben_unangetastet(self):
         """Nur was wie eine von uns vergebene Session-ID aussieht, wird angefasst."""
-        wurzel = sessions._staging_root()
+        wurzel = sessions.ensure_root()
         fremd = wurzel / "wichtige-daten"
         fremd.mkdir()
         (fremd / "a.txt").write_bytes(b"x")

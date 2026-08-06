@@ -1,0 +1,64 @@
+# beets-Konfiguration für den Container.
+#
+# Diese Datei ist die einzige beets-Konfiguration im Spiel: mimport liest sie
+# fürs Matching, und dasselbe beets importiert damit. Es gibt also keine zweite
+# Installation, die abweichen oder die Datenbank anders migrieren könnte.
+#
+# Wird über BEETSDIR=/config gefunden (siehe Dockerfile).
+
+# Zielverzeichnis der Library. Im Container ein gemountetes Volume -- hier
+# landet das fertige Ergebnis, das der Host weiterverwendet.
+directory: /music
+
+# Die Datenbank liegt bewusst NICHT unter /music, sondern in einem eigenen
+# Volume: sie gehört zum Werkzeug, nicht zur Musiksammlung.
+library: /data/library.db
+
+# MusicBrainz als Metadatenquelle. Ohne diesen Eintrag gibt es in beets 2.x
+# keine Match-Kandidaten -- MusicBrainz ist dort ein Plugin, kein fester
+# Bestandteil.
+plugins:
+  - musicbrainz
+  # Weitere sind problemlos ergänzbar, z. B.:
+  # - fetchart      # Cover holen
+  # - embedart      # Cover in die Dateien einbetten
+  # - lyrics        # Liedtexte
+  # - replaygain    # Lautheit angleichen (braucht ffmpeg im Container)
+  # - chroma        # AcoustID-Fingerprints (braucht fpcalc, siehe README)
+
+# Benennungsschema der Zielstruktur.
+paths:
+  default: $albumartist/$album%aunique{}/$track $title
+  singleton: Singletons/$artist - $title
+  comp: Compilations/$album%aunique{}/$track $title
+
+import:
+  # Verschieben statt kopieren: die Uploads liegen im Staging und sollen dort
+  # nicht doppelt Platz belegen.
+  move: yes
+  copy: no
+
+  # Tags in die Dateien schreiben.
+  write: yes
+
+  # Keine Rückfragen im Terminal -- die Entscheidung fällt in der Weboberfläche.
+  quiet: yes
+
+  # Bereits importierte Ordner nicht erneut anfassen.
+  incremental: no
+
+  # Doppelte Alben nicht stillschweigend überschreiben, sondern überspringen.
+  # So kann nie ein bereits vorhandenes Album zerstört werden.
+  duplicate_action: skip
+
+  # Dateirechte im Zielverzeichnis.
+  resume: no
+
+# Verhindert, dass beets bei fehlenden Feldern nachfragt.
+ui:
+  color: no
+
+# Vorhandene Tags werden von mimport gesetzt; beets soll beim as-is-Import
+# nichts davon verwerfen.
+original_date: no
+per_disc_numbering: no

@@ -1,0 +1,55 @@
+# mimport als abgeschlossener Dienst.
+#
+# Nach außen führen nur zwei Dinge: der Port für die Weboberfläche und das
+# Musikverzeichnis, in dem das fertige Ergebnis landet.
+
+services:
+  mimport:
+    build: .
+    # Auf dem Server bewusst nur an localhost binden. Wer die Oberfläche von
+    # außen erreichbar machen will, stellt einen Reverse-Proxy mit
+    # Authentifizierung davor -- die Anwendung selbst hat keine.
+    ports:
+      - "127.0.0.1:8000:8000"
+
+    volumes:
+      # Hier kommt das fertige Ergebnis raus: von beets getaggt, umbenannt und
+      # nach dem Schema aus beets/config.yaml einsortiert.
+      - /srv/musik:/music
+
+      # Datenbank und Staging bleiben im Container-Umfeld. Named Volumes, damit
+      # ein Neustart laufende Uploads nicht verliert.
+      - mimport-data:/data
+      - mimport-staging:/staging
+
+      # Die beets-Konfiguration liegt im Image. Zum Anpassen ohne Neubau hier
+      # einhängen:
+      # - ./beets/config.yaml:/config/config.yaml:ro
+
+    environment:
+      # Verlustbehaftete Uploads nur bemängeln, nicht ablehnen.
+      MIMPORT_MAX_UPLOAD_BYTES: "6442450944"  # 6 GB
+      MIMPORT_MAX_FILES: "500"
+      # AcoustID-Fingerprinting. Braucht zusätzlich das chroma-Plugin in
+      # beets/config.yaml sowie fpcalc im Image -- siehe README.
+      MIMPORT_FINGERPRINT: "0"
+
+    restart: unless-stopped
+
+    # Abschottung: hochgeladene Dateien werden von Audio-Parsern gelesen, die
+    # auf nicht vertrauenswürdigen Bytes arbeiten.
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+    # Ein alter Laptop als Server soll nicht durch einen einzelnen Upload
+    # lahmgelegt werden.
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+
+volumes:
+  mimport-data:
+  mimport-staging:

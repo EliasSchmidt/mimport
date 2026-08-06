@@ -1,0 +1,203 @@
+{# Das Kernstück: was beets gefunden hat, wie sicher es ist, und was fehlt.
+
+   Alle drei Angaben kommen unverändert von beets:
+   * Sicherheit  = 1 - AlbumMatch.distance
+   * Abzüge      = Distance.items()   -> warum die Sicherheit niedrig ist
+   * Lücken      = extra_tracks / extra_items #}
+
+{% if result.error %}
+<div class="banner error">
+    <strong>Suche fehlgeschlagen</strong>
+    <p>{{ result.error }}</p>
+</div>
+{% elif not result.has_candidates %}
+<div class="banner warn">
+    <strong>Kein Treffer</strong>
+    <p>{{ result.note }}</p>
+</div>
+{% include "_manual.html" %}
+{% else %}
+
+<p class="hint">
+    {{ file_count }} {{ "Datei" if file_count == 1 else "Dateien" }} ·
+    erkannt als <strong>{{ result.current_artist or "unbekannt" }} –
+    {{ result.current_album or "unbekannt" }}</strong> ·
+    {{ result.candidates | length }}
+    {{ "Vorschlag" if result.candidates | length == 1 else "Vorschläge" }}
+</p>
+
+{% if result.recommendation == "strong" %}
+<div class="banner ok">
+    <strong>Eindeutiger Treffer</strong>
+    <p>beets ist sich beim ersten Vorschlag sicher.</p>
+</div>
+{% elif result.recommendation == "none" %}
+<div class="banner warn">
+    <strong>Kein sicherer Treffer</strong>
+    <p>
+        Bitte genau prüfen, bevor du übernimmst – im Terminal würde beets hier
+        nachfragen.
+    </p>
+</div>
+{% endif %}
+
+<ol class="candidates">
+{% for candidate in result.candidates %}
+    <li class="candidate {{ candidate.confidence_class }}">
+        <div class="candidate-head">
+            <div class="titles">
+                <h3>{{ candidate.albumartist }} – {{ candidate.album }}</h3>
+                <p class="meta">
+                    {%- set bits = [] -%}
+                    {%- if candidate.year %}{% set _ = bits.append(candidate.year | string) %}{% endif -%}
+                    {%- if candidate.country %}{% set _ = bits.append(candidate.country) %}{% endif -%}
+                    {%- if candidate.label %}{% set _ = bits.append(candidate.label) %}{% endif -%}
+                    {%- if candidate.catalognum %}{% set _ = bits.append(candidate.catalognum) %}{% endif -%}
+                    {%- if candidate.media %}{% set _ = bits.append(candidate.media) %}{% endif -%}
+                    {%- if candidate.mediums and candidate.mediums > 1 -%}
+                        {% set _ = bits.append(candidate.mediums | string ~ " Discs") %}
+                    {%- endif -%}
+                    {{ bits | join(" · ") or "keine weiteren Angaben" }}
+                    {%- if candidate.albumdisambig %}
+                        <em>({{ candidate.albumdisambig }})</em>
+                    {%- endif %}
+                </p>
+            </div>
+
+            <div class="confidence">
+                <div class="score">{{ candidate.confidence }}<span>%</span></div>
+                <div class="score-label">Sicherheit</div>
+                {% if loop.first %}
+                <div class="rec rec-{{ candidate.recommendation }}">
+                    {%- if candidate.recommendation == "strong" %}sicher
+                    {%- elif candidate.recommendation == "medium" %}wahrscheinlich
+                    {%- elif candidate.recommendation == "low" %}unsicher
+                    {%- else %}sehr unsicher{% endif -%}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="bar" role="img"
+             aria-label="Sicherheit {{ candidate.confidence }} Prozent">
+            <span style="width: {{ candidate.confidence }}%"></span>
+        </div>
+
+        {# Warum ist die Sicherheit nicht 100 %? #}
+        {% if candidate.penalties %}
+        <div class="penalties">
+            <h4>Abzüge</h4>
+            <ul>
+                {% for label, weight in candidate.penalties %}
+                <li><span class="pen-weight">−{{ weight }}</span> {{ label }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+
+        {# Was fehlt bzw. passt nicht. #}
+        {% if candidate.missing_tracks or candidate.unmatched_files %}
+        <div class="gaps">
+            {% if candidate.missing_tracks %}
+            <details open>
+                <summary>
+                    <strong>{{ candidate.missing_tracks | length }} Track(s) fehlen
+                    im Upload</strong>
+                </summary>
+                <ul>
+                    {% for track in candidate.missing_tracks %}<li>{{ track }}</li>{% endfor %}
+                </ul>
+                <p class="hint">
+                    Dieses Release hat mehr Tracks als du hochgeladen hast. Entweder
+                    ist der Upload unvollständig, oder es ist eine andere Ausgabe
+                    (z. B. Deluxe-Edition statt Original).
+                </p>
+            </details>
+            {% endif %}
+
+            {% if candidate.unmatched_files %}
+            <details open>
+                <summary>
+                    <strong>{{ candidate.unmatched_files | length }} Datei(en) ohne
+                    Zuordnung</strong>
+                </summary>
+                <ul>
+                    {% for name in candidate.unmatched_files %}<li>{{ name }}</li>{% endfor %}
+                </ul>
+                <p class="hint">
+                    Diese Dateien passen zu keinem Track des Releases. Sie behalten
+                    ihre bisherigen Tags.
+                </p>
+            </details>
+            {% endif %}
+        </div>
+        {% else %}
+        <p class="complete">Alle Dateien einem Track zugeordnet, keine Lücken.</p>
+        {% endif %}
+
+        {# Gegenüberstellung: was steht jetzt drin, was käme rein. #}
+        {% if candidate.pairings %}
+        <details class="pairings">
+            <summary>Änderungen an den Tags ({{ candidate.pairings | length }} Tracks)</summary>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Datei</th>
+                        <th>Nr.</th>
+                        <th>bisher</th>
+                        <th>neu</th>
+                        <th>Länge</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for pair in candidate.pairings %}
+                    <tr>
+                        <td class="mono small">{{ pair.filename }}</td>
+                        <td class="{{ 'changed' if pair.track_changed }}">
+                            {{ pair.old_track or "–" }} → {{ pair.new_track or "–" }}
+                        </td>
+                        <td class="{{ 'changed' if pair.title_changed }}">
+                            {{ pair.old_title or "—" }}
+                        </td>
+                        <td class="{{ 'changed' if pair.title_changed }}">
+                            {{ pair.new_title or "—" }}
+                        </td>
+                        <td class="mono small">
+                            {%- if pair.length_delta is not none -%}
+                                {{ pair.length_delta | signed }} s
+                            {%- else -%}–{%- endif -%}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </details>
+        {% endif %}
+
+        <div class="candidate-actions">
+            <form hx-post="/choose/{{ session_id }}"
+                  hx-target="#result"
+                  hx-swap="innerHTML"
+                  hx-indicator="#choose-spinner-{{ candidate.index }}">
+                <input type="hidden" name="album_id" value="{{ candidate.album_id }}">
+                <label class="checkbox" title="Vorhandene Tags vorher komplett leeren">
+                    <input type="checkbox" name="from_scratch" value="1">
+                    alte Tags verwerfen
+                </label>
+                <button type="submit" class="button primary">
+                    Diesen Match übernehmen
+                </button>
+                <span id="choose-spinner-{{ candidate.index }}"
+                      class="htmx-indicator spinner">schreibe Tags …</span>
+            </form>
+            {% if candidate.url %}
+            <a class="button link" href="{{ candidate.url }}" target="_blank"
+               rel="noopener noreferrer">bei MusicBrainz ansehen</a>
+            {% endif %}
+        </div>
+    </li>
+{% endfor %}
+</ol>
+
+{% include "_manual.html" %}
+{% endif %}

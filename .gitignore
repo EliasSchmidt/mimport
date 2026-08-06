@@ -8,3 +8,11 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Test-Zwischenstände
+.pytest_cache/
+
+# Hochgeladene Dateien und lokale beets-Datenbank
+staging/
+data/
+*.db

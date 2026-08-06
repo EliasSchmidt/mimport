@@ -1,0 +1,11 @@
+{# Warnt, wenn die beets-Anbindung nicht stimmt. Ohne Probleme still. #}
+{% if health.problems %}
+<div class="banner warn" role="status">
+    <strong>Achtung</strong>
+    <ul>
+        {% for problem in health.problems %}
+        <li>{{ problem }}</li>
+        {% endfor %}
+    </ul>
+</div>
+{% endif %}

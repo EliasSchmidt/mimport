@@ -1,0 +1,74 @@
+{# Tags sind geschrieben. Jetzt muss beets nur noch verschieben und einsortieren --
+   ohne erneutes Tagging, damit genau das gilt, was hier bestätigt wurde. #}
+
+{% if result.failed %}
+<div class="banner error">
+    <strong>{{ result.failed | length }} Datei(en) konnten nicht geschrieben werden</strong>
+    <ul>
+        {% for name, reason in result.failed %}
+        <li><span class="mono">{{ name }}</span> – {{ reason }}</li>
+        {% endfor %}
+    </ul>
+</div>
+{% endif %}
+
+{% if result.written %}
+<div class="banner ok">
+    <strong>Tags geschrieben ({{ result.written | length }} Dateien)</strong>
+    {% if candidate %}
+    <p>
+        Übernommen: <strong>{{ candidate.albumartist }} – {{ candidate.album }}</strong>
+        {%- if candidate.album_id %}
+        <span class="mono small">({{ candidate.album_id }})</span>
+        {%- endif %}
+    </p>
+    {% else %}
+    <p>Selbst gesetzte Tags wurden übernommen.</p>
+    {% endif %}
+</div>
+{% endif %}
+
+<div class="import-box">
+    <h3>An beets übergeben</h3>
+    <p class="hint">
+        beets importiert ohne erneutes Tagging (<span class="mono">-A</span>) und
+        übernimmt die Tags genau so, wie sie jetzt in den Dateien stehen.
+        Umbenennung und Zielordner richten sich nach der beets-Konfiguration
+        des Servers.
+    </p>
+
+    {% if not health.import_ready %}
+    <div class="banner warn">
+        <strong>Import gesperrt</strong>
+        <ul>
+            {% for problem in health.problems %}<li>{{ problem }}</li>{% endfor %}
+        </ul>
+        <p>Der Probelauf funktioniert trotzdem.</p>
+    </div>
+    {% endif %}
+
+    <div class="actions">
+        <form hx-post="/import/{{ session_id }}"
+              hx-target="#import-output"
+              hx-swap="innerHTML"
+              hx-indicator="#pretend-spinner">
+            <input type="hidden" name="pretend" value="1">
+            <button type="submit" class="button">Probelauf (nichts verschieben)</button>
+            <span id="pretend-spinner" class="htmx-indicator spinner">prüfe …</span>
+        </form>
+
+        <form hx-post="/import/{{ session_id }}"
+              hx-target="#import-output"
+              hx-swap="innerHTML"
+              hx-indicator="#import-spinner"
+              hx-confirm="Jetzt endgültig in die beets-Library importieren?">
+            <button type="submit" class="button primary"
+                    {% if not health.import_ready %}disabled{% endif %}>
+                Jetzt importieren
+            </button>
+            <span id="import-spinner" class="htmx-indicator spinner">importiere …</span>
+        </form>
+    </div>
+
+    <div id="import-output"></div>
+</div>

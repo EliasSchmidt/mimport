@@ -1,0 +1,28 @@
+{# Ergebnis des beets-Aufrufs, samt Kommandozeile zum Nachvollziehen. #}
+
+{% if result.pretend %}
+<div class="banner info">
+    <strong>Probelauf</strong>
+    <p>Nichts wurde verschoben und nichts in die Library eingetragen.</p>
+</div>
+{% elif result.ok %}
+<div class="banner ok">
+    <strong>Import abgeschlossen</strong>
+    <p>beets hat die Dateien übernommen und nach seinem Schema einsortiert.</p>
+</div>
+{% else %}
+<div class="banner error">
+    <strong>Import fehlgeschlagen</strong>
+    {% if result.error %}<p>{{ result.error }}</p>{% endif %}
+</div>
+{% endif %}
+
+<details class="command" {% if not result.ok %}open{% endif %}>
+    <summary>Aufruf und Ausgabe von beets</summary>
+    <pre class="mono">$ {{ result.command_line }}</pre>
+    {% if result.output %}
+    <pre class="mono output">{{ result.output }}</pre>
+    {% else %}
+    <p class="hint">Keine Ausgabe.</p>
+    {% endif %}
+</details>

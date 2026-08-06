@@ -1,0 +1,30 @@
+{# Handarbeit für den Fall, dass kein Vorschlag passt. Leere Felder werden
+   übersprungen, überschreiben also nichts. #}
+<details class="manual">
+    <summary>Tags selbst setzen</summary>
+    <form hx-post="/manual/{{ session_id }}"
+          hx-target="#result"
+          hx-swap="innerHTML"
+          hx-indicator="#manual-spinner">
+        <p class="hint">
+            Nur ausgefüllte Felder werden geschrieben. Danach importiert beets die
+            Dateien so, wie sie dann sind.
+        </p>
+        <div class="fields">
+            <label>Album-Künstler
+                <input type="text" name="albumartist"></label>
+            <label>Album
+                <input type="text" name="album"></label>
+            <label>Künstler <small>(pro Track)</small>
+                <input type="text" name="artist"></label>
+            <label>Jahr
+                <input type="text" name="year" inputmode="numeric" placeholder="1969"></label>
+            <label>Genre
+                <input type="text" name="genre"></label>
+        </div>
+        <div class="actions">
+            <button type="submit" class="button">Tags schreiben</button>
+            <span id="manual-spinner" class="htmx-indicator spinner">schreibe …</span>
+        </div>
+    </form>
+</details>

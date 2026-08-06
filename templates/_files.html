@@ -1,0 +1,100 @@
+{# Serverseitig geprüfte Dateiliste. Hier ist die Formatangabe verbindlich --
+   anders als in der Vorprüfung im Browser, die .m4a nicht auflösen kann. #}
+<div id="files-inner" data-session="{{ session_id }}">
+
+    {% if summary.warn %}
+    <div class="banner warn">
+        <strong>{{ summary.lossy }} von {{ summary.total }}
+            {{ "Datei" if summary.lossy == 1 else "Dateien" }} verlustbehaftet</strong>
+        <p>
+            Verlustbehaftete Dateien sind dauerhaft reduziert – was fehlt, lässt sich
+            später nicht zurückholen. Wenn du die Wahl hast, lade FLAC oder ein
+            anderes verlustfreies Format. Der Import funktioniert trotzdem.
+        </p>
+        <details>
+            <summary>Betroffene Dateien</summary>
+            <ul>
+                {% for name in summary.lossy_names %}<li>{{ name }}</li>{% endfor %}
+            </ul>
+        </details>
+    </div>
+    {% else %}
+    <div class="banner ok">
+        <strong>Alle {{ summary.total }}
+            {{ "Datei" if summary.total == 1 else "Dateien" }} verlustfrei</strong>
+    </div>
+    {% endif %}
+
+    {% if summary.unreadable %}
+    <div class="banner error">
+        <strong>{{ summary.unreadable }} Datei(en) nicht lesbar</strong>
+        <ul>
+            {% for name in summary.unreadable_names %}<li>{{ name }}</li>{% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+
+    <table class="files">
+        <thead>
+            <tr>
+                <th>Datei</th>
+                <th>Format</th>
+                <th>Qualität</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for info in infos %}
+            <tr>
+                <td class="name">{{ info.display_name }}</td>
+                <td class="mono">{{ info.summary }}</td>
+                <td>
+                    <span class="badge {{ info.quality }}">
+                        {%- if info.quality == "lossless" %}verlustfrei
+                        {%- elif info.quality == "lossy" %}verlustbehaftet
+                        {%- else %}unklar{% endif -%}
+                    </span>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <form class="search-form"
+          hx-post="/match/{{ session_id }}"
+          hx-target="#candidates"
+          hx-swap="innerHTML"
+          hx-indicator="#match-spinner">
+        <p class="hint">
+            beets sucht anhand der vorhandenen Tags. Wenn das nichts findet oder
+            das Falsche trifft, kannst du gezielt nachhelfen.
+        </p>
+        <div class="fields">
+            <label>
+                Künstler <small>(optional)</small>
+                <input type="text" name="artist" placeholder="aus den Tags">
+            </label>
+            <label>
+                Album <small>(optional)</small>
+                <input type="text" name="album" placeholder="aus den Tags">
+            </label>
+            <label class="wide">
+                MusicBrainz-Release-ID oder -Adresse <small>(optional)</small>
+                <input type="text" name="mbid"
+                       placeholder="z. B. 964e8152-d86d-4b88-9b79-2f561db6c124">
+            </label>
+        </div>
+        <div class="actions">
+            <button type="submit" class="button primary">Matches suchen</button>
+            <span id="match-spinner" class="htmx-indicator spinner">
+                frage MusicBrainz …
+            </span>
+            <button type="button" class="button danger"
+                    hx-delete="/session/{{ session_id }}"
+                    hx-target="#files"
+                    hx-swap="innerHTML"
+                    hx-confirm="Upload samt Dateien verwerfen?">
+                Verwerfen
+            </button>
+        </div>
+    </form>
+</div>

@@ -102,3 +102,47 @@ class TestRunImport:
         result = importer.run_import(tmp_path, pretend=True)
         assert "--pretend" in result.command_line
         assert result.pretend
+
+
+class TestLibraryLock:
+    """Zwei Dienste, eine library.db -- Importe müssen sich abwechseln."""
+
+    def test_lock_liegt_neben_der_library(self):
+        pfad = importer._lock_path()
+        # Nicht im Staging: der Lock gehört zu der Datenbank, die er schützt,
+        # damit alle Prozesse mit derselben Library dieselbe Datei nehmen.
+        assert pfad.suffix == ".lock"
+        assert pfad.stem == "library"
+
+    def test_zweiter_import_wartet_auf_den_ersten(self):
+        """Der eigentliche Zweck: keine zwei beet-Importe gleichzeitig."""
+        import threading
+
+        verlauf = []
+        zweiter_drin = threading.Event()
+
+        def zweiter():
+            with importer._library_lock():
+                verlauf.append("zweiter")
+                zweiter_drin.set()
+
+        with importer._library_lock():
+            verlauf.append("erster")
+            thread = threading.Thread(target=zweiter)
+            thread.start()
+            # Solange der erste den Lock hält, darf der zweite nicht durch.
+            assert not zweiter_drin.wait(timeout=0.5)
+            assert verlauf == ["erster"]
+
+        # Nach dem Freigeben kommt er dran.
+        assert zweiter_drin.wait(timeout=5)
+        thread.join(timeout=5)
+        assert verlauf == ["erster", "zweiter"]
+
+    def test_ohne_schreibbaren_ort_laeuft_der_import_trotzdem(self, monkeypatch):
+        """Ein nicht anlegbarer Lock darf den Import nicht verhindern."""
+        monkeypatch.setattr(
+            importer, "_lock_path", lambda: Path("/nicht/anlegbar/x.lock")
+        )
+        with importer._library_lock():
+            pass  # kein Fehler

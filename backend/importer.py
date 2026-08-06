@@ -15,11 +15,15 @@ Library bringen. Warum nicht stattdessen ``--search-id``, steht in
 
 from __future__ import annotations
 
+import fcntl
 import logging
 import subprocess
+from collections.abc import Iterator
+from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from backend import beets_env
 from backend.config import settings
 
 log = logging.getLogger(__name__)
@@ -75,6 +79,60 @@ def build_command(directory: Path, *, pretend: bool = False) -> list[str]:
     return command
 
 
+def _lock_path() -> Path:
+    """Wo der Import-Lock liegt: neben der Library, die er schützt.
+
+    Aus der beets-Konfiguration abgeleitet, damit alle Prozesse, die sich
+    dieselbe ``library.db`` teilen, zwangsläufig dieselbe Lock-Datei nehmen --
+    eine eigene Einstellung könnte man je Dienst unterschiedlich setzen und
+    hätte den Schutz damit still ausgehebelt.
+
+    Nur der *Pfad* wird gelesen, die Datenbank bleibt zu.
+    """
+    beets_env.ensure_loaded()
+    from beets import config as beets_config
+
+    return Path(beets_config["library"].as_filename()).with_suffix(".lock")
+
+
+@contextmanager
+def _library_lock() -> Iterator[None]:
+    """Lässt immer nur einen Import gleichzeitig an die Library.
+
+    mimport läuft als zwei Dienste -- einer für Uploads, einer für CDs -- und
+    beide rufen dasselbe ``beet import`` auf derselben ``library.db`` auf. Ein
+    Import ist eine lange SQLite-Transaktion; zwei gleichzeitig geraten sich in
+    die Quere. Das Matching braucht den Lock nicht, es fasst die Datenbank
+    ohnehin nie an.
+
+    Wird bewusst ohne Zeitlimit gewartet: der zweite Import soll laufen, nicht
+    scheitern. Nach oben begrenzt ihn das Zeitlimit des Subprozesses.
+    """
+    path = _lock_path()
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        handle = path.open("w")
+    except OSError as exc:
+        # Lieber ohne Lock importieren als gar nicht -- bei einem einzelnen
+        # laufenden Dienst ändert er ohnehin nichts.
+        log.warning("Import-Lock %s nicht nutzbar (%s), fahre ohne fort.", path, exc)
+        yield
+        return
+
+    try:
+        try:
+            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            log.info("Ein anderer Import läuft gerade, warte auf %s ...", path)
+            fcntl.flock(handle, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(handle, fcntl.LOCK_UN)
+    finally:
+        handle.close()
+
+
 def run_import(directory: Path, *, pretend: bool = False) -> ImportResult:
     """Führt den Import aus und sammelt die Ausgabe ein.
 
@@ -85,17 +143,23 @@ def run_import(directory: Path, *, pretend: bool = False) -> ImportResult:
     result = ImportResult(command=command, pretend=pretend)
     log.info("Starte %s", " ".join(command))
 
+    # Nur der echte Import schreibt in die Library; ``--pretend`` liest bloß
+    # und soll nicht auf einen laufenden Import warten müssen.
+    lock = nullcontext() if pretend else _library_lock()
+
     try:
-        proc = subprocess.run(
-            command,
-            capture_output=True,
-            text=True,
-            timeout=settings.import_timeout,
-            check=False,
-            # Kein shell=True: die Argumente gehen unverändert an das Programm,
-            # damit aus Dateinamen keine Shell-Befehle werden können.
-            shell=False,
-        )
+        with lock:
+            proc = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                timeout=settings.import_timeout,
+                check=False,
+                # Kein shell=True: die Argumente gehen unverändert an das
+                # Programm, damit aus Dateinamen keine Shell-Befehle werden
+                # können.
+                shell=False,
+            )
     except FileNotFoundError:
         result.error = (
             f"'{settings.beet_bin}' wurde nicht gefunden. Pfad zum beets des "

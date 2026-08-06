@@ -379,3 +379,31 @@ class TestDisc:
         client.post("/disc", data={"folder": "Abbey Road"})
         response = client.get("/disc")
         assert "Abbey Road" in response.text
+
+    def test_erste_session_ueberlebt_die_zweite_uebernahme(
+        self, client, cd, isoliertes_staging
+    ):
+        """Album 1 darf nicht verschwinden, während man Album 2 übernimmt.
+
+        Beide Einstiege -- Upload und CD -- räumen vor dem Anlegen verwaiste
+        Sessions weg. Eine frische Sitzung darf das nie treffen, sonst wäre die
+        Entscheidung über Album 1 unterwegs verloren.
+        """
+        (cd / "Revolver").mkdir()
+        (cd / "Revolver" / "01 Taxman.flac").write_bytes(self.FLAC)
+
+        client.post("/disc", data={"folder": "Abbey Road"})
+        client.post("/disc", data={"folder": "Revolver"})
+
+        assert len(list(isoliertes_staging.iterdir())) == 2
+
+    def test_upload_laesst_die_cd_session_in_ruhe(
+        self, client, cd, isoliertes_staging
+    ):
+        """Auch der andere Einstieg darf eine frische CD-Sitzung nicht wegräumen."""
+        client.post("/disc", data={"folder": "Abbey Road"})
+        client.post(
+            "/upload", files={"files": ("b.flac", self.FLAC, "audio/flac")}
+        )
+
+        assert len(list(isoliertes_staging.iterdir())) == 2

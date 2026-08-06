@@ -38,4 +38,7 @@ def isoliertes_staging(tmp_path, monkeypatch):
     # Speicherplatz nichts zu tun haben. Wer die Grenze prüfen will, setzt sie
     # im Test selbst.
     monkeypatch.setattr(config.settings, "min_free_bytes", 0)
+    # Auch das CD-Verzeichnis isolieren, sonst läse ein Testlauf auf dem
+    # Zielrechner eine tatsächlich eingelegte CD ein.
+    monkeypatch.setattr(config.settings, "disc_root", tmp_path / "disc")
     return tmp_path / "staging"

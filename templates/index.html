@@ -12,7 +12,8 @@
 <header class="page-head">
     <h1>mimport</h1>
     <p class="lead">
-        Musik hochladen, Match vorher prüfen, dann von beets importieren lassen.
+        Musik hochladen oder von CD übernehmen, Match vorher prüfen, dann von
+        beets importieren lassen.
     </p>
 </header>
 
@@ -50,10 +51,20 @@
         <!-- Vorprüfung im Browser: verrät schon vor dem Upload, ob die
              Dateien verlustfrei sind. -->
         <div id="preflight"></div>
+
+        {# Zweite Quelle für denselben Schritt: eine eingelegte Daten-CD.
+           Ab der Übernahme ist der Weg identisch mit dem Upload. Geladen wird
+           beim Seitenaufruf -- ohne CD kostet das nichts. #}
+        <div class="disc-source">
+            <h3>… oder von einer eingelegten CD</h3>
+            <div id="disc" hx-get="/disc" hx-trigger="load" hx-swap="innerHTML">
+                <p class="hint">suche nach einer CD …</p>
+            </div>
+        </div>
     </section>
 
     <section class="step" id="files-step" hidden>
-        <h2><span class="step-num">2</span> Hochgeladene Dateien</h2>
+        <h2><span class="step-num">2</span> Übernommene Dateien</h2>
         <div id="files"></div>
     </section>
 

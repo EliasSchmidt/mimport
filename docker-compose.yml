@@ -2,6 +2,17 @@
 #
 # Nach außen führen nur zwei Dinge: der Port für die Weboberfläche und das
 # Musikverzeichnis, in dem das fertige Ergebnis landet.
+#
+# Zwei Dienste aus demselben Image:
+#
+#   mimport     Uploads, nur über localhost erreichbar.
+#   mimport-cd  Daten-CDs, im Heimnetz erreichbar.
+#
+# Der Unterschied ist allein die Bindung und das eingehängte CD-Verzeichnis --
+# es gibt keinen Schalter für das CD-Feature. Ob unter /disc etwas liegt, ist
+# der Schalter. Beide teilen sich die library.db; damit sich zwei gleichzeitige
+# Importe nicht in die Quere kommen, serialisiert mimport sie über ein Dateilock
+# neben der Datenbank.
 
 services:
   mimport:
@@ -60,6 +71,60 @@ services:
         limits:
           memory: 1g
 
+  # Derselbe Dienst für Daten-CDs -- MP3-Sammlungen, die man nicht rippen muss.
+  # Eine Audio-CD ohne Dateisystem kann dieser Weg nicht, die müsste erst
+  # gerippt werden.
+  mimport-cd:
+    build: .
+
+    # Anders als der Upload-Dienst im ganzen Heimnetz erreichbar, damit das
+    # Laufwerk vom Sofa aus bedienbar ist.
+    #
+    # ACHTUNG: mimport hat keine Authentifizierung. Wer im WLAN ist, kann
+    # importieren. Von außen darf dieser Port nicht erreichbar sein -- im
+    # Router keine Portweiterleitung auf 8001 einrichten.
+    ports:
+      - "8001:8000"
+
+    volumes:
+      - /srv/musik:/music
+
+      # Dieselbe Datenbank wie der Upload-Dienst: eine Library, ein Bestand.
+      - mimport-data:/data
+
+      # Eigenes Staging, damit sich die beiden nicht ins Gehege kommen. Der
+      # Freiplatz-Schutz greift trotzdem gemeinsam -- er misst das
+      # Dateisystem, das sich beide teilen.
+      - mimport-cd-staging:/staging
+
+      # Die eingelegte CD. Gemountet wird auf dem HOST, hier kommt nur der
+      # fertige Mount read-only herein. Deshalb braucht dieser Container weder
+      # /dev/sr0 noch CAP_SYS_ADMIN, das mount() sonst verlangen würde.
+      #
+      # Auf dem Host je nach Automount-Pfad anpassen, z. B.:
+      #   /media/cdrom, /media/<nutzer>/<CD-Name> oder /mnt/cdrom
+      - /media/cdrom:/disc:ro
+
+    environment:
+      MIMPORT_MAX_UPLOAD_BYTES: "6442450944"  # 6 GB
+      MIMPORT_MAX_FILES: "500"
+      MIMPORT_MIN_FREE_BYTES: "2147483648"
+      MIMPORT_MAX_STAGING_BYTES: "21474836480"
+      MIMPORT_SESSION_TTL_HOURS: "24"
+
+    restart: unless-stopped
+
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+
 volumes:
   mimport-data:
   mimport-staging:
+  mimport-cd-staging:

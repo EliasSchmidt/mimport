@@ -18,7 +18,7 @@ from pathlib import Path
 from fastapi import APIRouter, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse
 
-from backend import audio, beets_env, importer, matching, sessions, tagging
+from backend import audio, beets_env, disc, importer, matching, sessions, tagging
 from backend.config import AUDIO_EXTENSIONS, settings
 from backend.templates import templates
 
@@ -31,8 +31,11 @@ router = APIRouter()
 CHUNK_SIZE = 1024 * 1024
 
 
-def _upload_allowance() -> tuple[int, str]:
-    """Wie viele Bytes dieser Upload schreiben darf -- und die Meldung dazu.
+def _storage_allowance(was: str = "Upload") -> tuple[int, str]:
+    """Wie viele Bytes noch ins Staging dürfen -- und die Meldung dazu.
+
+    ``was`` benennt die Quelle für den Fall, dass die Grenze je Vorgang greift;
+    Upload und CD teilen sich die Rechnung, aber nicht den Wortlaut.
 
     Drei Grenzen, die kleinste gewinnt: das Limit je Upload, der freie Platz
     abzüglich Sicherheitsabstand und der Rest des Staging-Gesamtbudgets.
@@ -53,7 +56,7 @@ def _upload_allowance() -> tuple[int, str]:
     grenzen = [
         (
             settings.max_upload_bytes,
-            f"Upload überschreitet das Limit von "
+            f"{was} überschreitet das Limit von "
             f"{settings.max_upload_bytes / 1024**3:.1f} GB.",
         ),
         (
@@ -79,6 +82,27 @@ def _session_or_404(session_id: str) -> sessions.StagingSession:
 
 def _fragment(request: Request, name: str, **context: object) -> HTMLResponse:
     return templates.TemplateResponse(request, name, context)
+
+
+def _files_fragment(request: Request, session: sessions.StagingSession) -> HTMLResponse:
+    """Die geprüfte Dateiliste einer Session.
+
+    Der Übergang, an dem sich Upload und CD wieder treffen: ab hier ist nicht
+    mehr zu erkennen, woher die Dateien kamen, und Schritt 2 bis 4 laufen für
+    beide gleich.
+    """
+    infos = [
+        audio.inspect_file(path, display_name=str(path.relative_to(session.directory)))
+        for path in session.audio_paths
+    ]
+    return _fragment(
+        request,
+        "_files.html",
+        session_id=session.session_id,
+        infos=infos,
+        summary=audio.summarize(infos),
+        health=beets_env.health(),
+    )
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -127,7 +151,7 @@ async def upload(request: Request, files: list[UploadFile]) -> HTMLResponse:
     # kommen, bevor das Budget berechnet wird.
     sessions.sweep_expired(settings.session_ttl_hours)
 
-    erlaubt, grenzmeldung = _upload_allowance()
+    erlaubt, grenzmeldung = _storage_allowance()
     if erlaubt <= 0:
         return _fragment(request, "_error.html", message=grenzmeldung)
 
@@ -177,18 +201,70 @@ async def upload(request: Request, files: list[UploadFile]) -> HTMLResponse:
         sessions.delete_session(session.session_id)
         return _fragment(request, "_error.html", message="Keine Datei konnte gespeichert werden.")
 
-    infos = [
-        audio.inspect_file(path, display_name=str(path.relative_to(session.directory)))
-        for path in session.audio_paths
-    ]
+    return _files_fragment(request, session)
+
+
+@router.get("/disc", response_class=HTMLResponse)
+def disc_albums(request: Request) -> HTMLResponse:
+    """Listet die Alben der eingelegten CD.
+
+    Absichtlich jederzeit neu abrufbar: nach einem Import ist das nächste Album
+    derselben CD der erwartete nächste Schritt.
+
+    Als ``def``, nicht ``async def`` -- ein optisches Laufwerk zu durchsuchen
+    dauert Sekunden und gehört deshalb in den Threadpool.
+    """
     return _fragment(
         request,
-        "_files.html",
-        session_id=session.session_id,
-        infos=infos,
-        summary=audio.summarize(infos),
-        health=beets_env.health(),
+        "_disc.html",
+        available=disc.is_available(),
+        albums=disc.list_albums(),
+        disc_root=settings.disc_root,
     )
+
+
+@router.post("/disc", response_class=HTMLResponse)
+def disc_copy(request: Request, folder: str = Form(default="")) -> HTMLResponse:
+    """Kopiert einen Ordner der CD ins Staging.
+
+    Danach ist die Antwort dieselbe wie nach einem Upload, und der restliche
+    Weg -- Kandidaten, Auswahl, Import -- unterscheidet sich nicht.
+    """
+    try:
+        directory = disc.resolve_folder(folder)
+    except disc.DiscError as exc:
+        return _fragment(request, "_error.html", message=str(exc))
+
+    # Wie beim Upload: erst aufräumen, dann rechnen.
+    sessions.sweep_expired(settings.session_ttl_hours)
+
+    anzahl, groesse = disc.folder_size(directory)
+    if not anzahl:
+        return _fragment(
+            request,
+            "_error.html",
+            message="In diesem Ordner liegen keine Audiodateien.",
+        )
+    if anzahl > settings.max_files:
+        return _fragment(
+            request,
+            "_error.html",
+            message=f"Zu viele Dateien ({anzahl}), erlaubt sind "
+            f"{settings.max_files}.",
+        )
+
+    # Anders als beim Upload steht die Größe vorher fest -- einmal prüfen
+    # genügt, es muss nicht häppchenweise mitgezählt werden.
+    erlaubt, grenzmeldung = _storage_allowance("Dieser Ordner")
+    if groesse > erlaubt:
+        return _fragment(request, "_error.html", message=grenzmeldung)
+
+    try:
+        session = disc.copy_to_session(directory)
+    except disc.DiscError as exc:
+        return _fragment(request, "_error.html", message=str(exc))
+
+    return _files_fragment(request, session)
 
 
 @router.post("/match/{session_id}", response_class=HTMLResponse)

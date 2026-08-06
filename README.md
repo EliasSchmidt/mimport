@@ -80,6 +80,70 @@ Volumes:
 | `/data` | beets-Datenbank. Gehört zum Werkzeug, nicht zur Sammlung. |
 | `/staging` | Laufende Uploads, bis sie importiert sind. |
 | `/config` | beets-Konfiguration (`BEETSDIR`). |
+| `/disc` | Eingelegte Daten-CD, read-only vom Host. |
+
+## Von einer Daten-CD importieren
+
+Gemeint ist die CD mit einem Dateisystem darauf — typischerweise eine
+MP3-Sammlung. Die muss man nicht rippen, nur kopieren. Eine **Audio-CD** (CDDA)
+hat kein Dateisystem und geht auf diesem Weg *nicht*.
+
+**Gemountet wird auf dem Host, nicht im Container.** Das ist keine Bequemlichkeit,
+sondern der Grund, warum das Feature ohne zusätzliche Rechte auskommt: `mount()`
+verlangt `CAP_SYS_ADMIN`, und das compose wirft alle Capabilities weg. Der Host
+hängt die CD ein, der Container liest read-only mit.
+
+```bash
+# auf dem Host, z. B. per Automount oder von Hand:
+mount -o ro /dev/sr0 /media/cdrom
+```
+
+Es gibt **keinen Schalter** für das Feature. Ob unter `/disc` etwas liegt, *ist*
+der Schalter — ein Dienst ohne eingehängte CD zeigt schlicht „keine CD".
+
+### Ein Ordner ist ein Album
+
+Die Oberfläche listet die Ordner der CD einzeln auf, mit Trackzahl und Größe,
+und man übernimmt einen davon. Das ist Absicht: beets bewertet eine Auswahl als
+*ein* Album, und eine MP3-CD trägt oft ein Dutzend Alben in Unterordnern. Alle
+zusammen zu matchen ergäbe Unsinn. Für mehrere Alben nacheinander vorgehen — die
+Liste bleibt nach jedem Import abrufbar.
+
+Ab dem Übernehmen ist der Weg identisch mit einem Upload: dieselbe Dateiliste,
+dieselben Match-Kandidaten, derselbe Import. Nichts in `matching`, `tagging` oder
+`importer` weiß, woher die Dateien kamen.
+
+Zwei Dinge, die der Code abfängt, weil eine fremde CD nicht vertrauenswürdiger
+ist als ein Upload: Ordnerangaben aus dem Formular werden gegen den
+tatsächlich aufgelösten Pfad geprüft, und Symlinks auf der CD (über Rock Ridge
+möglich) werden beim Kopieren übergangen — sonst landete ein Link auf
+`/etc/passwd` als `track03.mp3` im Staging.
+
+Bricht das Lesen mittendrin ab, weil die CD zerkratzt ist, wird die halbfertige
+Session verworfen und die betroffene Datei genannt. Ein unvollständiges Album
+gegen MusicBrainz zu matchen wäre schlimmer als ein klarer Fehler.
+
+### Zwei Dienste
+
+`docker-compose.yml` startet dasselbe Image zweimal:
+
+| Dienst | Port | Erreichbar | Zweck |
+|---|---|---|---|
+| `mimport` | 8000 | nur `127.0.0.1` | Uploads |
+| `mimport-cd` | 8001 | im Heimnetz | Daten-CDs |
+
+Der Unterschied ist allein die Bindung und das eingehängte CD-Verzeichnis.
+
+**Beide teilen sich die `library.db`** — und damit rufen zwei Prozesse `beet
+import` auf derselben SQLite-Datei auf. Ein Import ist eine lange Transaktion;
+zwei gleichzeitig geraten sich in die Quere. mimport serialisiert sie deshalb
+über ein Dateilock neben der Datenbank. Der Pfad wird aus der beets-Konfiguration
+abgeleitet und nicht separat eingestellt: eine eigene Einstellung könnte man je
+Dienst unterschiedlich setzen und hätte den Schutz still ausgehebelt.
+
+Und noch einmal deutlich, weil es die dokumentierte Haltung ändert: **`mimport-cd`
+ist im ganzen Heimnetz erreichbar und hat keine Authentifizierung.** Wer im WLAN
+ist, kann importieren. Dieser Port darf von außen nicht erreichbar sein.
 
 ## Sicherheit
 
@@ -123,6 +187,7 @@ Probelauf funktioniert weiterhin.
 | Variable | Standard | Bedeutung |
 |---|---|---|
 | `MIMPORT_STAGING` | `./staging` | Ordner für laufende Uploads |
+| `MIMPORT_DISC_PATH` | `/disc` | Wo die eingehängte Daten-CD liegt |
 | `MIMPORT_BEET_BIN` | `beet` | Pfad zum beets-Executable |
 | `MIMPORT_MOVE` | `1` | Dateien verschieben (`0` = kopieren) |
 | `MIMPORT_MAX_UPLOAD_BYTES` | 4 GB | Obergrenze pro Upload |

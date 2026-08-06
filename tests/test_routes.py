@@ -311,3 +311,71 @@ class TestVerbindungsabbruch:
         assert response.status_code == 200
         assert "Speicherplatz" not in response.text
         assert isoliertes_staging.is_dir()
+
+
+class TestDisc:
+    """Die eingelegte Daten-CD als zweite Quelle für denselben Ablauf."""
+
+    FLAC = b"fLaC\x00\x00\x00\x22"
+
+    @pytest.fixture
+    def cd(self, tmp_path, monkeypatch):
+        from backend.config import settings
+
+        wurzel = tmp_path / "disc"
+        (wurzel / "Abbey Road").mkdir(parents=True)
+        (wurzel / "Abbey Road" / "01 Come Together.flac").write_bytes(self.FLAC)
+        monkeypatch.setattr(settings, "disc_root", wurzel)
+        return wurzel
+
+    def test_ohne_cd_sagt_die_seite_das(self, client):
+        response = client.get("/disc")
+        assert response.status_code == 200
+        assert "Keine CD eingelegt" in response.text
+
+    def test_alben_werden_gelistet(self, client, cd):
+        response = client.get("/disc")
+        assert "Abbey Road" in response.text
+        assert "Übernehmen" in response.text
+
+    def test_uebernehmen_fuehrt_in_den_bestehenden_ablauf(self, client, cd):
+        """Nach dem Kopieren ist die Antwort dieselbe wie nach einem Upload."""
+        response = client.post("/disc", data={"folder": "Abbey Road"})
+        assert response.status_code == 200
+        # Das Fragment der Dateiliste, mit dem Schritt 2 bis 4 weitergehen.
+        assert "Come Together" in response.text
+        assert "/match/" in response.text
+
+    def test_pfadausbruch_wird_abgewiesen(self, client, cd):
+        response = client.post("/disc", data={"folder": "../../etc"})
+        assert "gehört nicht zur eingelegten CD" in response.text
+
+    def test_ordner_ohne_musik(self, client, cd):
+        (cd / "Scans").mkdir()
+        (cd / "Scans" / "cover.jpg").write_bytes(b"\xff\xd8\xff")
+        response = client.post("/disc", data={"folder": "Scans"})
+        assert "keine Audiodateien" in response.text
+
+    def test_zu_viele_dateien(self, client, cd, monkeypatch):
+        from backend.config import settings
+
+        monkeypatch.setattr(settings, "max_files", 0)
+        response = client.post("/disc", data={"folder": "Abbey Road"})
+        assert "Zu viele Dateien" in response.text
+
+    def test_kein_platz(self, client, cd, monkeypatch, isoliertes_staging):
+        """Die Grenzen gelten für die CD genauso -- vorab geprüft."""
+        from backend.config import settings
+
+        monkeypatch.setattr(settings, "staging_free_bytes", lambda: 0)
+        monkeypatch.setattr(settings, "min_free_bytes", 1)
+
+        response = client.post("/disc", data={"folder": "Abbey Road"})
+        assert "nicht genug Speicherplatz" in response.text
+        assert list(isoliertes_staging.iterdir()) == []
+
+    def test_liste_bleibt_nach_dem_import_abrufbar(self, client, cd):
+        """Das nächste Album derselben CD ist der erwartete nächste Schritt."""
+        client.post("/disc", data={"folder": "Abbey Road"})
+        response = client.get("/disc")
+        assert "Abbey Road" in response.text

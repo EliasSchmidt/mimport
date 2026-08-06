@@ -1,0 +1,72 @@
+{# Die Alben einer eingelegten Daten-CD. Ein Eintrag je Ordner, weil eine
+   Auswahl genau ein Album ist -- eine MP3-CD trägt oft mehrere. #}
+<div id="disc-inner">
+
+    {% if not available %}
+    <div class="banner info">
+        <strong>Keine CD eingelegt</strong>
+        <p>
+            Erwartet wird eine eingehängte Daten-CD unter
+            <span class="mono">{{ disc_root }}</span>. Gemountet wird auf dem
+            Host; der Container liest nur mit.
+        </p>
+    </div>
+
+    {% elif not albums %}
+    <div class="banner warn">
+        <strong>Keine Audiodateien auf der CD</strong>
+        <p>
+            Unter <span class="mono">{{ disc_root }}</span> liegt zwar etwas,
+            aber nichts, was beets importieren könnte. Bei einer Audio-CD ohne
+            Dateisystem ist das zu erwarten – die müsste erst gerippt werden.
+        </p>
+    </div>
+
+    {% else %}
+    <p class="hint">
+        {{ albums | length }} Ordner mit Musik gefunden.
+        Ein Ordner ist ein Album – für mehrere nacheinander vorgehen.
+    </p>
+
+    <table class="files">
+        <thead>
+            <tr>
+                <th>Ordner</th>
+                <th>Tracks</th>
+                <th>Größe</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for album in albums %}
+            <tr>
+                <td class="name">{{ album.display }}</td>
+                <td class="mono small">{{ album.track_count }}</td>
+                <td class="mono small">{{ album.size_label }}</td>
+                <td>
+                    <form hx-post="/disc"
+                          hx-target="#files"
+                          hx-swap="innerHTML"
+                          hx-indicator="#disc-spinner-{{ loop.index }}"
+                          hx-on::after-request="document.getElementById('files-step').hidden = false">
+                        <input type="hidden" name="folder" value="{{ album.relative }}">
+                        <button type="submit" class="button primary">Übernehmen</button>
+                        <span id="disc-spinner-{{ loop.index }}"
+                              class="htmx-indicator spinner">kopiere …</span>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+
+    <div class="actions">
+        <button type="button" class="button secondary"
+                hx-get="/disc"
+                hx-target="#disc"
+                hx-swap="innerHTML">
+            Neu einlesen
+        </button>
+    </div>
+</div>

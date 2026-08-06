@@ -37,12 +37,16 @@ COPY beets/config.yaml /config/config.yaml
 # gelesen, die auf fremden Bytes arbeiten -- das soll nicht als root laufen.
 RUN groupadd --gid 1000 mimport \
  && useradd --uid 1000 --gid 1000 --no-create-home mimport \
- && mkdir -p /music /data /staging /config \
- && chown -R mimport:mimport /app /music /data /staging /config
+ && mkdir -p /music /data /staging /config /disc \
+ && chown -R mimport:mimport /app /music /data /staging /config /disc
 
 USER mimport
 
-ENV MIMPORT_STAGING=/staging
+ENV MIMPORT_STAGING=/staging \
+    # Hier taucht eine eingelegte Daten-CD auf. Gemountet wird auf dem Host,
+    # hereingereicht wird nur der fertige Mount -- der Container braucht
+    # dadurch weder /dev/sr0 noch CAP_SYS_ADMIN. Kein Mount, kein CD-Bereich.
+    MIMPORT_DISC_PATH=/disc
 
 EXPOSE 8000
 

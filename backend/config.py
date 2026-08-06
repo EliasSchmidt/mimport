@@ -67,6 +67,19 @@ class Settings:
         .resolve()
     )
 
+    #: Wo die eingelegte CD im Dateisystem auftaucht. Gemountet wird auf dem
+    #: Host, hereingereicht wird nur der fertige Mount -- damit braucht der
+    #: Container weder Zugriff auf ``/dev/sr0`` noch ``CAP_SYS_ADMIN``, das
+    #: ``mount()`` sonst verlangen würde.
+    #:
+    #: Kein Schalter für das CD-Feature: ob dort etwas liegt, *ist* der
+    #: Schalter. Ein Dienst ohne eingehängte CD zeigt schlicht „keine CD".
+    disc_root: Path = field(
+        default_factory=lambda: Path(os.environ.get("MIMPORT_DISC_PATH", "/disc"))
+        .expanduser()
+        .resolve()
+    )
+
     #: Das ``beet``-Executable. Im Container ist das das beets aus demselben
     #: venv wie mimport -- damit gibt es nur eine beets-Version und keine
     #: Möglichkeit, dass zwei Installationen die Library-Datenbank

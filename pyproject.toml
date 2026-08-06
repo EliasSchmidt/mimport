@@ -5,9 +5,10 @@ description = "Weboberfläche, um Musik nach Prüfung des Matches über beets zu
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    # An die Version des System-beets anpassen: mimport liest dessen
-    # Konfiguration und ruft dessen 'beet' für den Import auf. Unterschiedliche
-    # Versionen können das Schema der library.db gegeneinander migrieren.
+    # Im Container ist das das beets, mit dem mimport arbeitet: es liefert die
+    # Konfiguration fürs Matching und das 'beet' für den Import. Ohne Container
+    # muss die Version zum beets im PATH passen -- unterschiedliche Versionen
+    # migrieren das Schema der library.db gegeneinander.
     "beets>=2.13.1,<3",
     "fastapi[standard]>=0.141.1",
 ]

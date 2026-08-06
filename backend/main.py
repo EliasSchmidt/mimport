@@ -5,9 +5,19 @@ Browser: hochladen, Match-Vorschläge ansehen, einen auswählen, importieren.
 
 Aufgabenteilung:
 
-* mimport zeigt die Kandidaten und schreibt die Tags des gewählten Kandidaten.
-* Das beets des Servers übernimmt danach den Import selbst -- mit seiner
-  Konfiguration, seinen Plugins und seinem Umbenennungsschema.
+* mimport zeigt die Kandidaten und schreibt die Tags des gewählten Kandidaten
+  **selbst** in die Dateien.
+* beets übernimmt danach nur noch Umbenennen und Einsortieren -- mit seiner
+  Konfiguration, seinen Plugins und seinem Umbenennungsschema, aufgerufen mit
+  ``-A`` und damit ohne erneutes Autotagging.
+
+Warum nicht der naheliegende Weg ``beet import -q --search-id <MBID>``: im
+Quiet-Modus wendet ``_summary_judgment`` einen Match nur bei
+``Recommendation.strong`` an, alles darunter wird stillschweigend übersprungen
+oder unverändert importiert. Ein bewusst bestätigter Match mit 64 % Sicherheit
+-- der Normalfall bei unvollständigen Uploads -- wäre also wirkungslos
+geblieben. Mit ``-A`` läuft beets über ``import_asis`` und erreicht diese
+Abfrage gar nicht. Ausführlich in der README unter „Wie der Import abläuft".
 """
 
 from __future__ import annotations

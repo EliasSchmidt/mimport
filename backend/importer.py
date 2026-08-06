@@ -1,11 +1,16 @@
-"""Übergabe an das beets des Servers.
+"""Übergabe an beets.
 
-Der Import selbst bleibt bewusst beim System-``beet``: dort steckt die
-konfigurierte Library, das Umbenennungsschema und die aktivierten Plugins.
-mimport ruft es als Subprozess mit ``-A`` auf, also **ohne** Autotagging --
-die Tags stehen zu diesem Zeitpunkt schon in den Dateien (siehe
-``backend.tagging``), und beets soll sie nicht erneut überschreiben, sondern nur
-noch die Dateien an ihren Platz in der Library bringen.
+Der Import bleibt bewusst dem ``beet``-Subprozess überlassen: dort steckt die
+konfigurierte Library, das Umbenennungsschema und die aktivierten Plugins. Im
+Container ist das das beets aus demselben venv wie mimport -- damit gibt es nur
+eine beets-Version und keine Möglichkeit, dass zwei Installationen das Schema
+der ``library.db`` gegeneinander migrieren.
+
+Aufgerufen wird mit ``-A``, also **ohne** Autotagging: die Tags stehen zu diesem
+Zeitpunkt schon in den Dateien (siehe ``backend.tagging``), und beets soll sie
+nicht erneut überschreiben, sondern nur noch die Dateien an ihren Platz in der
+Library bringen. Warum nicht stattdessen ``--search-id``, steht in
+``backend.main``.
 """
 
 from __future__ import annotations

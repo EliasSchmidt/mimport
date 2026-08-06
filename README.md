@@ -127,8 +127,37 @@ Probelauf funktioniert weiterhin.
 | `MIMPORT_MOVE` | `1` | Dateien verschieben (`0` = kopieren) |
 | `MIMPORT_MAX_UPLOAD_BYTES` | 4 GB | Obergrenze pro Upload |
 | `MIMPORT_MAX_FILES` | `500` | Obergrenze für die Dateianzahl |
+| `MIMPORT_MIN_FREE_BYTES` | 2 GB | Sicherheitsabstand auf dem Dateisystem |
+| `MIMPORT_MAX_STAGING_BYTES` | 20 GB | Obergrenze für alle Uploads zusammen |
+| `MIMPORT_SESSION_TTL_HOURS` | `24` | Frist, nach der verwaiste Uploads verschwinden |
 | `MIMPORT_IMPORT_TIMEOUT` | `1800` | Zeitlimit des Importlaufs in Sekunden |
 | `MIMPORT_FINGERPRINT` | `0` | AcoustID-Fingerprinting (siehe unten) |
+
+### Platz auf dem Server
+
+Beim Upload greifen drei Grenzen, die kleinste gewinnt:
+
+| Grenze | Wogegen sie hilft |
+|---|---|
+| `MIMPORT_MAX_UPLOAD_BYTES` | ein einzelner übergroßer Upload |
+| freier Platz minus `MIMPORT_MIN_FREE_BYTES` | ein volllaufendes Dateisystem |
+| `MIMPORT_MAX_STAGING_BYTES` minus Belegtem | viele Uploads, die sich summieren |
+
+Der **freie Platz ist die einzige Grenze, die wirklich schützt**: eine
+Obergrenze von 20 GB nützt nichts auf einer Platte, auf der nur noch 5 GB frei
+sind. Die beiden konfigurierten Grenzen sind Politik obendrauf.
+
+Und es geht dabei um mehr als den Upload-Bereich: `mimport-staging` und
+`mimport-data` sind beide Named Volumes, liegen also auf demselben
+Docker-Dateisystem. Ein vollgeschriebenes Staging nimmt die `library.db` mit —
+deshalb der Sicherheitsabstand, und deshalb ist er großzügig voreingestellt.
+
+Dazu kommt das Aufräumen. Sessions, die `MIMPORT_SESSION_TTL_HOURS` lang nicht
+angefasst wurden, verschwinden — geprüft beim Start und vor jedem neuen Upload,
+ohne Hintergrunddienst. Die Frist ist bewusst lang, weil zwischen Upload und
+Entscheidung eine ausgedehnte Pause liegen darf. Bricht der Browser mitten im
+Upload ab, wird die angefangene Session sofort verworfen; sonst würde ein
+geschlossener Tab genügen, um Reste anzuhäufen.
 
 ## Tests
 

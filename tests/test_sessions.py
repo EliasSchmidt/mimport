@@ -120,3 +120,102 @@ class TestSessions:
         (session.directory / "a.flac").unlink()
         sessions.cleanup_if_empty(session)
         assert not session.directory.exists()
+
+
+class TestUsageBytes:
+    """Der Platzverbrauch über alle Sessions -- Grundlage des Gesamtbudgets."""
+
+    def test_leeres_staging_ist_null(self):
+        assert sessions.usage_bytes() == 0
+
+    def test_zaehlt_ueber_sessions_und_unterordner(self):
+        erste = sessions.create_session()
+        (erste.directory / "a.flac").write_bytes(b"x" * 100)
+        zweite = sessions.create_session()
+        (zweite.directory / "Album").mkdir()
+        (zweite.directory / "Album" / "b.flac").write_bytes(b"x" * 250)
+
+        assert sessions.usage_bytes() == 350
+
+    def test_geloeschte_session_zaehlt_nicht_mehr(self):
+        session = sessions.create_session()
+        (session.directory / "a.flac").write_bytes(b"x" * 100)
+        sessions.delete_session(session.session_id)
+
+        assert sessions.usage_bytes() == 0
+
+
+class TestSweepExpired:
+    """Verwaiste Sessions -- abgebrochene Uploads, nie ausgelöste Importe."""
+
+    @staticmethod
+    def _altern(directory, stunden):
+        """Datiert einen Session-Ordner samt Inhalt zurück."""
+        import os
+        import time
+
+        alt = time.time() - stunden * 3600
+        for pfad in sorted(directory.rglob("*"), reverse=True):
+            os.utime(pfad, (alt, alt))
+        os.utime(directory, (alt, alt))
+
+    def test_alte_session_wird_entfernt(self):
+        session = sessions.create_session()
+        (session.directory / "a.flac").write_bytes(b"x")
+        self._altern(session.directory, stunden=48)
+
+        assert sessions.sweep_expired(24) == 1
+        assert not session.directory.exists()
+
+    def test_frische_session_bleibt(self):
+        session = sessions.create_session()
+        (session.directory / "a.flac").write_bytes(b"x")
+
+        assert sessions.sweep_expired(24) == 0
+        assert session.directory.is_dir()
+
+    def test_laufende_session_wird_geschont(self):
+        """``keep`` schützt den Upload, der gerade angelegt wird."""
+        session = sessions.create_session()
+        (session.directory / "a.flac").write_bytes(b"x")
+        self._altern(session.directory, stunden=48)
+
+        assert sessions.sweep_expired(24, keep=session.session_id) == 0
+        assert session.directory.is_dir()
+
+    def test_datei_in_unterordner_haelt_die_session_am_leben(self):
+        """Die mtime des Ordners allein steht still, während drin geschrieben wird."""
+        import os
+        import time
+
+        session = sessions.create_session()
+        unterordner = session.directory / "Album"
+        unterordner.mkdir()
+        (unterordner / "a.flac").write_bytes(b"x")
+
+        # Ordner alt, Inhalt frisch -- so sieht ein langer Upload aus.
+        alt = time.time() - 48 * 3600
+        os.utime(unterordner, (alt, alt))
+        os.utime(session.directory, (alt, alt))
+
+        assert sessions.sweep_expired(24) == 0
+        assert session.directory.is_dir()
+
+    def test_fremde_ordner_bleiben_unangetastet(self):
+        """Nur was wie eine von uns vergebene Session-ID aussieht, wird angefasst."""
+        wurzel = sessions._staging_root()
+        fremd = wurzel / "wichtige-daten"
+        fremd.mkdir()
+        (fremd / "a.txt").write_bytes(b"x")
+        self._altern(fremd, stunden=48)
+
+        assert sessions.sweep_expired(24) == 0
+        assert fremd.is_dir()
+
+    def test_abgeschaltet_bei_null_stunden(self):
+        session = sessions.create_session()
+        (session.directory / "a.flac").write_bytes(b"x")
+        self._altern(session.directory, stunden=1000)
+
+        assert sessions.sweep_expired(0) == 0
+        assert session.directory.is_dir()

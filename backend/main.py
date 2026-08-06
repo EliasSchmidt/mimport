@@ -29,7 +29,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
-from backend import beets_env
+from backend import beets_env, sessions
 from backend.config import settings
 from backend.routes import router
 
@@ -56,7 +56,21 @@ async def lifespan(app: FastAPI):
     )
     for problem in health["problems"]:
         log.warning("%s", problem)
-    log.info("Staging-Ordner: %s", settings.staging_root)
+
+    # Ein Neustart ist der natürliche Zeitpunkt, um Liegengebliebenes
+    # loszuwerden -- etwa Uploads, die ein Absturz mittendrin erwischt hat.
+    entfernt = sessions.sweep_expired(settings.session_ttl_hours)
+    if entfernt:
+        log.info("%d verwaiste Session(s) beim Start entfernt.", entfernt)
+
+    log.info(
+        "Staging-Ordner: %s | belegt %.1f GB von %.1f GB | frei auf dem "
+        "Dateisystem: %.1f GB",
+        settings.staging_root,
+        sessions.usage_bytes() / 1024**3,
+        settings.max_staging_bytes / 1024**3,
+        settings.staging_free_bytes() / 1024**3,
+    )
     yield
 
 

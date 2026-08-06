@@ -30,6 +30,16 @@ services:
       # Verlustbehaftete Uploads nur bemängeln, nicht ablehnen.
       MIMPORT_MAX_UPLOAD_BYTES: "6442450944"  # 6 GB
       MIMPORT_MAX_FILES: "500"
+
+      # Damit die Anwendung das Dateisystem nicht vollschreiben kann. Staging
+      # und Datenbank sind beides Named Volumes und teilen sich die Platte --
+      # ein volles Staging träfe also auch die library.db. Auf einem kleinen
+      # Server beide Werte nach unten korrigieren.
+      MIMPORT_MIN_FREE_BYTES: "2147483648"    # 2 GB Sicherheitsabstand
+      MIMPORT_MAX_STAGING_BYTES: "21474836480"  # 20 GB für alle Uploads zusammen
+      # Nach dieser Frist gelten nicht importierte Uploads als vergessen.
+      MIMPORT_SESSION_TTL_HOURS: "24"
+
       # AcoustID-Fingerprinting. Braucht zusätzlich das chroma-Plugin in
       # beets/config.yaml sowie fpcalc im Image -- siehe README.
       MIMPORT_FINGERPRINT: "0"

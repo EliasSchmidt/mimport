@@ -15,6 +15,7 @@ import logging
 import re
 import secrets
 import shutil
+import time
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
@@ -138,6 +139,81 @@ def delete_session(session_id: str) -> None:
     except SessionError:
         return
     shutil.rmtree(session.directory, ignore_errors=True)
+
+
+def usage_bytes() -> int:
+    """Belegter Platz im Staging, über alle Sessions zusammen.
+
+    Grundlage für das Gesamtbudget: ``max_upload_bytes`` begrenzt nur den
+    einzelnen Upload, nicht die Summe vieler.
+    """
+    root = settings.staging_root
+    if not root.is_dir():
+        return 0
+    total = 0
+    for path in root.rglob("*"):
+        try:
+            if path.is_file() and not path.is_symlink():
+                total += path.stat().st_size
+        except OSError:
+            # Verschwindet eine Datei während der Zählung, ist sie eben nicht
+            # mehr da -- das Ergebnis ist ohnehin nur eine Momentaufnahme.
+            continue
+    return total
+
+
+def _last_touched(directory: Path) -> float:
+    """Jüngste Änderungszeit innerhalb eines Session-Ordners.
+
+    Bewusst nicht die mtime des Ordners allein: die bleibt stehen, während in
+    einem bereits angelegten Unterordner noch Dateien geschrieben werden.
+    """
+    newest = directory.stat().st_mtime
+    for path in directory.rglob("*"):
+        try:
+            newest = max(newest, path.stat().st_mtime)
+        except OSError:
+            continue
+    return newest
+
+
+def sweep_expired(max_age_hours: int, keep: str | None = None) -> int:
+    """Entfernt Sessions, die seit Stunden niemand mehr angefasst hat.
+
+    Abgebrochene Uploads und Sitzungen, in denen nie ein Import ausgelöst wurde,
+    blieben sonst für immer liegen und füllen mit der Zeit das Dateisystem.
+
+    Aufgerufen wird das beim Start und vor jedem neuen Upload -- das genügt und
+    erspart einen Hintergrunddienst. ``keep`` schützt die gerade laufende
+    Sitzung. Die Frist ist absichtlich großzügig: zwischen Upload und
+    Entscheidung darf eine lange Pause liegen.
+    """
+    root = settings.staging_root
+    if max_age_hours <= 0 or not root.is_dir():
+        return 0
+
+    cutoff = time.time() - max_age_hours * 3600
+    removed = 0
+    for directory in sorted(root.iterdir()):
+        # Nur was wie eine von uns angelegte Session aussieht -- fremde Ordner
+        # unter der Staging-Wurzel bleiben unangetastet.
+        if not directory.is_dir() or directory.name == keep:
+            continue
+        if not SESSION_ID_RE.match(directory.name):
+            continue
+        try:
+            if _last_touched(directory) >= cutoff:
+                continue
+        except OSError:
+            continue
+        shutil.rmtree(directory, ignore_errors=True)
+        removed += 1
+        log.info(
+            "Verwaiste Session entfernt (älter als %s h): %s",
+            max_age_hours,
+            directory.name,
+        )
+    return removed
 
 
 def cleanup_if_empty(session: StagingSession) -> None:

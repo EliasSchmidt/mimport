@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
+
+log = logging.getLogger(__name__)
 
 #: Endungen, die wir ohne Rückfrage als verlustfrei betrachten.
 LOSSLESS_EXTENSIONS = frozenset(
@@ -87,6 +90,29 @@ class Settings:
     #: Obergrenze für die Dateianzahl pro Upload.
     max_files: int = field(default_factory=lambda: _env_int("MIMPORT_MAX_FILES", 500))
 
+    #: Sicherheitsabstand auf dem Dateisystem des Staging-Ordners. Der
+    #: eigentliche Schutz gegen ein vollgeschriebenes Dateisystem -- eine
+    #: Obergrenze allein hilft nicht, wenn die Platte schon vorher voll ist.
+    #: Im Container liegen Staging und ``library.db`` auf demselben
+    #: Docker-Dateisystem, ein volles Staging nimmt also die Datenbank mit.
+    min_free_bytes: int = field(
+        default_factory=lambda: _env_int("MIMPORT_MIN_FREE_BYTES", 2 * 1024**3)
+    )
+
+    #: Obergrenze für die Summe *aller* Sessions im Staging. Begrenzt, wie viel
+    #: sich über viele Uploads hinweg ansammeln kann -- ``max_upload_bytes``
+    #: gilt nur je Upload.
+    max_staging_bytes: int = field(
+        default_factory=lambda: _env_int("MIMPORT_MAX_STAGING_BYTES", 20 * 1024**3)
+    )
+
+    #: Nach so vielen Stunden ohne Änderung gilt eine Session als verwaist und
+    #: wird weggeräumt. Großzügig, weil zwischen Upload und Entscheidung eine
+    #: lange Pause liegen darf.
+    session_ttl_hours: int = field(
+        default_factory=lambda: _env_int("MIMPORT_SESSION_TTL_HOURS", 24)
+    )
+
     #: Verschiebt der Import die Dateien (``-m``) statt sie zu kopieren? Move
     #: ist der Standard, damit der Staging-Ordner nicht zuläuft.
     move_on_import: bool = field(default_factory=lambda: _env_bool("MIMPORT_MOVE", True))
@@ -105,6 +131,26 @@ class Settings:
         if not self.fingerprint:
             return False
         return shutil.which("fpcalc") is not None
+
+    def staging_free_bytes(self) -> int:
+        """Freier Platz auf dem Dateisystem des Staging-Ordners.
+
+        Eigene Methode, damit Tests eine volle Platte vortäuschen können, ohne
+        ``shutil`` global zu ersetzen -- dieselbe Naht wie bei
+        ``fingerprint_available()``.
+
+        Lässt sich der Platz nicht ermitteln, gilt das als ``0``: dann nimmt
+        mimport lieber keinen Upload mehr an, statt blind weiterzuschreiben.
+        """
+        try:
+            return shutil.disk_usage(self.staging_root).free
+        except OSError:
+            log.warning(
+                "Freier Platz unter %s nicht ermittelbar -- Uploads werden "
+                "vorsorglich abgewiesen.",
+                self.staging_root,
+            )
+            return 0
 
 
 settings = Settings()

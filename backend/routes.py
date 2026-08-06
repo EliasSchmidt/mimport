@@ -31,6 +31,38 @@ router = APIRouter()
 CHUNK_SIZE = 1024 * 1024
 
 
+def _upload_allowance() -> tuple[int, str]:
+    """Wie viele Bytes dieser Upload schreiben darf -- und die Meldung dazu.
+
+    Drei Grenzen, die kleinste gewinnt: das Limit je Upload, der freie Platz
+    abzüglich Sicherheitsabstand und der Rest des Staging-Gesamtbudgets.
+
+    Der freie Platz ist die einzige Grenze, die wirklich schützt: eine
+    konfigurierte Obergrenze nützt nichts, wenn das Dateisystem aus anderen
+    Gründen schon voll ist. Die beiden anderen sind Politik darüber.
+    """
+    frei = settings.staging_free_bytes() - settings.min_free_bytes
+    budget = settings.max_staging_bytes - sessions.usage_bytes()
+    grenzen = [
+        (
+            settings.max_upload_bytes,
+            f"Upload überschreitet das Limit von "
+            f"{settings.max_upload_bytes / 1024**3:.1f} GB.",
+        ),
+        (
+            frei,
+            "Auf dem Server ist nicht genug Speicherplatz frei. Bitte zuerst "
+            "laufende Importe abschließen.",
+        ),
+        (
+            budget,
+            "Der Staging-Bereich ist ausgelastet. Bitte zuerst laufende "
+            "Importe abschließen oder nicht mehr benötigte Uploads verwerfen.",
+        ),
+    ]
+    return min(grenzen, key=lambda grenze: grenze[0])
+
+
 def _session_or_404(session_id: str) -> sessions.StagingSession:
     try:
         return sessions.get_session(session_id)
@@ -84,39 +116,55 @@ async def upload(request: Request, files: list[UploadFile]) -> HTMLResponse:
             f"{settings.max_files}.",
         )
 
+    # Verwaistes zuerst wegräumen: der Platz soll diesem Upload wieder zugute
+    # kommen, bevor das Budget berechnet wird.
+    sessions.sweep_expired(settings.session_ttl_hours)
+
+    erlaubt, grenzmeldung = _upload_allowance()
+    if erlaubt <= 0:
+        return _fragment(request, "_error.html", message=grenzmeldung)
+
     session = sessions.create_session()
     written = 0
     total_bytes = 0
 
-    for upload_file in audio_files:
-        # Der Browser schickt die Ordnerstruktur in einem Zusatzfeld; der
-        # Dateiname allein enthält sie nicht.
-        relative = sessions.sanitize_relative_path(upload_file.filename or "unbenannt")
-        try:
-            destination = sessions.target_path(session, relative)
-        except sessions.SessionError as exc:
-            log.warning("Upload abgewiesen: %s", exc)
-            continue
+    try:
+        for upload_file in audio_files:
+            # Der Browser schickt die Ordnerstruktur in einem Zusatzfeld; der
+            # Dateiname allein enthält sie nicht.
+            relative = sessions.sanitize_relative_path(
+                upload_file.filename or "unbenannt"
+            )
+            try:
+                destination = sessions.target_path(session, relative)
+            except sessions.SessionError as exc:
+                log.warning("Upload abgewiesen: %s", exc)
+                continue
 
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            with destination.open("wb") as sink:
-                while chunk := await upload_file.read(CHUNK_SIZE):
-                    total_bytes += len(chunk)
-                    if total_bytes > settings.max_upload_bytes:
-                        sink.close()
-                        sessions.delete_session(session.session_id)
-                        limit_gb = settings.max_upload_bytes / 1024**3
-                        return _fragment(
-                            request,
-                            "_error.html",
-                            message=f"Upload überschreitet das Limit von "
-                            f"{limit_gb:.1f} GB.",
-                        )
-                    sink.write(chunk)
-            written += 1
-        finally:
-            await upload_file.close()
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                with destination.open("wb") as sink:
+                    while chunk := await upload_file.read(CHUNK_SIZE):
+                        total_bytes += len(chunk)
+                        if total_bytes > erlaubt:
+                            sink.close()
+                            sessions.delete_session(session.session_id)
+                            return _fragment(
+                                request, "_error.html", message=grenzmeldung
+                            )
+                        sink.write(chunk)
+                written += 1
+            finally:
+                await upload_file.close()
+    except BaseException:
+        # Bricht der Browser die Verbindung ab, fliegt die Exception hier
+        # vorbei (bei abgebrochenen Anfragen ein CancelledError, deshalb
+        # BaseException). Ohne Aufräumen bliebe der halbe Upload für immer
+        # liegen -- ein volles Staging braucht keine Absicht, ein
+        # geschlossener Tab genügt. Eine Antwort erübrigt sich, es hört
+        # niemand mehr zu.
+        sessions.delete_session(session.session_id)
+        raise
 
     if not written:
         sessions.delete_session(session.session_id)

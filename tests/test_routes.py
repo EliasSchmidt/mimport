@@ -191,3 +191,101 @@ class TestImportSperre:
         response = client.post(f"/import/{session.session_id}", data={"pretend": "1"})
         assert "gesperrt" not in response.text
         assert "Probelauf" in response.text
+
+
+class TestUploadGrenzen:
+    """Die App darf das Dateisystem des Servers nicht vollschreiben können."""
+
+    FLAC = ("a.flac", b"fLaC\x00\x00\x00\x22", "audio/flac")
+
+    def test_kein_platz_auf_dem_dateisystem(self, client, monkeypatch, isoliertes_staging):
+        """Der freie Platz schlägt jede konfigurierte Obergrenze."""
+        from backend.config import settings
+
+        monkeypatch.setattr(settings, "staging_free_bytes", lambda: 0)
+
+        response = client.post("/upload", files={"files": self.FLAC})
+        assert "nicht genug Speicherplatz" in response.text
+        # Es darf auch keine leere Session zurückbleiben.
+        assert list(isoliertes_staging.iterdir()) == []
+
+    def test_gesamtbudget_erschoepft(self, client, monkeypatch, isoliertes_staging):
+        """Viele kleine Uploads dürfen sich nicht unbegrenzt summieren."""
+        from backend.config import settings
+
+        monkeypatch.setattr(settings, "staging_free_bytes", lambda: 100 * 1024**3)
+        monkeypatch.setattr(settings, "max_staging_bytes", 0)
+
+        response = client.post("/upload", files={"files": self.FLAC})
+        assert "Staging-Bereich ist ausgelastet" in response.text
+        assert list(isoliertes_staging.iterdir()) == []
+
+    def test_belegtes_staging_schmaelert_das_budget(
+        self, client, monkeypatch, isoliertes_staging
+    ):
+        """Was schon im Staging liegt, wird angerechnet."""
+        from backend import sessions
+        from backend.config import settings
+
+        belegt = sessions.create_session()
+        (belegt.directory / "alt.flac").write_bytes(b"x" * 1000)
+
+        monkeypatch.setattr(settings, "staging_free_bytes", lambda: 100 * 1024**3)
+        monkeypatch.setattr(settings, "max_staging_bytes", 1000)
+
+        response = client.post("/upload", files={"files": self.FLAC})
+        assert "Staging-Bereich ist ausgelastet" in response.text
+
+    def test_platz_reicht_gerade_so(self, client, monkeypatch, isoliertes_staging):
+        """Gegenprobe: knapp über der Grenze geht der Upload durch."""
+        from backend.config import settings
+
+        monkeypatch.setattr(settings, "min_free_bytes", 1000)
+        monkeypatch.setattr(settings, "staging_free_bytes", lambda: 1000 + 10_000)
+
+        response = client.post("/upload", files={"files": self.FLAC})
+        assert response.status_code == 200
+        assert "nicht genug Speicherplatz" not in response.text
+
+    def test_verwaiste_session_wird_vor_dem_upload_weggeraeumt(
+        self, client, monkeypatch, isoliertes_staging
+    ):
+        """Der Sweep gibt Platz frei, bevor das Budget berechnet wird."""
+        import os
+        import time
+
+        from backend import sessions
+
+        alte = sessions.create_session()
+        (alte.directory / "alt.flac").write_bytes(b"x" * 1000)
+        alt = time.time() - 48 * 3600
+        os.utime(alte.directory / "alt.flac", (alt, alt))
+        os.utime(alte.directory, (alt, alt))
+
+        response = client.post("/upload", files={"files": self.FLAC})
+        assert response.status_code == 200
+        assert not alte.directory.exists()
+
+
+class TestVerbindungsabbruch:
+    def test_abbruch_laesst_nichts_liegen(self, client, monkeypatch, isoliertes_staging):
+        """Ein geschlossener Tab mitten im Upload darf kein Fragment hinterlassen.
+
+        Ohne Aufräumen sammelt sich das an, bis das Dateisystem voll ist -- dafür
+        braucht es keine Absicht.
+        """
+        from starlette.datastructures import UploadFile
+        from starlette.requests import ClientDisconnect
+
+        async def read_bricht_ab(self, size: int = -1) -> bytes:
+            raise ClientDisconnect()
+
+        monkeypatch.setattr(UploadFile, "read", read_bricht_ab)
+
+        with pytest.raises(ClientDisconnect):
+            client.post(
+                "/upload",
+                files={"files": ("a.flac", b"fLaC\x00\x00\x00\x22", "audio/flac")},
+            )
+
+        assert list(isoliertes_staging.iterdir()) == []

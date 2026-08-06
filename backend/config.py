@@ -126,6 +126,35 @@ class Settings:
         default_factory=lambda: _env_int("MIMPORT_SESSION_TTL_HOURS", 24)
     )
 
+    #: Das CD-Laufwerk für Audio-CDs. Anders als bei der Daten-CD hilft kein
+    #: Mount vom Host: eine Audio-CD hat kein Dateisystem, ihre Sektoren müssen
+    #: direkt aus dem Gerät gelesen werden.
+    cdrom_device: str = field(
+        default_factory=lambda: os.environ.get("MIMPORT_CDROM", "/dev/sr0")
+    )
+
+    #: Liest die Sektoren, notfalls mehrfach -- daher der Name.
+    cdparanoia_bin: str = field(
+        default_factory=lambda: os.environ.get("MIMPORT_CDPARANOIA", "cdparanoia")
+    )
+
+    #: Packt das Ergebnis verlustfrei.
+    flac_bin: str = field(
+        default_factory=lambda: os.environ.get("MIMPORT_FLAC", "flac")
+    )
+
+    #: Zeitlimit für das Auslesen des Inhaltsverzeichnisses. Kurz -- ein
+    #: Laufwerk ohne CD soll nicht minutenlang hängen.
+    rip_toc_timeout: int = field(
+        default_factory=lambda: _env_int("MIMPORT_RIP_TOC_TIMEOUT", 60)
+    )
+
+    #: Zeitlimit je Track. Großzügig: bei einer zerkratzten CD liest
+    #: cdparanoia dieselbe Stelle viele Male.
+    rip_track_timeout: int = field(
+        default_factory=lambda: _env_int("MIMPORT_RIP_TRACK_TIMEOUT", 1200)
+    )
+
     #: Verschiebt der Import die Dateien (``-m``) statt sie zu kopieren? Move
     #: ist der Standard, damit der Staging-Ordner nicht zuläuft.
     move_on_import: bool = field(default_factory=lambda: _env_bool("MIMPORT_MOVE", True))

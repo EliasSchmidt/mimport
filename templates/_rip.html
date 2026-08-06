@@ -1,0 +1,113 @@
+{# Stand des CD-Rips. Solange gelesen wird, holt sich dieses Fragment selbst
+   alle zwei Sekunden neu; im Endzustand fehlt der Auslöser und es hört auf. #}
+<div id="rip-inner">
+
+    {% if not tools.cdparanoia or not tools.flac %}
+    <div class="banner warn">
+        <strong>Werkzeuge fehlen</strong>
+        <p>
+            Zum Rippen braucht es
+            {% if not tools.cdparanoia %}<span class="mono">cdparanoia</span>{% endif %}
+            {%- if not tools.cdparanoia and not tools.flac %} und {% endif %}
+            {%- if not tools.flac %}<span class="mono">flac</span>{% endif %}
+            im Container. Beide sind klein – siehe README.
+        </p>
+    </div>
+
+    {% elif job is none %}
+    <p class="hint">
+        Audio-CD einlegen und lesen lassen. Die Tracks landen als FLAC im
+        Staging, danach geht es weiter wie bei einem Upload.
+        Laufwerk: <span class="mono">{{ device }}</span>
+    </p>
+    <div class="actions">
+        <button type="button" class="button primary"
+                hx-post="/rip" hx-target="#rip" hx-swap="innerHTML">
+            Audio-CD lesen
+        </button>
+    </div>
+
+    {% elif job.zustand == "fehler" %}
+    <div class="banner error">
+        <strong>{{ job.meldung }}</strong>
+        <p>{{ job.fehler }}</p>
+    </div>
+    <div class="actions">
+        <button type="button" class="button secondary"
+                hx-delete="/rip" hx-target="#rip" hx-swap="innerHTML">
+            Nochmal versuchen
+        </button>
+    </div>
+
+    {% elif job.laeuft %}
+    {# Der einzige Zustand, der sich selbst nachlädt. #}
+    <div hx-get="/rip" hx-trigger="every 2s" hx-target="#rip" hx-swap="innerHTML">
+        <div class="banner info">
+            <strong>{{ job.meldung }}</strong>
+            {% if job.tracks_gesamt %}
+            <p>
+                {{ job.track }} von {{ job.tracks_gesamt }} Tracks fertig –
+                {{ job.prozent }} %
+            </p>
+            <div class="progress" role="progressbar"
+                 aria-valuenow="{{ job.prozent }}" aria-valuemin="0" aria-valuemax="100">
+                <div class="progress-bar" style="width: {{ job.prozent }}%"></div>
+            </div>
+            {% endif %}
+            <p class="hint">
+                Ein Rip dauert je nach Laufwerk und Zustand der CD 10 bis 40
+                Minuten. Die Seite kann offen bleiben.
+            </p>
+        </div>
+    </div>
+
+    {% else %}
+    <div class="banner ok">
+        <strong>{{ job.meldung }}</strong>
+        {% if job.disc_id %}
+        <p class="hint">DiscID: <span class="mono">{{ job.disc_id }}</span></p>
+        {% endif %}
+    </div>
+
+    {% if job.releases %}
+    <p class="hint">
+        MusicBrainz kennt diese CD. Eine gerippte CD hat keine Tags – über die
+        Release-ID trifft der Match trotzdem genau.
+    </p>
+    <div class="actions">
+        {% for release in job.releases %}
+        <form hx-post="/match/{{ job.session_id }}"
+              hx-target="#candidates" hx-swap="innerHTML"
+              hx-indicator="#rip-match-spinner">
+            <input type="hidden" name="mbid" value="{{ release.mbid }}">
+            <button type="submit" class="button primary">{{ release.label }}</button>
+        </form>
+        {% endfor %}
+        <span id="rip-match-spinner" class="htmx-indicator spinner">
+            frage MusicBrainz …
+        </span>
+    </div>
+    {% else %}
+    <div class="banner warn">
+        <strong>MusicBrainz kennt diese CD nicht</strong>
+        <p>
+            Eine gerippte CD hat keine Tags, deshalb findet die Suche ohne
+            Angaben nichts. Künstler und Album unten von Hand eintragen.
+        </p>
+    </div>
+    {% endif %}
+
+    <div class="actions">
+        <button type="button" class="button secondary"
+                hx-delete="/rip" hx-target="#rip" hx-swap="innerHTML"
+                hx-confirm="Gelesene Tracks verwerfen und Laufwerk freigeben?">
+            Verwerfen
+        </button>
+    </div>
+
+    {# Holt die Dateiliste in Schritt 2 -- ab da ist der Weg derselbe wie beim
+       Upload. Lädt von selbst, sobald dieser Zustand erscheint. #}
+    <div hx-get="/rip/files" hx-trigger="load" hx-target="#files" hx-swap="innerHTML"
+         hx-on::after-request="document.getElementById('files-step').hidden = false"></div>
+    {% endif %}
+</div>

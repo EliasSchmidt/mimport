@@ -18,7 +18,7 @@ from pathlib import Path
 from fastapi import APIRouter, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse
 
-from backend import audio, beets_env, disc, importer, matching, sessions, tagging
+from backend import audio, beets_env, disc, importer, matching, rip, sessions, tagging
 from backend.config import AUDIO_EXTENSIONS, settings
 from backend.templates import templates
 
@@ -264,6 +264,69 @@ def disc_copy(request: Request, folder: str = Form(default="")) -> HTMLResponse:
     except disc.DiscError as exc:
         return _fragment(request, "_error.html", message=str(exc))
 
+    return _files_fragment(request, session)
+
+
+def _rip_fragment(request: Request) -> HTMLResponse:
+    """Der Stand des Rips. Solange er läuft, fragt die Seite ihn selbst ab."""
+    return _fragment(
+        request,
+        "_rip.html",
+        job=rip.current(),
+        tools=rip.tools_available(),
+        device=settings.cdrom_device,
+    )
+
+
+@router.get("/rip", response_class=HTMLResponse)
+def rip_status(request: Request) -> HTMLResponse:
+    """Fortschritt eines laufenden Rips -- Ziel der Abfrage im Sekundentakt."""
+    return _rip_fragment(request)
+
+
+@router.post("/rip", response_class=HTMLResponse)
+def rip_start(request: Request) -> HTMLResponse:
+    """Startet den Rip der eingelegten Audio-CD.
+
+    Kehrt sofort zurück; gelesen wird im Hintergrund. Ein Rip dauert 10 bis 40
+    Minuten, so lange darf keine Anfrage offen stehen.
+    """
+    sessions.sweep_expired(settings.session_ttl_hours)
+    erlaubt, grenzmeldung = _storage_allowance("Diese CD")
+    if erlaubt <= 0:
+        return _fragment(request, "_error.html", message=grenzmeldung)
+
+    try:
+        rip.start(allowance=erlaubt)
+    except rip.RipError as exc:
+        log.warning("Rip nicht gestartet: %s", exc)
+        # Der Fehler steht im Auftrag und wird mit angezeigt.
+        return _rip_fragment(request)
+    return _rip_fragment(request)
+
+
+@router.delete("/rip", response_class=HTMLResponse)
+def rip_reset(request: Request) -> HTMLResponse:
+    """Verwirft einen abgeschlossenen Auftrag, damit die nächste CD kann."""
+    job = rip.current()
+    try:
+        rip.reset()
+    except rip.RipError as exc:
+        return _fragment(request, "_error.html", message=str(exc))
+    if job is not None and job.session_id:
+        sessions.delete_session(job.session_id)
+    return _rip_fragment(request)
+
+
+@router.get("/rip/files", response_class=HTMLResponse)
+def rip_files(request: Request) -> HTMLResponse:
+    """Die Dateiliste des fertigen Rips -- ab hier wie Upload und Daten-CD."""
+    job = rip.current()
+    if job is None or not job.session_id:
+        return _fragment(
+            request, "_error.html", message="Es liegt kein fertiger Rip vor."
+        )
+    session = _session_or_404(job.session_id)
     return _files_fragment(request, session)
 
 

@@ -407,3 +407,92 @@ class TestDisc:
         )
 
         assert len(list(isoliertes_staging.iterdir())) == 2
+
+
+class TestRip:
+    """Die Audio-CD: kein Dateisystem, muss gelesen werden."""
+
+    @pytest.fixture(autouse=True)
+    def kein_alter_auftrag(self):
+        from backend import rip
+
+        rip._job = None
+        yield
+        rip._job = None
+
+    @pytest.fixture
+    def werkzeuge_da(self, monkeypatch):
+        from backend import rip
+
+        monkeypatch.setattr(
+            rip, "tools_available", lambda: {"cdparanoia": True, "flac": True}
+        )
+
+    def test_fehlende_werkzeuge_werden_gemeldet(self, client, monkeypatch):
+        from backend import rip
+
+        monkeypatch.setattr(
+            rip, "tools_available", lambda: {"cdparanoia": False, "flac": False}
+        )
+        response = client.get("/rip")
+        assert "Werkzeuge fehlen" in response.text
+
+    def test_bereit_ohne_auftrag(self, client, werkzeuge_da):
+        response = client.get("/rip")
+        assert "Audio-CD lesen" in response.text
+
+    def test_start_zeigt_fortschritt(self, client, werkzeuge_da, monkeypatch):
+        from backend import discid, rip
+        from tests.test_discid import CDPARANOIA_AUSGABE
+        from tests.test_rip import _FakeThread
+
+        monkeypatch.setattr(
+            rip, "read_toc", lambda: discid.parse_cdparanoia_toc(CDPARANOIA_AUSGABE)
+        )
+        monkeypatch.setattr(rip.threading, "Thread", _FakeThread)
+
+        response = client.post("/rip")
+        assert "Tracks fertig" in response.text
+        # Solange gelesen wird, holt sich die Anzeige selbst nach.
+        assert "every 2s" in response.text
+
+    def test_kein_laufwerk_meldet_klar(self, client, werkzeuge_da, monkeypatch):
+        from backend import rip
+
+        def kaputt():
+            raise rip.RipError("Im Laufwerk wurde keine Audio-CD erkannt.")
+
+        monkeypatch.setattr(rip, "read_toc", kaputt)
+        response = client.post("/rip")
+        assert "keine Audio-CD erkannt" in response.text
+
+    def test_dateien_erst_nach_fertigem_rip(self, client, werkzeuge_da):
+        response = client.get("/rip/files")
+        assert "kein fertiger Rip" in response.text
+
+    def test_fertiger_rip_liefert_die_dateiliste(
+        self, client, werkzeuge_da, monkeypatch
+    ):
+        """Ab hier ist der Weg derselbe wie bei Upload und Daten-CD."""
+        from backend import rip, sessions
+
+        session = sessions.create_session()
+        (session.directory / "01 Track 1.flac").write_bytes(b"fLaC\x00\x00\x00\x22")
+
+        job = rip.RipJob(zustand="fertig", session_id=session.session_id)
+        monkeypatch.setattr(rip, "_job", job)
+
+        response = client.get("/rip/files")
+        assert "/match/" in response.text
+        assert "01 Track 1.flac" in response.text
+
+    def test_verwerfen_gibt_das_laufwerk_frei(self, client, werkzeuge_da, monkeypatch):
+        from backend import rip, sessions
+
+        session = sessions.create_session()
+        job = rip.RipJob(zustand="fertig", session_id=session.session_id)
+        monkeypatch.setattr(rip, "_job", job)
+
+        response = client.request("DELETE", "/rip")
+        assert "Audio-CD lesen" in response.text
+        assert not session.directory.exists()

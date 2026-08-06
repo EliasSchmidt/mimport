@@ -56,9 +56,18 @@
            Ab der Übernahme ist der Weg identisch mit dem Upload. Geladen wird
            beim Seitenaufruf -- ohne CD kostet das nichts. #}
         <div class="disc-source">
-            <h3>… oder von einer eingelegten CD</h3>
+            <h3>… oder von einer eingelegten Daten-CD</h3>
             <div id="disc" hx-get="/disc" hx-trigger="load" hx-swap="innerHTML">
                 <p class="hint">suche nach einer CD …</p>
+            </div>
+        </div>
+
+        {# Audio-CDs haben kein Dateisystem und müssen gelesen werden. Deshalb
+           getrennt von der Daten-CD, obwohl beide „CD" heißen. #}
+        <div class="disc-source">
+            <h3>… oder von einer Audio-CD (rippen)</h3>
+            <div id="rip" hx-get="/rip" hx-trigger="load" hx-swap="innerHTML">
+                <p class="hint">prüfe das Laufwerk …</p>
             </div>
         </div>
     </section>

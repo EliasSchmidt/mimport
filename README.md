@@ -123,6 +123,61 @@ Bricht das Lesen mittendrin ab, weil die CD zerkratzt ist, wird die halbfertige
 Session verworfen und die betroffene Datei genannt. Ein unvollständiges Album
 gegen MusicBrainz zu matchen wäre schlimmer als ein klarer Fehler.
 
+## Eine Audio-CD rippen
+
+Die andere Sorte CD: **kein Dateisystem**, die Tracks lassen sich nicht
+kopieren, sie müssen ausgelesen werden. Deshalb geht hier auch kein Host-Mount
+— das Gerät selbst muss in den Container.
+
+```yaml
+# in docker-compose.yml, Dienst mimport-cd
+devices:
+  - /dev/sr0:/dev/sr0
+group_add:
+  - "24"        # ANPASSEN, siehe unten
+```
+
+Die Gruppen-ID ist die einzige Angabe, die vom Rechner abhängt:
+
+```bash
+ls -l /dev/sr0 && getent group cdrom
+```
+
+`/dev/sr0` gehört üblicherweise `root:cdrom` mit Modus 660 — der Container-Nutzer
+muss also in dieser Gruppe sein, sonst gibt es „Permission denied". Auf Debian
+ist die gid meist 24; nachsehen ist billiger als raten.
+
+### Wie es abläuft
+
+1. **Inhaltsverzeichnis lesen** (`cdparanoia -Q`). Daraus wird die
+   **MusicBrainz-DiscID** berechnet.
+2. **Track für Track lesen**, nicht die CD am Stück. Das kostet nichts und
+   bringt zweierlei: der Fortschritt ist exakt bekannt, und ein unlesbarer Track
+   reißt nicht den ganzen Lauf mit. Jeder Track wird direkt nach FLAC gepackt,
+   das WAV dazwischen sofort gelöscht — es belegt das Vierfache.
+3. **DiscID bei MusicBrainz nachschlagen.** Das ist der eigentliche Trick: eine
+   frisch gerippte CD hat **keine Tags**, und `tag_album` leitet seine
+   Suchbegriffe sonst aus genau denen ab. Über die DiscID trifft der Match
+   trotzdem exakt — sie identifiziert die Pressung, nicht nur das Album.
+4. Ab da wie immer: Dateiliste, Kandidaten, Import.
+
+Kennt MusicBrainz die CD nicht, bleibt die Eingabe von Hand — Künstler und Album
+stehen ja bereits als Felder bereit.
+
+Der Rip läuft im Hintergrund, die Oberfläche fragt den Stand alle zwei Sekunden
+ab. **Ein Laufwerk heißt ein Auftrag**: mehr Verwaltung als „läuft gerade einer?"
+braucht es nicht.
+
+### Warum cdparanoia und nicht abcde
+
+`abcde` rippt, encodiert **und taggt** aus CDDB. Das Taggen kollidiert direkt
+mit „mimport schreibt die Tags selbst" — es müsste also abgeschaltet werden,
+und übrig bliebe ein Shell-Wrapper um genau das, was `cdparanoia` und `flac` in
+zwei Schritten selbst tun.
+
+Beide Pakete sind zusammen unter 2 MB. Das ist der Unterschied zum
+Fingerprinting weiter unten, das die libav\*-Dekoder nachzieht.
+
 ### Zwei Dienste
 
 `docker-compose.yml` startet dasselbe Image zweimal:
@@ -188,6 +243,11 @@ Probelauf funktioniert weiterhin.
 |---|---|---|
 | `MIMPORT_STAGING` | `./staging` | Ordner für laufende Uploads |
 | `MIMPORT_DISC_PATH` | `/disc` | Wo die eingehängte Daten-CD liegt |
+| `MIMPORT_CDROM` | `/dev/sr0` | Laufwerk für Audio-CDs |
+| `MIMPORT_CDPARANOIA` | `cdparanoia` | Pfad zum Ripper |
+| `MIMPORT_FLAC` | `flac` | Pfad zum FLAC-Encoder |
+| `MIMPORT_RIP_TOC_TIMEOUT` | `60` | Zeitlimit fürs Inhaltsverzeichnis (s) |
+| `MIMPORT_RIP_TRACK_TIMEOUT` | `1200` | Zeitlimit je Track (s) |
 | `MIMPORT_BEET_BIN` | `beet` | Pfad zum beets-Executable |
 | `MIMPORT_MOVE` | `1` | Dateien verschieben (`0` = kopieren) |
 | `MIMPORT_MAX_UPLOAD_BYTES` | 4 GB | Obergrenze pro Upload |

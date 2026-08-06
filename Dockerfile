@@ -10,6 +10,13 @@ FROM python:3.12-slim AS base
 # uv für reproduzierbare Installation aus uv.lock.
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
+# Zum Rippen von Audio-CDs: cdparanoia liest die Sektoren, flac packt sie.
+# Zusammen unter 2 MB -- anders als die libav*-Dekoder, die fpcalc für das
+# Fingerprinting nachziehen würde. Ohne eingelegte Audio-CD tun sie nichts.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends cdparanoia flac \
+ && rm -rf /var/lib/apt/lists/*
+
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     UV_LINK_MODE=copy \

@@ -105,6 +105,18 @@ services:
       #   /media/cdrom, /media/<nutzer>/<CD-Name> oder /mnt/cdrom
       - /media/cdrom:/disc:ro
 
+    # Für Audio-CDs. Die haben kein Dateisystem, ihre Sektoren müssen direkt
+    # aus dem Gerät gelesen werden -- ein Mount vom Host hilft hier nicht.
+    #
+    # ANPASSEN: die Gruppen-ID von /dev/sr0 auf dem Host ermitteln mit
+    #   ls -l /dev/sr0 && getent group cdrom
+    # und hier eintragen. Auf Debian ist es meist 24, verlassen sollte man
+    # sich darauf nicht.
+    devices:
+      - /dev/sr0:/dev/sr0
+    group_add:
+      - "24"
+
     environment:
       MIMPORT_MAX_UPLOAD_BYTES: "6442450944"  # 6 GB
       MIMPORT_MAX_FILES: "500"

@@ -108,6 +108,22 @@ Vorher **von Hand kopieren**. beets legt zwar selbst eine Sicherung an, bevor es
 ein Schema migriert, aber danach kann eine ältere beets-Installation dieselbe
 Datei nicht mehr lesen — genau die Falle, die weiter oben beschrieben ist.
 
+Und die ist hier kein Gedankenspiel: Der Zielrechner hat **beets 2.1.0**
+installiert, der Container bringt **2.13.1** mit. Ausweichen geht nicht, denn
+mimport braucht `beets.metadata_plugins`, und das Modul gibt es in 2.1.0 noch
+nicht — es ist dieselbe Umstellung, mit der MusicBrainz zum Plugin wurde.
+
+Sobald der Container die Datenbank einmal geöffnet hat, ist sie für das
+System-beets verloren. Zur Wahl stehen:
+
+- **Das beets auf dem Host mitziehen** auf dieselbe Version. Dann bleiben beide
+  Wege offen.
+- **Auf dem Host nicht mehr direkt importieren** und alles über die Oberfläche
+  laufen lassen. Für `beet list` und Ähnliches dann
+  `docker compose exec mimport beet …` benutzen.
+
+Was nicht funktioniert, ist beides gleichzeitig ohne Versionsabgleich.
+
 Dann entscheidet ein Blick, wie viel Arbeit der Umzug macht:
 
 ```bash

@@ -119,9 +119,9 @@ def health() -> dict[str, object]:
         # ältere Installation nicht mehr lesbar.
         problems.append(
             f"Versionsunterschied: mimport nutzt beets {own}, "
-            f"'{settings.beet_bin}' meldet {cli}. Beide Installationen sollten "
-            "dieselbe Version haben, sonst wird die library.db migriert. Am "
-            "einfachsten: mimport im selben venv wie das System-beets betreiben."
+            f"'{settings.beet_bin}' meldet {cli}. Im Container kann das nicht "
+            "vorkommen, dort ist beides dasselbe venv -- tritt es auf, zeigt "
+            "MIMPORT_BEET_BIN auf eine fremde Installation."
         )
     if not sources:
         problems.append(

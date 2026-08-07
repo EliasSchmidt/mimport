@@ -108,10 +108,9 @@ services:
     # Für Audio-CDs. Die haben kein Dateisystem, ihre Sektoren müssen direkt
     # aus dem Gerät gelesen werden -- ein Mount vom Host hilft hier nicht.
     #
-    # ANPASSEN: die Gruppen-ID von /dev/sr0 auf dem Host ermitteln mit
+    # Die Gruppen-ID stammt vom Zielrechner (dort 'cdrom:x:24:', /dev/sr0
+    # gehört root:cdrom). Auf einem anderen Host neu ermitteln mit
     #   ls -l /dev/sr0 && getent group cdrom
-    # und hier eintragen. Auf Debian ist es meist 24, verlassen sollte man
-    # sich darauf nicht.
     devices:
       - /dev/sr0:/dev/sr0
     group_add:

@@ -148,6 +148,100 @@ def delete_session(session_id: str) -> None:
     shutil.rmtree(session.directory, ignore_errors=True)
 
 
+@dataclass
+class OpenSession:
+    """Eine Sitzung, die im Staging liegt und noch nicht importiert wurde."""
+
+    session_id: str
+    label: str
+    file_count: int
+    total_bytes: int
+    age_seconds: float
+
+    @property
+    def size_label(self) -> str:
+        if self.total_bytes >= 1024**3:
+            return f"{self.total_bytes / 1024**3:.1f} GB"
+        if self.total_bytes >= 1024**2:
+            return f"{self.total_bytes / 1024**2:.0f} MB"
+        return f"{max(1, self.total_bytes // 1024)} KB"
+
+    @property
+    def age_label(self) -> str:
+        minuten = int(self.age_seconds // 60)
+        if minuten < 1:
+            return "gerade eben"
+        if minuten < 60:
+            return f"vor {minuten} Min"
+        stunden = minuten // 60
+        return f"vor {stunden} Std" if stunden < 24 else "vor über einem Tag"
+
+
+def _label_for(session: StagingSession, dateien: list[Path]) -> str:
+    """Ein wiedererkennbarer Name für eine Sitzung.
+
+    Der Ordner, in dem die Dateien liegen, ist die beste Auskunft, die das
+    Dateisystem hergibt -- beim Upload die gewählte Albumstruktur, bei der
+    Daten-CD der übernommene Ordner. Liegt alles flach (ein Rip etwa), muss
+    der erste Dateiname genügen.
+    """
+    ordner = {
+        d.parent.relative_to(session.directory).parts[0]
+        for d in dateien
+        if d.parent != session.directory
+    }
+    if len(ordner) == 1:
+        return ordner.pop()
+    if ordner:
+        return f"{len(ordner)} Ordner"
+    return dateien[0].name if dateien else "leer"
+
+
+def list_open() -> list[OpenSession]:
+    """Alle Sitzungen im Staging, neueste zuerst.
+
+    Die Session-ID steht sonst nur im ausgelieferten HTML: Wer den Tab
+    schließt oder dessen Gerät ausgeht, käme an seine bereits hochgeladenen
+    Dateien nicht mehr heran, obwohl sie noch da sind. Diese Liste ist der Weg
+    zurück -- und weil sie serverseitig entsteht, funktioniert sie auch von
+    einem anderen Gerät aus.
+    """
+    root = settings.staging_root
+    if not root.is_dir():
+        return []
+
+    jetzt = time.time()
+    offen: list[OpenSession] = []
+    for directory in root.iterdir():
+        if not directory.is_dir() or not SESSION_ID_RE.match(directory.name):
+            continue
+        session = StagingSession(session_id=directory.name, directory=directory)
+        dateien = session.audio_paths
+        if not dateien:
+            continue
+        gesamt = 0
+        for datei in dateien:
+            try:
+                gesamt += datei.stat().st_size
+            except OSError:
+                continue
+        try:
+            alter = max(0.0, jetzt - _last_touched(directory))
+        except OSError:
+            alter = 0.0
+        offen.append(
+            OpenSession(
+                session_id=directory.name,
+                label=_label_for(session, dateien),
+                file_count=len(dateien),
+                total_bytes=gesamt,
+                age_seconds=alter,
+            )
+        )
+    offen.sort(key=lambda s: s.age_seconds)
+    return offen
+
+
 def usage_bytes() -> int:
     """Belegter Platz im Staging, über alle Sessions zusammen.
 

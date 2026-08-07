@@ -293,6 +293,28 @@ also etwas mehr als das Budget. Das ist hingenommen, nicht übersehen: mimport
 bedient einen Nutzer auf `127.0.0.1`, und der Sicherheitsabstand fängt den
 Überhang auf. Eine Reservierung wäre Aufwand ohne Gegenwert.
 
+### Unterbrochene Sitzungen
+
+Die Session-ID entsteht beim Upload und steht ausschließlich im ausgelieferten
+HTML — es gibt kein Cookie und keinen gespeicherten Zustand im Browser. Ein
+geschlossener Tab, ein leerer Akku oder ein Neuladen hätte damit den Upload
+gekostet, obwohl die Dateien noch im Staging liegen.
+
+Deshalb listet die Startseite auf, was dort liegt: Auswahl, Dateizahl, Größe,
+Alter, dazu **Fortsetzen** und **Verwerfen**. Weil die Liste serverseitig
+entsteht, funktioniert sie auch von einem anderen Gerät — am Rechner hochladen,
+am Telefon weitermachen.
+
+Das ist bewusst *keine* Zuordnung zu einem Benutzer: jeder sieht jede offene
+Sitzung. Bei einem Dienst hinter einem Reverse-Proxy mit Authentifizierung und
+einer überschaubaren Zahl vertrauter Nutzer ist das die einfachere und
+robustere Lösung — es gibt nichts, was kaputtgehen kann, wenn ein Header mal
+fehlt. Soll es später doch pro Benutzer getrennt sein, wird die Liste gefiltert;
+wegwerfen muss man sie dafür nicht.
+
+Der Rip macht das schon länger richtig, allerdings aus einem anderen Grund: es
+gibt genau ein Laufwerk und damit genau einen Auftrag, den jeder sieht.
+
 Dazu kommt das Aufräumen. Sessions, die `MIMPORT_SESSION_TTL_HOURS` lang nicht
 angefasst wurden, verschwinden — geprüft beim Start und vor jedem neuen Upload,
 ohne Hintergrunddienst. Die Frist ist bewusst lang, weil zwischen Upload und

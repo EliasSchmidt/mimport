@@ -52,6 +52,12 @@
              Dateien verlustfrei sind. -->
         <div id="preflight"></div>
 
+        {# Was noch im Staging liegt. Ohne diese Liste wäre ein Upload nach
+           einem Neuladen zwar noch auf der Platte, aber nicht mehr
+           erreichbar -- die Session-ID steht sonst nur im ausgelieferten
+           HTML. #}
+        <div id="sessions" hx-get="/sessions" hx-trigger="load" hx-swap="innerHTML"></div>
+
         {# Zweite Quelle für denselben Schritt: eine eingelegte Daten-CD.
            Ab der Übernahme ist der Weg identisch mit dem Upload. Geladen wird
            beim Seitenaufruf -- ohne CD kostet das nichts. #}

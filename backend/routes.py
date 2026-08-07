@@ -204,6 +204,52 @@ async def upload(request: Request, files: list[UploadFile]) -> HTMLResponse:
     return _files_fragment(request, session)
 
 
+@router.get("/sessions", response_class=HTMLResponse)
+def open_sessions(request: Request) -> HTMLResponse:
+    """Was im Staging liegt und noch nicht importiert ist.
+
+    Die Session-ID steht sonst nur im ausgelieferten HTML -- ein geschlossener
+    Tab oder ein leerer Akku kostete sonst den ganzen Upload, obwohl die
+    Dateien noch da sind.
+    """
+    return _fragment(
+        request,
+        "_sessions.html",
+        offen=sessions.list_open(),
+        ttl=settings.session_ttl_hours,
+    )
+
+
+@router.delete("/sessions/{session_id}", response_class=HTMLResponse)
+def discard_from_list(request: Request, session_id: str) -> HTMLResponse:
+    """Verwirft eine Sitzung aus der Übersicht heraus.
+
+    Eigene Route neben ``DELETE /session/{id}``: dort wird der laufende Upload
+    verworfen und ein leerer Bereich zurückgegeben, hier bleibt die Liste
+    stehen und zeigt danach den neuen Stand.
+    """
+    sessions.delete_session(session_id)
+    return _fragment(
+        request,
+        "_sessions.html",
+        offen=sessions.list_open(),
+        ttl=settings.session_ttl_hours,
+    )
+
+
+@router.get("/session/{session_id}", response_class=HTMLResponse)
+def resume_session(request: Request, session_id: str) -> HTMLResponse:
+    """Nimmt eine unterbrochene Sitzung wieder auf."""
+    session = _session_or_404(session_id)
+    if session.is_empty:
+        return _fragment(
+            request,
+            "_error.html",
+            message="In dieser Sitzung liegen keine Audiodateien mehr.",
+        )
+    return _files_fragment(request, session)
+
+
 @router.get("/disc", response_class=HTMLResponse)
 def disc_albums(request: Request) -> HTMLResponse:
     """Listet die Alben der eingelegten CD.

@@ -219,3 +219,61 @@ class TestSweepExpired:
 
         assert sessions.sweep_expired(0) == 0
         assert session.directory.is_dir()
+
+
+class TestListOpen:
+    """Der Weg zurück zu einer Sitzung, deren Tab zu ist."""
+
+    def test_leeres_staging(self):
+        assert sessions.list_open() == []
+
+    def test_ordnername_wird_zum_label(self):
+        session = sessions.create_session()
+        (session.directory / "Abbey Road").mkdir()
+        (session.directory / "Abbey Road" / "01.flac").write_bytes(b"x" * 100)
+        (session.directory / "Abbey Road" / "02.flac").write_bytes(b"x" * 200)
+
+        offen = sessions.list_open()
+        assert len(offen) == 1
+        assert offen[0].label == "Abbey Road"
+        assert offen[0].file_count == 2
+        assert offen[0].total_bytes == 300
+
+    def test_flache_dateien_fallen_auf_den_dateinamen_zurueck(self):
+        """Ein Rip legt keine Ordner an -- dann muss der Dateiname genügen."""
+        session = sessions.create_session()
+        (session.directory / "01 Track 1.flac").write_bytes(b"x")
+
+        assert sessions.list_open()[0].label == "01 Track 1.flac"
+
+    def test_sitzung_ohne_audiodateien_taucht_nicht_auf(self):
+        session = sessions.create_session()
+        (session.directory / "liesmich.txt").write_bytes(b"x")
+
+        assert sessions.list_open() == []
+
+    def test_neueste_zuerst(self):
+        import os
+        import time
+
+        alt = sessions.create_session()
+        (alt.directory / "alt.flac").write_bytes(b"x")
+        frueher = time.time() - 3600
+        os.utime(alt.directory / "alt.flac", (frueher, frueher))
+        os.utime(alt.directory, (frueher, frueher))
+
+        neu = sessions.create_session()
+        (neu.directory / "neu.flac").write_bytes(b"x")
+
+        offen = sessions.list_open()
+        assert [e.session_id for e in offen] == [neu.session_id, alt.session_id]
+        assert offen[0].age_label == "gerade eben"
+        assert "Std" in offen[1].age_label
+
+    def test_fremde_ordner_werden_ignoriert(self):
+        wurzel = sessions.ensure_root()
+        fremd = wurzel / "wichtige-daten"
+        fremd.mkdir()
+        (fremd / "a.flac").write_bytes(b"x")
+
+        assert sessions.list_open() == []

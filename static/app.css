@@ -145,6 +145,22 @@ main, .page-head, .page-foot { max-width: 62rem; margin: 0 auto; }
 
 .disc-source .files td:last-child { text-align: right; white-space: nowrap; }
 
+/* Unterbrochene Sitzungen: der Weg zurück zu einem Upload, dessen Tab zu ist. */
+.open-sessions {
+    margin-top: 1.6rem;
+    padding-top: 1.1rem;
+    border-top: 1px solid var(--border);
+}
+
+.open-sessions h3 {
+    margin: 0 0 0.7rem;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text-dim);
+}
+
+.open-sessions .files td:last-child { text-align: right; white-space: nowrap; }
+
 /* Fortschritt beim Rippen -- der einzige Vorgang, der lange genug dauert, um
    eine Anzeige zu rechtfertigen. */
 .progress {

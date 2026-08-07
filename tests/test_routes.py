@@ -500,3 +500,73 @@ class TestRip:
         response = client.request("DELETE", "/rip")
         assert "Audio-CD lesen" in response.text
         assert not session.directory.exists()
+
+
+class TestOffeneSitzungen:
+    """Ein geschlossener Tab darf einen Upload nicht kosten."""
+
+    FLAC = b"fLaC\x00\x00\x00\x22"
+
+    def test_ohne_sitzungen_bleibt_die_liste_leer(self, client):
+        response = client.get("/sessions")
+        assert response.status_code == 200
+        assert "Unterbrochene Sitzungen" not in response.text
+
+    def test_verlorene_sitzung_wird_wiedergefunden_und_fortgesetzt(self, client):
+        """Der eigentliche Fall: Session-ID weg, Dateien noch da."""
+        hochgeladen = client.post(
+            "/upload",
+            files={"files": ("Abbey Road/01 Come Together.flac", self.FLAC, "audio/flac")},
+        )
+        assert "Come Together" in hochgeladen.text
+
+        # Der Browser ist zu, die ID existiert nirgends mehr. Neue Seite:
+        liste = client.get("/sessions")
+        assert "Unterbrochene Sitzungen" in liste.text
+        assert "Abbey Road" in liste.text
+
+        # Über die Liste zurück in denselben Ablauf.
+        import re
+
+        treffer = re.search(r'hx-get="/session/([A-Za-z0-9_-]+)"', liste.text)
+        assert treffer, "Die Liste muss einen Weg zurück anbieten"
+
+        fortgesetzt = client.get(f"/session/{treffer.group(1)}")
+        assert "Come Together" in fortgesetzt.text
+        assert "/match/" in fortgesetzt.text
+
+    def test_unbekannte_sitzung_gibt_404(self, client):
+        response = client.get("/session/AAAAAAAAAAAAAAAAAA")
+        assert response.status_code == 404
+
+    def test_verwerfen_aus_der_liste_zeigt_den_neuen_stand(self, client):
+        from backend import sessions
+
+        erste = sessions.create_session()
+        (erste.directory / "A").mkdir()
+        (erste.directory / "A" / "a.flac").write_bytes(self.FLAC)
+        zweite = sessions.create_session()
+        (zweite.directory / "B").mkdir()
+        (zweite.directory / "B" / "b.flac").write_bytes(self.FLAC)
+
+        response = client.request("DELETE", f"/sessions/{erste.session_id}")
+        # Die verworfene verschwindet aus der Liste, die andere bleibt stehen --
+        # ein leerer Bereich wäre hier falsch.
+        assert erste.session_id not in response.text
+        assert zweite.session_id in response.text
+        assert not erste.directory.exists()
+        assert zweite.directory.is_dir()
+        assert "Unterbrochene Sitzungen" in response.text
+
+    def test_cd_uebernahme_behaelt_den_ordnernamen(self, client, tmp_path, monkeypatch):
+        """Sonst hieße die Sitzung später nur nach ihrer ersten Datei."""
+        from backend.config import settings
+
+        wurzel = tmp_path / "disc"
+        (wurzel / "Revolver").mkdir(parents=True)
+        (wurzel / "Revolver" / "01 Taxman.flac").write_bytes(self.FLAC)
+        monkeypatch.setattr(settings, "disc_root", wurzel)
+
+        client.post("/disc", data={"folder": "Revolver"})
+        liste = client.get("/sessions")
+        assert "Revolver" in liste.text

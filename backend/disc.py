@@ -188,11 +188,18 @@ def copy_to_session(directory: Path) -> sessions.StagingSession:
     if not dateien:
         raise DiscError("In diesem Ordner liegen keine Audiodateien.")
 
+    # Den Ordnernamen der CD mitnehmen: er ist später die einzige Auskunft
+    # darüber, was in dieser Sitzung liegt -- etwa in der Liste offener
+    # Sitzungen. Im Hauptverzeichnis der CD gibt es keinen, dann bleibt es flach.
+    wurzel = settings.disc_root.resolve()
+    unterordner = "" if directory == wurzel else f"{directory.name}/"
+
     session = sessions.create_session()
     try:
         for quelle in dateien:
             ziel = sessions.target_path(
-                session, sessions.sanitize_relative_path(quelle.name)
+                session,
+                sessions.sanitize_relative_path(f"{unterordner}{quelle.name}"),
             )
             ziel.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(quelle, ziel)

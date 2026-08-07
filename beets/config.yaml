@@ -12,16 +12,29 @@ directory: /music
 
 # Die Datenbank liegt bewusst NICHT unter /music, sondern in einem eigenen
 # Volume: sie gehört zum Werkzeug, nicht zur Musiksammlung.
+#
+# Eine bestehende library.db zieht man um, indem man sie hierher kopiert. beets
+# speichert die Pfade importierter Dateien relativ zu 'directory' -- wo das
+# Musikverzeichnis liegt, darf sich also ändern. Nur Dateien außerhalb von
+# 'directory' stehen mit absolutem Pfad drin; die findet man mit
+#   sqlite3 library.db "SELECT path FROM items LIMIT 5;"
+# Stehen dort absolute Pfade, hängt man das Musikverzeichnis einfacher unter
+# demselben Pfad wie auf dem Host ein, statt die Datenbank umzuschreiben.
 library: /data/library.db
 
 # MusicBrainz als Metadatenquelle. Ohne diesen Eintrag gibt es in beets 2.x
 # keine Match-Kandidaten -- MusicBrainz ist dort ein Plugin, kein fester
 # Bestandteil.
 plugins:
+  # Ohne dieses Plugin gibt es KEINE Metadatenquelle und damit keinen einzigen
+  # Match-Kandidaten -- die Oberfläche bliebe leer. Nicht entfernen.
   - musicbrainz
+  # Genres von Last.fm. Braucht pylast, kommt über das Extra 'beets[lastgenre]'
+  # aus pyproject.toml.
+  - lastgenre
+  - fetchart        # Cover holen
+  - embedart        # Cover in die Dateien einbetten
   # Weitere sind problemlos ergänzbar, z. B.:
-  # - fetchart      # Cover holen
-  # - embedart      # Cover in die Dateien einbetten
   # - lyrics        # Liedtexte
   # - replaygain    # Lautheit angleichen (braucht ffmpeg im Container)
   # - chroma        # AcoustID-Fingerprints (braucht fpcalc, siehe README)
@@ -51,8 +64,16 @@ import:
   # So kann nie ein bereits vorhandenes Album zerstört werden.
   duplicate_action: skip
 
-  # Dateirechte im Zielverzeichnis.
+  # Bricht ein Import ab, merkt sich beets den Stand und könnte beim nächsten
+  # Lauf desselben Pfads dort weitermachen. Bei mimport gibt es nichts
+  # fortzusetzen: jeder Import ist ein eigener Staging-Ordner mit zufälligem
+  # Namen, der danach verschwindet. ('ask' würde mit -q ohnehin zu 'no'.)
   resume: no
+
+  # 'timid' würde jeden Match einzeln bestätigen lassen. Die Entscheidung ist
+  # in der Oberfläche schon gefallen, und ein Subprozess ohne Terminal hätte
+  # niemanden zum Fragen.
+  timid: no
 
 # Verhindert, dass beets bei fehlenden Feldern nachfragt.
 ui:
@@ -62,3 +83,29 @@ ui:
 # nichts davon verwerfen.
 original_date: no
 per_disc_numbering: no
+
+# Genres von Last.fm.
+#
+# Zur Einordnung: das musicbrainz-Plugin liefert von sich aus KEINE Genres
+# (dort steht 'genres: False'), lastgenre tritt also nicht gegen MusicBrainz an,
+# sondern füllt eine Lücke. Was 'force' zusammen mit 'keep_existing: no' aber
+# sehr wohl überschreibt, ist ein Genre, das bereits in der hochgeladenen Datei
+# stand -- ein gepflegtes „Post-Rock" wird dann durch die Last.fm-Tags ersetzt.
+# So gewollt; wer das nicht will, setzt 'force: no'.
+lastgenre:
+  auto: yes
+  force: yes
+  keep_existing: no
+  source: album
+  count: 4
+  canonical: yes
+
+# Cover holen und einbetten.
+#
+# 'cautious' nimmt nur Bilder, deren Dateiname zu 'cover_names' passt, statt
+# irgendein Bild aus dem Ordner. Ohne 'maxwidth' skaliert embedart nicht und
+# braucht deshalb kein ImageMagick im Image.
+fetchart:
+  auto: yes
+  cautious: true
+  cover_names: cover

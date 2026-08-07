@@ -82,6 +82,65 @@ Volumes:
 | `/config` | beets-Konfiguration (`BEETSDIR`). |
 | `/disc` | Eingelegte Daten-CD, read-only vom Host. |
 
+## Eine bestehende beets-Library übernehmen
+
+### Die Datenbank überlebt den Neubau
+
+`mimport-data` ist ein Named Volume. Es übersteht `docker compose up -d --build`
+und auch `docker compose down`. Weg ist es nur nach `docker compose down -v`
+oder einem ausdrücklichen `docker volume rm`.
+
+### Wofür die Datenbank überhaupt da ist
+
+Sie ist der **Katalog, nicht die Musik**. Die Tags stehen in den Dateien selbst;
+die `library.db` führt Buch darüber, was in der Sammlung ist, wo es liegt und
+mit welchen MusicBrainz-IDs.
+
+Für mimport gilt: **das Matching öffnet sie nie**, nur der Import schreibt
+hinein. Geht sie verloren, kostet das die Duplikaterkennung (`duplicate_action:
+skip` hat dann nichts zum Vergleichen) sowie `beet list`, `stats`, `move` und
+nachträgliche Plugin-Läufe. Wiederherstellbar ist sie, indem man die Sammlung
+erneut importiert — ärgerlich, nicht katastrophal.
+
+### Eine vorhandene `library.db` hereinholen
+
+Vorher **von Hand kopieren**. beets legt zwar selbst eine Sicherung an, bevor es
+ein Schema migriert, aber danach kann eine ältere beets-Installation dieselbe
+Datei nicht mehr lesen — genau die Falle, die weiter oben beschrieben ist.
+
+Dann entscheidet ein Blick, wie viel Arbeit der Umzug macht:
+
+```bash
+sqlite3 /pfad/zur/library.db "SELECT path FROM items LIMIT 5;"
+```
+
+beets speichert Pfade **relativ zu `directory`**, solange die Dateien darunter
+liegen — nachgemessen mit 2.13: `Album/song.flac`. Nur was außerhalb liegt,
+steht mit absolutem Pfad drin.
+
+- **Relative Pfade:** Datei nach `/data/library.db` kopieren, Musikverzeichnis
+  auf `/music` mounten, fertig. Wo es auf dem Host liegt, ist gleichgültig.
+- **Absolute Pfade:** Einfacher, als die Datenbank umzuschreiben, ist es, den
+  Pfad im Container gleich zu lassen — also etwa `/srv/music:/srv/music`
+  einhängen und `directory: /srv/music` setzen.
+
+### Plugins
+
+Voreingestellt sind `musicbrainz`, `lastgenre`, `fetchart` und `embedart`.
+
+**`musicbrainz` darf nicht fehlen.** In beets 2.x ist es ein Plugin, und ohne
+das gibt es keine einzige Metadatenquelle — die Oberfläche bliebe leer.
+
+`lastgenre` braucht `pylast`; das kommt über das Extra `beets[lastgenre]` in
+`pyproject.toml`. `fetchart` und `embedart` brauchen nichts weiter — solange bei
+`embedart` kein `maxwidth` gesetzt ist, skaliert es nicht und kommt ohne
+ImageMagick aus.
+
+Eine Eigenheit, die man kennen sollte: Das `musicbrainz`-Plugin liefert von sich
+aus **keine** Genres (`genres: False`). `lastgenre` tritt also nicht gegen
+MusicBrainz an. Mit `force: yes` und `keep_existing: no` überschreibt es aber ein
+Genre, das bereits **in der hochgeladenen Datei** stand.
+
 ## Von einer Daten-CD importieren
 
 Gemeint ist die CD mit einem Dateisystem darauf — typischerweise eine

@@ -117,7 +117,12 @@ Sobald der Container die Datenbank einmal geöffnet hat, ist sie für das
 System-beets verloren. Zur Wahl stehen:
 
 - **Das beets auf dem Host mitziehen** auf dieselbe Version. Dann bleiben beide
-  Wege offen.
+  Wege offen. Maßgeblich ist, was `uv.lock` festschreibt — derzeit **2.13.1**
+  (nachsehen mit `grep -A1 '^name = "beets"' uv.lock`). Zwei Dinge dabei nicht
+  vergessen: das Extra für `lastgenre` mitinstallieren (`beets[lastgenre]`,
+  sonst fehlt `pylast`), und **`musicbrainz` in die Konfiguration des Hosts
+  eintragen** — ab dieser Version ist es ein Plugin, ohne den Eintrag hat auch
+  das Host-beets keine Metadatenquelle mehr.
 - **Auf dem Host nicht mehr direkt importieren** und alles über die Oberfläche
   laufen lassen. Für `beet list` und Ähnliches dann
   `docker compose exec mimport beet …` benutzen.

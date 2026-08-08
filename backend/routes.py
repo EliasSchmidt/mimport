@@ -452,7 +452,10 @@ def _audiobook_datencd(request: Request, buch: Path) -> HTMLResponse:
     try:
         quelle = disc.resolve_folder("")
         ordner = audiobook.next_disc_dir(buch, ist_datencd=True)
-        anzahl = disc.copy_into(quelle, ordner)
+        # Rekursiv: Hörbuch-CDs legen ihre Kapitel oft in einen Unterordner
+        # ("Disc 1", "CD1", nach dem Titel benannt). Anders als bei Musik gibt
+        # es hier keinen Ordner-Auswähler -- eine Hörbuch-CD ist ein Buch.
+        anzahl = disc.copy_into(quelle, ordner, rekursiv=True)
     except (disc.DiscError, audiobook.AudiobookError) as exc:
         return _audiobook_fragment(request, fehler=str(exc))
     wohin = "ins Buch" if ordner == buch else f"nach {ordner.name}"

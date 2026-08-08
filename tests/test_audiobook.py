@@ -229,3 +229,67 @@ class TestBauen:
         buch.mkdir(parents=True)
         with pytest.raises(audiobook.AudiobookError, match="keine Quelldateien"):
             audiobook.build(buch)
+
+
+class TestUnstimmigerZustand:
+    """Nach einem abgebrochenen Bündeln liegen m4b und Quellen nebeneinander.
+
+    Audiobookshelf zeigt das Buch dann doppelt an -- die Oberfläche darf das
+    keinesfalls als „fertig" ausgeben.
+    """
+
+    def test_m4b_neben_quellen_ist_unstimmig(self, bibliothek):
+        buch = audiobook.book_dir("A", "B")
+        buch.mkdir(parents=True)
+        (buch / "01.flac").write_bytes(b"x")
+        (buch / "B.m4b").write_bytes(b"x")
+
+        zustand = audiobook.state(buch)
+        assert zustand.has_m4b
+        assert zustand.file_count == 1
+        assert zustand.unstimmig is True
+
+    def test_nur_m4b_ist_fertig(self, bibliothek):
+        buch = audiobook.book_dir("A", "B")
+        buch.mkdir(parents=True)
+        (buch / "B.m4b").write_bytes(b"x")
+
+        zustand = audiobook.state(buch)
+        assert zustand.has_m4b
+        assert zustand.unstimmig is False
+
+    def test_nur_quellen_ist_nicht_unstimmig(self, bibliothek):
+        buch = audiobook.book_dir("A", "B")
+        buch.mkdir(parents=True)
+        (buch / "01.flac").write_bytes(b"x")
+
+        assert audiobook.state(buch).unstimmig is False
+
+    @braucht_ffmpeg
+    def test_abgebrochener_bau_hinterlaesst_genau_diesen_zustand(
+        self, bibliothek, monkeypatch
+    ):
+        """Der Weg dorthin -- damit der Zustand nicht bloß theoretisch ist."""
+        import time
+
+        buch = audiobook.book_dir("A", "B")
+        toene(buch, [2, 2])
+
+        # Die m4b fällt kürzer aus, als sie darf.
+        echt = audiobook._probe_duration
+        monkeypatch.setattr(
+            audiobook,
+            "_probe_duration",
+            lambda p: 1.0 if str(p).endswith(".m4b") else echt(p),
+        )
+
+        job = audiobook.build(buch)
+        for _ in range(300):
+            if not job.laeuft:
+                break
+            time.sleep(0.2)
+
+        assert job.zustand == "fehler"
+        assert job.geloescht == 0, "Quellen müssen stehen bleiben"
+        zustand = audiobook.state(buch)
+        assert zustand.unstimmig is True

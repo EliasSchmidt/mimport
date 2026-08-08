@@ -101,13 +101,28 @@
             {% for b in buecher %}
             <tr>
                 <td class="name">{{ b.autor }} – {{ b.titel }}
-                    {%- if b.has_m4b %} <span class="badge lossless">m4b</span>{% endif %}
+                    {%- if b.unstimmig %}
+                    <span class="badge lossy">m4b + Quellen</span>
+                    {%- elif b.has_m4b %} <span class="badge lossless">m4b</span>
+                    {%- endif %}
                 </td>
                 <td class="mono small">{{ b.discs | length or "–" }}</td>
                 <td class="mono small">{{ b.file_count }}</td>
                 <td class="mono small">{{ b.size_label }}</td>
                 <td>
-                    {% if b.file_count and not b.has_m4b %}
+                    {% if b.unstimmig %}
+                    {# Nach einem abgebrochenen Bündeln. Nicht stillschweigend
+                       „fertig" nennen -- Audiobookshelf zeigt das Buch sonst
+                       doppelt an, und welche Fassung stimmt, weiß nur, wer
+                       hineinhört. #}
+                    <form hx-post="/audiobook/m4b" hx-target="#audiobook"
+                          hx-swap="innerHTML"
+                          hx-confirm="Die vorhandene m4b wird überschrieben. Erst hineinhören?">
+                        <input type="hidden" name="buch" value="{{ b.relative }}">
+                        <input type="hidden" name="force" value="true">
+                        <button type="submit" class="button danger">Neu bauen</button>
+                    </form>
+                    {% elif b.file_count and not b.has_m4b %}
                     <form hx-post="/audiobook/m4b" hx-target="#audiobook"
                           hx-swap="innerHTML"
                           hx-confirm="m4b bauen? Danach werden die Quelldateien gelöscht – aber nur, wenn die Laufzeit passt.">
@@ -129,6 +144,20 @@
             {% endfor %}
         </tbody>
     </table>
+    {% if buecher | selectattr("unstimmig") | first %}
+    <div class="banner warn">
+        <strong>Ein Buch hat m4b und Quelldateien nebeneinander liegen</strong>
+        <p>
+            Das passiert, wenn das Bündeln nach dem Encode an der
+            Laufzeitprüfung gescheitert ist – die Quellen bleiben dann mit
+            Absicht stehen. Solange beides im Ordner liegt, zeigt
+            Audiobookshelf das Buch <strong>doppelt</strong> an. In die m4b
+            hineinhören und dann entweder neu bauen oder die überzählige Seite
+            von Hand entfernen.
+        </p>
+    </div>
+    {% endif %}
+
     <p class="hint">
         Ablage unter <span class="mono">{{ root }}</span>. Die Metadaten holt
         Audiobookshelf – dort scannen und über „Match" den Audible-Provider

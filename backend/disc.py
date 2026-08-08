@@ -222,23 +222,55 @@ def _lesefehler(exc: Exception, directory: Path) -> DiscError:
     )
 
 
-def copy_into(directory: Path, ziel: Path) -> int:
-    """Kopiert die Audiodateien eines CD-Ordners flach in ein Verzeichnis.
+def _audio_files_recursive(directory: Path) -> list[Path]:
+    """Audiodateien samt Unterordnern, stabil sortiert.
+
+    Für Hörbücher: eine MP3-CD trägt ihre Kapitel häufig in einem Unterordner
+    (``Disc 1/``, ``CD1/`` oder nach dem Titel benannt) statt lose im
+    Hauptverzeichnis.
+    """
+    if not directory.is_dir():
+        return []
+    gefunden = []
+    for pfad in sorted(directory.rglob("*")):
+        try:
+            if not pfad.is_file() or pfad.is_symlink():
+                continue
+            if pfad.suffix.lower() in AUDIO_EXTENSIONS:
+                gefunden.append(pfad)
+        except OSError:
+            continue
+    return gefunden
+
+
+def copy_into(directory: Path, ziel: Path, *, rekursiv: bool = False) -> int:
+    """Kopiert die Audiodateien eines CD-Ordners in ein Verzeichnis.
 
     Für Hörbücher, wo das Ziel keine Wegwerf-Session ist, sondern ein Ordner
     innerhalb eines Buchs. Schlägt das Lesen fehl, wird deshalb **nur dieses
     eine Verzeichnis** geräumt -- im Buch daneben können Discs liegen, die
     Stunden gekostet haben.
+
+    Mit ``rekursiv`` kommen Unterordner mit und ihre Struktur bleibt erhalten.
+    Das ist bei Hörbüchern der Normalfall und zugleich nötig, damit sich
+    gleichnamige Dateien aus mehreren Unterordnern nicht überschreiben.
     """
-    dateien = _audio_files(directory)
+    dateien = _audio_files_recursive(directory) if rekursiv else _audio_files(directory)
     if not dateien:
         raise DiscError("In diesem Ordner liegen keine Audiodateien.")
 
     ziel.mkdir(parents=True, exist_ok=True)
     try:
         for quelle in dateien:
-            sicher = sessions.sanitize_component(quelle.name)
-            shutil.copy2(quelle, ziel / sicher)
+            if rekursiv:
+                relativ = sessions.sanitize_relative_path(
+                    str(quelle.relative_to(directory))
+                )
+            else:
+                relativ = Path(sessions.sanitize_component(quelle.name))
+            zielpfad = ziel / relativ
+            zielpfad.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(quelle, zielpfad)
     except OSError as exc:
         shutil.rmtree(ziel, ignore_errors=True)
         raise _lesefehler(exc, directory) from exc

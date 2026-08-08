@@ -171,3 +171,38 @@ class TestSizeLabel:
             relative="x", display="x", track_count=1, total_bytes=bytes_
         )
         assert ordner.size_label == erwartet
+
+
+class TestCopyIntoRekursiv:
+    """Hörbuch-CDs legen ihre Kapitel oft in einen Unterordner."""
+
+    def test_unterordner_werden_gefunden(self, cd, tmp_path):
+        (cd / "Disc 1").mkdir()
+        (cd / "Disc 1" / "01 Kapitel.mp3").write_bytes(b"\xff\xfb\x00\x00")
+        (cd / "Disc 1" / "02 Kapitel.mp3").write_bytes(b"\xff\xfb\x00\x00")
+
+        ziel = tmp_path / "buch"
+        anzahl = disc.copy_into(cd, ziel, rekursiv=True)
+
+        assert anzahl >= 2
+        assert (ziel / "Disc 1" / "01 Kapitel.mp3").is_file()
+
+    def test_struktur_bleibt_erhalten(self, tmp_path, monkeypatch):
+        """Sonst überschreiben sich gleichnamige Dateien aus mehreren Discs."""
+        wurzel = tmp_path / "disc"
+        for ordner in ("Disc 1", "Disc 2"):
+            (wurzel / ordner).mkdir(parents=True)
+            (wurzel / ordner / "01 Kapitel.mp3").write_bytes(b"\xff\xfb\x00\x00")
+        monkeypatch.setattr(disc.settings, "disc_root", wurzel)
+
+        ziel = tmp_path / "buch"
+        anzahl = disc.copy_into(wurzel, ziel, rekursiv=True)
+
+        assert anzahl == 2
+        assert (ziel / "Disc 1" / "01 Kapitel.mp3").is_file()
+        assert (ziel / "Disc 2" / "01 Kapitel.mp3").is_file()
+
+    def test_ohne_rekursiv_bleibt_es_flach(self, cd, tmp_path):
+        ziel = tmp_path / "flach"
+        disc.copy_into(cd / "Abbey Road", ziel)
+        assert (ziel / "01 Come Together.flac").is_file()

@@ -145,6 +145,18 @@ class BookState:
         return f"{self.total_bytes / 1024**2:.0f} MB"
 
     @property
+    def unstimmig(self) -> bool:
+        """m4b *und* Quelldateien liegen nebeneinander.
+
+        Der Zustand nach einem abgebrochenen Bündeln: ffmpeg hatte schon
+        geschrieben, dann fiel die Laufzeitprüfung durch und die Quellen
+        blieben absichtlich stehen. Beides zusammen im Buchordner ist genau
+        das, was Audiobookshelf als zwei Bücher anzeigt -- das darf die
+        Oberfläche nicht als „fertig" ausgeben.
+        """
+        return self.has_m4b and self.file_count > 0
+
+    @property
     def relative(self) -> str:
         """Pfad relativ zur Bibliothek -- so kommt er ins Formular zurück."""
         try:

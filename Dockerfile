@@ -46,10 +46,23 @@ COPY beets/config.yaml /config/config.yaml
 
 # Ein unprivilegierter Nutzer: hochgeladene Dateien werden von Parsern
 # gelesen, die auf fremden Bytes arbeiten -- das soll nicht als root laufen.
+#
+# /app steht bewusst NICHT in der Liste, und das ist keine Nachlässigkeit: dort
+# liegt das venv aus dem Layer davor, und in einem Overlay-Dateisystem erzwingt
+# jede Änderung an einer Datei aus einem unteren Layer deren vollständige Kopie
+# in den neuen Layer. Bei den zehntausenden venv-Dateien schrieb dieser Schritt
+# das komplette venv ein zweites Mal -- gemessen 285 Sekunden, mehr als der
+# Download von ffmpeg, und ein paar hundert MB doppelt im Image.
+#
+# Nötig ist es nicht: unter /app wird zur Laufzeit nur gelesen. Geschrieben wird
+# ausschließlich in die Volumes unten, und die sind hier noch leer, kosten also
+# nichts. Die venv-Dateien sind 0644 bzw. 0755, uid 1000 kann sie ohnehin lesen
+# und ausführen. Falls doch einmal etwas nach /app schreiben soll, gehört es in
+# ein Volume -- nicht dieses chown erweitert.
 RUN groupadd --gid 1000 mimport \
  && useradd --uid 1000 --gid 1000 --no-create-home mimport \
  && mkdir -p /music /data /staging /config /disc /audiobooks \
- && chown -R mimport:mimport /app /music /data /staging /config /disc /audiobooks
+ && chown -R mimport:mimport /music /data /staging /config /disc /audiobooks
 
 USER mimport
 

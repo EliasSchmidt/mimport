@@ -570,3 +570,65 @@ class TestOffeneSitzungen:
         client.post("/disc", data={"folder": "Revolver"})
         liste = client.get("/sessions")
         assert "Revolver" in liste.text
+
+
+class TestHoerbuecher:
+    """Eigener Weg: kein Match, kein beets, eigene Ablage."""
+
+    @pytest.fixture(autouse=True)
+    def bibliothek(self, tmp_path, monkeypatch):
+        from backend import audiobook, rip
+
+        wurzel = tmp_path / "audiobooks"
+        monkeypatch.setattr(audiobook.settings, "audiobook_root", wurzel)
+        rip._job = None
+        audiobook._m4b_job = None
+        yield wurzel
+        rip._job = None
+        audiobook._m4b_job = None
+
+    def test_bereich_wird_ausgeliefert(self, client):
+        response = client.get("/audiobook")
+        assert response.status_code == 200
+        assert "Autor" in response.text and "Titel" in response.text
+
+    def test_ohne_angaben_kein_rip(self, client):
+        response = client.post("/audiobook/rip", data={"autor": "", "titel": ""})
+        assert "beide gebraucht" in response.text
+
+    def test_pfadausbruch_im_titel(self, client, bibliothek):
+        from backend import audiobook
+
+        client.post("/audiobook/rip", data={"autor": "../..", "titel": "../etc"})
+        # Nichts oberhalb der Bibliothek angelegt.
+        assert not (bibliothek.parent / "etc").exists()
+
+    def test_datencd_wird_ins_buch_kopiert(self, client, bibliothek, tmp_path, monkeypatch):
+        """Liegt eine Daten-CD ein, wird kopiert statt gerippt."""
+        from backend.config import settings
+
+        cd = tmp_path / "disc"
+        cd.mkdir()
+        (cd / "01 Kapitel.mp3").write_bytes(b"\xff\xfb\x00\x00")
+        monkeypatch.setattr(settings, "disc_root", cd)
+
+        response = client.post(
+            "/audiobook/rip", data={"autor": "Frank Herbert", "titel": "Dune"}
+        )
+        assert "kopiert" in response.text
+        buch = bibliothek / "Frank Herbert" / "Dune"
+        # Erste Daten-CD landet flach -- eine MP3-CD trägt meist das ganze Buch.
+        assert (buch / "01 Kapitel.mp3").is_file()
+
+    def test_buch_taucht_in_der_liste_auf(self, client, bibliothek):
+        buch = bibliothek / "Frank Herbert" / "Dune"
+        (buch / "CD 1").mkdir(parents=True)
+        (buch / "CD 1" / "01.flac").write_bytes(b"fLaC\x00\x00\x00\x22")
+
+        response = client.get("/audiobook")
+        assert "Frank Herbert" in response.text
+        assert "Dune" in response.text
+
+    def test_m4b_fuer_unbekanntes_buch(self, client):
+        response = client.post("/audiobook/m4b", data={"buch": "../etc"})
+        assert "nicht zur Bibliothek" in response.text or "gibt es nicht" in response.text

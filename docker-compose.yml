@@ -26,7 +26,11 @@ services:
     volumes:
       # Hier kommt das fertige Ergebnis raus: von beets getaggt, umbenannt und
       # nach dem Schema aus beets/config.yaml einsortiert.
-      - /srv/musik:/music
+      - /srv/music:/music
+
+      # Hörbücher liegen getrennt von der Musik -- sie gehen nicht durch beets.
+      # Von hier liest Audiobookshelf.
+      - /srv/audiobooks:/audiobooks
 
       # Datenbank und Staging bleiben im Container-Umfeld. Named Volumes, damit
       # ein Neustart laufende Uploads nicht verliert.
@@ -87,7 +91,8 @@ services:
       - "8001:8000"
 
     volumes:
-      - /srv/musik:/music
+      - /srv/music:/music
+      - /srv/audiobooks:/audiobooks
 
       # Dieselbe Datenbank wie der Upload-Dienst: eine Library, ein Bestand.
       - mimport-data:/data

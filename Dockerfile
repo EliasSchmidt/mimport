@@ -13,8 +13,12 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 # Zum Rippen von Audio-CDs: cdparanoia liest die Sektoren, flac packt sie.
 # Zusammen unter 2 MB -- anders als die libav*-Dekoder, die fpcalc für das
 # Fingerprinting nachziehen würde. Ohne eingelegte Audio-CD tun sie nichts.
+#
+# ffmpeg kommt für die Hörbücher dazu: es bündelt die Discs zu einer m4b mit
+# Kapiteln. Es ist das mit Abstand größte Paket hier (mit den libav*-Dekodern
+# grob 200 MB) -- ohne m4b-Bau kann man die beiden Zeilen streichen.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends cdparanoia flac \
+ && apt-get install -y --no-install-recommends cdparanoia flac ffmpeg \
  && rm -rf /var/lib/apt/lists/*
 
 ENV PYTHONUNBUFFERED=1 \
@@ -44,8 +48,8 @@ COPY beets/config.yaml /config/config.yaml
 # gelesen, die auf fremden Bytes arbeiten -- das soll nicht als root laufen.
 RUN groupadd --gid 1000 mimport \
  && useradd --uid 1000 --gid 1000 --no-create-home mimport \
- && mkdir -p /music /data /staging /config /disc \
- && chown -R mimport:mimport /app /music /data /staging /config /disc
+ && mkdir -p /music /data /staging /config /disc /audiobooks \
+ && chown -R mimport:mimport /app /music /data /staging /config /disc /audiobooks
 
 USER mimport
 

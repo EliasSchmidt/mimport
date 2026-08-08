@@ -205,14 +205,43 @@ def copy_to_session(directory: Path) -> sessions.StagingSession:
             shutil.copy2(quelle, ziel)
     except (OSError, sessions.SessionError) as exc:
         sessions.delete_session(session.session_id)
-        name = getattr(exc, "filename", None) or directory.name
-        raise DiscError(
-            f"Die CD ließ sich nicht vollständig lesen "
-            f"(bei „{Path(str(name)).name}“). "
-            "Meist hilft es, sie zu säubern und es erneut zu versuchen."
-        ) from exc
+        raise _lesefehler(exc, directory) from exc
 
     log.info(
         "%d Datei(en) von der CD nach %s kopiert.", len(dateien), session.session_id
     )
     return session
+
+
+def _lesefehler(exc: Exception, directory: Path) -> DiscError:
+    name = getattr(exc, "filename", None) or directory.name
+    return DiscError(
+        f"Die CD ließ sich nicht vollständig lesen "
+        f"(bei „{Path(str(name)).name}“). "
+        "Meist hilft es, sie zu säubern und es erneut zu versuchen."
+    )
+
+
+def copy_into(directory: Path, ziel: Path) -> int:
+    """Kopiert die Audiodateien eines CD-Ordners flach in ein Verzeichnis.
+
+    Für Hörbücher, wo das Ziel keine Wegwerf-Session ist, sondern ein Ordner
+    innerhalb eines Buchs. Schlägt das Lesen fehl, wird deshalb **nur dieses
+    eine Verzeichnis** geräumt -- im Buch daneben können Discs liegen, die
+    Stunden gekostet haben.
+    """
+    dateien = _audio_files(directory)
+    if not dateien:
+        raise DiscError("In diesem Ordner liegen keine Audiodateien.")
+
+    ziel.mkdir(parents=True, exist_ok=True)
+    try:
+        for quelle in dateien:
+            sicher = sessions.sanitize_component(quelle.name)
+            shutil.copy2(quelle, ziel / sicher)
+    except OSError as exc:
+        shutil.rmtree(ziel, ignore_errors=True)
+        raise _lesefehler(exc, directory) from exc
+
+    log.info("%d Datei(en) von der CD nach %s kopiert.", len(dateien), ziel)
+    return len(dateien)

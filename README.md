@@ -269,6 +269,63 @@ zwei Schritten selbst tun.
 Beide Pakete sind zusammen unter 2 MB. Das ist der Unterschied zum
 Fingerprinting weiter unten, das die libav\*-Dekoder nachzieht.
 
+## Hörbücher
+
+Ein eigener Weg neben dem Musikweg, und zwar bewusst: **für Hörbücher gibt es
+keinen Match und keinen beets-Import.** MusicBrainz kennt sie praktisch nicht,
+der Kandidaten-Dialog hätte nichts zu zeigen. Die Metadaten holt sich
+Audiobookshelf später selbst über den Audible-Provider. mimport endet hier beim
+fertigen Buchordner.
+
+```
+/audiobooks/<Autor>/<Titel>/CD 1/01 Track 1.flac
+                           /CD 2/…
+                           /<Titel>.m4b      (nach dem Bündeln)
+```
+
+Der Buchordner **ist** der Zustand — welche Discs schon eingelesen sind, steht
+im Dateisystem und in keiner Datenbank. Ein Neustart mitten in einem
+zwölfteiligen Hörbuch verliert deshalb nichts. Für die nächste Disc einfach
+dieselben Angaben erneut eintragen.
+
+Audio-CDs werden gerippt, Daten-CDs kopiert; was von beidem vorliegt,
+entscheidet mimport selbst. Eine **erste** Daten-CD landet flach im Buchordner
+statt in einem `CD 1`, das für immer allein bliebe — eine MP3-CD trägt meistens
+das ganze Buch.
+
+### Bündeln zur m4b
+
+Aus zwölf CDs FLAC (gut 4 GB) wird eine Datei von etwa 300 MB: 64 kbit/s in
+Mono. Eine Lesung braucht keine Musikqualität, und genau darum geht es hier.
+Kapitelgrenzen sind die Trackgrenzen, der Kapitelname kommt aus dem Titel-Tag,
+sonst aus dem Dateinamen. Ein `cover.jpg` im Buchordner wird eingebettet.
+
+Zwei Bremsen, beide aus schmerzhafter Erfahrung:
+
+- **Verlustbehaftete Quellen werden nicht umgewandelt.** MP3 nach AAC ist lossy
+  auf lossy und bringt nichts außer Verlust. Audiobookshelf spielt einen Ordner
+  mit MP3s ohnehin klaglos. Wer trotzdem eine Einzeldatei will, kann es
+  erzwingen.
+- **Gelöscht wird erst, wenn die Laufzeit stimmt.** Die m4b muss auf
+  **1500 Millisekunden** genau so lang sein wie die Summe der Quellen. Das ist
+  bewusst ein fester Wert und kein Prozentsatz: das Padding des Encoders liegt
+  unabhängig von der Gesamtlänge im Millisekundenbereich, ein fehlender Track
+  dagegen sind immer Minuten. Passt es nicht, bleibt alles liegen und man hört
+  selbst hinein.
+
+Warum überhaupt gelöscht wird: Audiobookshelf liest *alle* Audiodateien eines
+Buchordners als Tracks desselben Buchs. Bleiben die FLACs neben der m4b liegen,
+steht das Buch doppelt in der Bibliothek.
+
+Ein Encode läuft auf schwacher Hardware Stunden, deshalb wieder ein
+Hintergrundauftrag mit Fortschrittsanzeige. Der Fortschritt kommt als
+Zeitstempel („4:32 von 11:04"), nicht als Kapitelzählung — ffmpeg encodiert am
+Stück.
+
+> Eine Falle am Rande, nachgemessen statt geglaubt: `ffmpeg -progress` liefert
+> einen Schlüssel `out_time_ms`, dessen Wert in **Mikrosekunden** steht. mimport
+> liest deshalb `out_time_us`, das wenigstens ehrlich benannt ist.
+
 ### Zwei Dienste
 
 `docker-compose.yml` startet dasselbe Image zweimal:
@@ -339,6 +396,11 @@ Probelauf funktioniert weiterhin.
 | `MIMPORT_FLAC` | `flac` | Pfad zum FLAC-Encoder |
 | `MIMPORT_RIP_TOC_TIMEOUT` | `60` | Zeitlimit fürs Inhaltsverzeichnis (s) |
 | `MIMPORT_RIP_TRACK_TIMEOUT` | `1200` | Zeitlimit je Track (s) |
+| `MIMPORT_AUDIOBOOKS` | `/audiobooks` | Wurzel der Hörbuch-Bibliothek |
+| `MIMPORT_M4B_BITRATE` | `64k` | Zielbitrate der m4b |
+| `MIMPORT_M4B_MONO` | `1` | Auf einen Kanal mischen |
+| `MIMPORT_M4B_MIN_KBPS` | `96` | Darunter gilt Umwandeln als nicht lohnend |
+| `MIMPORT_M4B_TIMEOUT` | `21600` | Zeitlimit für den m4b-Bau (s) |
 | `MIMPORT_BEET_BIN` | `beet` | Pfad zum beets-Executable |
 | `MIMPORT_MOVE` | `1` | Dateien verschieben (`0` = kopieren) |
 | `MIMPORT_MAX_UPLOAD_BYTES` | 4 GB | Obergrenze pro Upload |

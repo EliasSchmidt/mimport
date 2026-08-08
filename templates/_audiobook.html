@@ -1,0 +1,140 @@
+{# Hörbücher. Bewusst getrennt vom Musikweg: hier gibt es keinen Match und
+   keinen beets-Import -- MusicBrainz kennt Hörbücher kaum, die Metadaten holt
+   sich Audiobookshelf später über Audible. #}
+<div id="audiobook-inner">
+
+    {% if fehler %}
+    <div class="banner error"><strong>{{ fehler }}</strong></div>
+    {% elif meldung %}
+    <div class="banner ok"><strong>{{ meldung }}</strong></div>
+    {% endif %}
+
+    {% if not tools.ffmpeg or not tools.ffprobe %}
+    <div class="banner warn">
+        <strong>ffmpeg fehlt</strong>
+        <p>Ohne ffmpeg lässt sich keine m4b bauen. Rippen geht trotzdem.</p>
+    </div>
+    {% endif %}
+
+    {# ---------------------------------------------------------- läuft gerade #}
+    {% if job and job.laeuft %}
+    <div hx-get="/audiobook" hx-trigger="every 2s" hx-target="#audiobook"
+         hx-swap="innerHTML">
+        <div class="banner info">
+            <strong>{{ job.meldung }}</strong>
+            <p>{{ job.track }} von {{ job.tracks_gesamt }} Tracks fertig – {{ job.prozent }} %</p>
+            <div class="progress"><div class="progress-bar"
+                 style="width: {{ job.prozent }}%"></div></div>
+        </div>
+    </div>
+
+    {% elif m4b and m4b.laeuft %}
+    <div hx-get="/audiobook" hx-trigger="every 2s" hx-target="#audiobook"
+         hx-swap="innerHTML">
+        <div class="banner info">
+            <strong>{{ m4b.meldung }}</strong>
+            <p>{{ m4b.prozent }} % – das dauert bei einem langen Hörbuch Stunden.</p>
+            <div class="progress"><div class="progress-bar"
+                 style="width: {{ m4b.prozent }}%"></div></div>
+        </div>
+    </div>
+
+    {% else %}
+
+    {# ------------------------------------------------- abgeschlossene Aufträge #}
+    {% if job %}
+    <div class="banner {{ 'error' if job.zustand == 'fehler' else 'ok' }}">
+        <strong>{{ job.meldung }}</strong>
+        {% if job.fehler %}<p>{{ job.fehler }}</p>{% endif %}
+    </div>
+    <div class="actions">
+        <button type="button" class="button secondary" hx-delete="/audiobook/rip"
+                hx-target="#audiobook" hx-swap="innerHTML">Weiter</button>
+    </div>
+    {% endif %}
+
+    {% if m4b %}
+    <div class="banner {{ 'error' if m4b.zustand == 'fehler' else 'ok' }}">
+        <strong>{{ m4b.meldung }}</strong>
+        {% if m4b.fehler %}<p>{{ m4b.fehler }}</p>{% endif %}
+    </div>
+    <div class="actions">
+        <button type="button" class="button secondary" hx-delete="/audiobook/m4b"
+                hx-target="#audiobook" hx-swap="innerHTML">Weiter</button>
+    </div>
+    {% endif %}
+
+    {# ------------------------------------------------------- neue Disc lesen #}
+    <form hx-post="/audiobook/rip" hx-target="#audiobook" hx-swap="innerHTML">
+        <p class="hint">
+            {% if disc_da %}
+            Eine <strong>Daten-CD</strong> liegt ein – sie wird kopiert, nicht gerippt.
+            {% else %}
+            Audio-CD einlegen. Jede Disc landet als <span class="mono">CD n</span>
+            im Buchordner; für Fortsetzungen dieselben Angaben erneut eintragen.
+            {% endif %}
+        </p>
+        <div class="fields">
+            <label>Autor
+                <input type="text" name="autor" required placeholder="Frank Herbert"
+                       value="{{ buecher[0].autor if buecher else '' }}">
+            </label>
+            <label>Titel
+                <input type="text" name="titel" required placeholder="Der Wüstenplanet">
+            </label>
+        </div>
+        <div class="actions">
+            <button type="submit" class="button primary">
+                {{ "Daten-CD übernehmen" if disc_da else "Disc lesen" }}
+            </button>
+        </div>
+    </form>
+
+    {# --------------------------------------------------- angefangene Bücher #}
+    {% if buecher %}
+    <h4>In der Bibliothek</h4>
+    <table class="files">
+        <thead>
+            <tr><th>Buch</th><th>Discs</th><th>Dateien</th><th>Größe</th><th></th></tr>
+        </thead>
+        <tbody>
+            {% for b in buecher %}
+            <tr>
+                <td class="name">{{ b.autor }} – {{ b.titel }}
+                    {%- if b.has_m4b %} <span class="badge lossless">m4b</span>{% endif %}
+                </td>
+                <td class="mono small">{{ b.discs | length or "–" }}</td>
+                <td class="mono small">{{ b.file_count }}</td>
+                <td class="mono small">{{ b.size_label }}</td>
+                <td>
+                    {% if b.file_count and not b.has_m4b %}
+                    <form hx-post="/audiobook/m4b" hx-target="#audiobook"
+                          hx-swap="innerHTML"
+                          hx-confirm="m4b bauen? Danach werden die Quelldateien gelöscht – aber nur, wenn die Laufzeit passt.">
+                        <input type="hidden" name="buch" value="{{ b.relative }}">
+                        {% if b.lossy %}
+                        <input type="hidden" name="force" value="true">
+                        <button type="submit" class="button">
+                            Trotzdem bündeln
+                        </button>
+                        {% else %}
+                        <button type="submit" class="button primary">m4b bauen</button>
+                        {% endif %}
+                    </form>
+                    {% elif b.has_m4b %}
+                    <span class="hint">fertig</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <p class="hint">
+        Ablage unter <span class="mono">{{ root }}</span>. Die Metadaten holt
+        Audiobookshelf – dort scannen und über „Match" den Audible-Provider
+        (Region DE) verwenden.
+    </p>
+    {% endif %}
+
+    {% endif %}
+</div>

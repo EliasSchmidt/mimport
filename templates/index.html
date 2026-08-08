@@ -78,6 +78,19 @@
         </div>
     </section>
 
+    {# Hörbücher gehen einen eigenen Weg: kein Match, kein beets. Deshalb ein
+       eigener Abschnitt und nicht Schritt 1 mit anderer Einstellung. #}
+    <section class="step" id="audiobook-step">
+        <h2><span class="step-num">H</span> Hörbücher</h2>
+        <p class="hint">
+            Eigene Ablage, eigener Weg: Hörbücher laufen nicht über beets und
+            bekommen keinen Match – Audiobookshelf holt die Metadaten selbst.
+        </p>
+        <div id="audiobook" hx-get="/audiobook" hx-trigger="load" hx-swap="innerHTML">
+            <p class="hint">lade …</p>
+        </div>
+    </section>
+
     <section class="step" id="files-step" hidden>
         <h2><span class="step-num">2</span> Übernommene Dateien</h2>
         <div id="files"></div>

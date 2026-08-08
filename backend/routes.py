@@ -18,7 +18,17 @@ from pathlib import Path
 from fastapi import APIRouter, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse
 
-from backend import audio, beets_env, disc, importer, matching, rip, sessions, tagging
+from backend import (
+    audio,
+    audiobook,
+    beets_env,
+    disc,
+    importer,
+    matching,
+    rip,
+    sessions,
+    tagging,
+)
 from backend.config import AUDIO_EXTENSIONS, settings
 from backend.templates import templates
 
@@ -374,6 +384,115 @@ def rip_files(request: Request) -> HTMLResponse:
         )
     session = _session_or_404(job.session_id)
     return _files_fragment(request, session)
+
+
+def _audiobook_fragment(
+    request: Request, *, meldung: str = "", fehler: str = ""
+) -> HTMLResponse:
+    """Der Hörbuch-Bereich: Formular, laufende Aufträge, angefangene Bücher."""
+    job = rip.current()
+    return _fragment(
+        request,
+        "_audiobook.html",
+        job=job if job is not None and job.modus == "hoerbuch" else None,
+        m4b=audiobook.current_m4b(),
+        buecher=audiobook.list_books(),
+        tools={**rip.tools_available(), **audiobook.tools_available()},
+        root=settings.audiobook_root,
+        disc_da=disc.is_available(),
+        meldung=meldung,
+        fehler=fehler,
+    )
+
+
+@router.get("/audiobook", response_class=HTMLResponse)
+def audiobook_status(request: Request) -> HTMLResponse:
+    """Stand des Hörbuch-Bereichs -- auch Ziel der Abfrage im Sekundentakt."""
+    return _audiobook_fragment(request)
+
+
+@router.post("/audiobook/rip", response_class=HTMLResponse)
+def audiobook_rip(
+    request: Request,
+    autor: str = Form(default=""),
+    titel: str = Form(default=""),
+) -> HTMLResponse:
+    """Liest eine Hörbuch-CD in den Ordner eines Buchs.
+
+    Audio-CD oder Daten-CD entscheidet sich hier: liegt unter ``/disc`` etwas,
+    ist es eine Daten-CD und wird kopiert; sonst wird gerippt.
+    """
+    try:
+        buch = audiobook.book_dir(autor, titel)
+    except audiobook.AudiobookError as exc:
+        return _audiobook_fragment(request, fehler=str(exc))
+
+    # Der Platz muss auf dem Dateisystem der Hörbücher frei sein, nicht auf dem
+    # des Stagings -- hierhin wird direkt geschrieben.
+    frei = audiobook.free_bytes() - settings.min_free_bytes
+    if frei <= 0:
+        return _audiobook_fragment(
+            request, fehler="Auf dem Hörbuch-Volume ist nicht genug Platz frei."
+        )
+
+    if disc.is_available():
+        return _audiobook_datencd(request, buch)
+
+    try:
+        ordner = audiobook.next_disc_dir(buch)
+        rip.start_audiobook(allowance=frei, buch=buch, disc_ordner=ordner)
+    except (rip.RipError, audiobook.AudiobookError) as exc:
+        log.warning("Hörbuch-Rip nicht gestartet: %s", exc)
+        return _audiobook_fragment(request, fehler=str(exc))
+    return _audiobook_fragment(request)
+
+
+def _audiobook_datencd(request: Request, buch: Path) -> HTMLResponse:
+    """Eine Daten-CD ins Buch kopieren -- kein Rippen nötig."""
+    try:
+        quelle = disc.resolve_folder("")
+        ordner = audiobook.next_disc_dir(buch, ist_datencd=True)
+        anzahl = disc.copy_into(quelle, ordner)
+    except (disc.DiscError, audiobook.AudiobookError) as exc:
+        return _audiobook_fragment(request, fehler=str(exc))
+    wohin = "ins Buch" if ordner == buch else f"nach {ordner.name}"
+    return _audiobook_fragment(
+        request, meldung=f"{anzahl} Dateien von der Daten-CD {wohin} kopiert."
+    )
+
+
+@router.post("/audiobook/m4b", response_class=HTMLResponse)
+def audiobook_m4b(
+    request: Request,
+    buch: str = Form(default=""),
+    force: bool = Form(default=False),
+) -> HTMLResponse:
+    """Bündelt ein Buch zu einer m4b mit Kapiteln."""
+    try:
+        pfad = audiobook.resolve_book(buch)
+        audiobook.build(pfad, force=force)
+    except audiobook.AudiobookError as exc:
+        return _audiobook_fragment(request, fehler=str(exc))
+    return _audiobook_fragment(request)
+
+
+@router.delete("/audiobook/rip", response_class=HTMLResponse)
+def audiobook_rip_reset(request: Request) -> HTMLResponse:
+    """Gibt das Laufwerk nach einem abgeschlossenen Auftrag wieder frei."""
+    try:
+        rip.reset()
+    except rip.RipError as exc:
+        return _audiobook_fragment(request, fehler=str(exc))
+    return _audiobook_fragment(request)
+
+
+@router.delete("/audiobook/m4b", response_class=HTMLResponse)
+def audiobook_m4b_reset(request: Request) -> HTMLResponse:
+    try:
+        audiobook.reset_m4b()
+    except audiobook.AudiobookError as exc:
+        return _audiobook_fragment(request, fehler=str(exc))
+    return _audiobook_fragment(request)
 
 
 @router.post("/match/{session_id}", response_class=HTMLResponse)

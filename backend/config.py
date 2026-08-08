@@ -126,6 +126,48 @@ class Settings:
         default_factory=lambda: _env_int("MIMPORT_SESSION_TTL_HOURS", 24)
     )
 
+    #: Wurzel der Hörbuch-Bibliothek. Bewusst getrennt von der Musik: Hörbücher
+    #: laufen nicht über beets -- MusicBrainz kennt sie kaum, und die Metadaten
+    #: holt sich Audiobookshelf später selbst über Audible.
+    audiobook_root: Path = field(
+        default_factory=lambda: Path(
+            os.environ.get("MIMPORT_AUDIOBOOKS", "/audiobooks")
+        )
+        .expanduser()
+        .resolve()
+    )
+
+    #: Zielbitrate der m4b. 64k reicht für Sprache reichlich; darum geht es ja,
+    #: eine Lesung braucht keine Musikqualität.
+    audiobook_bitrate: str = field(
+        default_factory=lambda: os.environ.get("MIMPORT_M4B_BITRATE", "64k")
+    )
+
+    #: Auf einen Kanal mischen. Bei Lesungen halbiert das die Größe, ohne dass
+    #: man etwas vermisst.
+    audiobook_mono: bool = field(
+        default_factory=lambda: _env_bool("MIMPORT_M4B_MONO", True)
+    )
+
+    #: Unterhalb dieser Bitrate lohnt das Umwandeln einer verlustbehafteten
+    #: Quelle nicht mehr -- es wäre lossy auf lossy.
+    audiobook_min_kbps: int = field(
+        default_factory=lambda: _env_int("MIMPORT_M4B_MIN_KBPS", 96)
+    )
+
+    ffmpeg_bin: str = field(
+        default_factory=lambda: os.environ.get("MIMPORT_FFMPEG", "ffmpeg")
+    )
+    ffprobe_bin: str = field(
+        default_factory=lambda: os.environ.get("MIMPORT_FFPROBE", "ffprobe")
+    )
+
+    #: Zeitlimit für den m4b-Bau. Ein langes Hörbuch auf schwacher CPU braucht
+    #: Stunden.
+    m4b_timeout: int = field(
+        default_factory=lambda: _env_int("MIMPORT_M4B_TIMEOUT", 6 * 3600)
+    )
+
     #: Das CD-Laufwerk für Audio-CDs. Anders als bei der Daten-CD hilft kein
     #: Mount vom Host: eine Audio-CD hat kein Dateisystem, ihre Sektoren müssen
     #: direkt aus dem Gerät gelesen werden.

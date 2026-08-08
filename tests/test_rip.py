@@ -116,7 +116,10 @@ class TestAblauf:
         job = rip.RipJob(disc_id=VEKTOR_ID)
         session = sessions.create_session()
         job.session_id = session.session_id
-        rip._arbeite(job, toc, session)
+        rip._arbeite(
+            job, toc, session.directory,
+            bei_fehler=lambda: rip._session_verwerfen(job),
+        )
 
         assert job.zustand == "fertig"
         assert gelesen == [1, 2, 3, 4, 5, 6]
@@ -133,7 +136,10 @@ class TestAblauf:
         job = rip.RipJob(disc_id=VEKTOR_ID)
         session = sessions.create_session()
         job.session_id = session.session_id
-        rip._arbeite(job, toc, session)
+        rip._arbeite(
+            job, toc, session.directory,
+            bei_fehler=lambda: rip._session_verwerfen(job),
+        )
 
         assert job.releases == [hinweis]
 
@@ -151,7 +157,10 @@ class TestAblauf:
         job = rip.RipJob(disc_id=VEKTOR_ID)
         session = sessions.create_session()
         job.session_id = session.session_id
-        rip._arbeite(job, toc, session)
+        rip._arbeite(
+            job, toc, session.directory,
+            bei_fehler=lambda: rip._session_verwerfen(job),
+        )
 
         assert job.zustand == "fertig"
         assert job.releases == []
@@ -169,7 +178,10 @@ class TestAblauf:
         job = rip.RipJob(disc_id=VEKTOR_ID)
         session = sessions.create_session()
         job.session_id = session.session_id
-        rip._arbeite(job, toc, session)
+        rip._arbeite(
+            job, toc, session.directory,
+            bei_fehler=lambda: rip._session_verwerfen(job),
+        )
 
         assert job.zustand == "fehler"
         assert "Track 3" in (job.fehler or "")
@@ -190,7 +202,10 @@ class TestAblauf:
         job = rip.RipJob(disc_id=VEKTOR_ID)
         session = sessions.create_session()
         job.session_id = session.session_id
-        rip._arbeite(job, toc, session)
+        rip._arbeite(
+            job, toc, session.directory,
+            bei_fehler=lambda: rip._session_verwerfen(job),
+        )
 
         assert job.zustand == "fehler"
         assert "Unerwarteter Fehler" in (job.fehler or "")
@@ -331,3 +346,72 @@ class TestMatchNachDemRip:
             "Ohne Tracknummer trifft die Zuordnung zufällig -- dann wäre die "
             "Begründung für das Tagging beim Rippen hinfällig"
         )
+
+
+class TestHoerbuchZiel:
+    """Der Fehlerpfad darf niemals das ganze Buch mitnehmen."""
+
+    @pytest.fixture
+    def buch(self, tmp_path, monkeypatch):
+        from backend import audiobook
+
+        monkeypatch.setattr(
+            audiobook.settings, "audiobook_root", tmp_path / "audiobooks"
+        )
+        ziel = audiobook.book_dir("Frank Herbert", "Der Wüstenplanet")
+        # Zwei Discs sind schon eingelesen -- Stunden Arbeit.
+        for cd in ("CD 1", "CD 2"):
+            (ziel / cd).mkdir(parents=True)
+            (ziel / cd / "01 Track 1.flac").write_bytes(b"fLaC\x00\x00\x00\x22")
+        return ziel
+
+    def test_fehlgeschlagene_disc_laesst_die_vorherigen_stehen(
+        self, buch, toc, monkeypatch
+    ):
+        from backend import audiobook
+
+        dritte = audiobook.next_disc_dir(buch)
+        assert dritte.name == "CD 3"
+        dritte.mkdir(parents=True)
+
+        def kaputt(nummer, ziel):
+            raise rip.RipError("Track 1 ließ sich nicht lesen.")
+
+        monkeypatch.setattr(rip, "_rip_track", kaputt)
+
+        job = rip.RipJob(modus="hoerbuch", buch=str(buch))
+        rip._arbeite(
+            job,
+            toc,
+            dritte,
+            bei_fehler=lambda: __import__("shutil").rmtree(dritte, ignore_errors=True),
+            mit_lookup=False,
+        )
+
+        assert job.zustand == "fehler"
+        # Die angefangene Disc ist weg ...
+        assert not dritte.exists()
+        # ... aber das Buch und die fertigen Discs stehen.
+        assert buch.is_dir()
+        assert (buch / "CD 1" / "01 Track 1.flac").is_file()
+        assert (buch / "CD 2" / "01 Track 1.flac").is_file()
+
+    def test_hoerbuch_rip_fragt_musicbrainz_nicht(self, buch, toc, monkeypatch):
+        """MusicBrainz kennt Hörbücher kaum -- Audiobookshelf macht das Matching."""
+        gefragt = []
+        monkeypatch.setattr(
+            rip.discid, "lookup", lambda *a, **k: gefragt.append(1) or []
+        )
+        monkeypatch.setattr(
+            rip, "_rip_track", lambda n, z: z.write_bytes(b"fLaC\x00\x00\x00\x22")
+        )
+
+        from backend import audiobook
+
+        dritte = audiobook.next_disc_dir(buch)
+        dritte.mkdir(parents=True)
+        job = rip.RipJob(modus="hoerbuch")
+        rip._arbeite(job, toc, dritte, bei_fehler=lambda: None, mit_lookup=False)
+
+        assert job.zustand == "fertig"
+        assert gefragt == [], "im Hörbuch-Modus darf nicht angefragt werden"

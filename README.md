@@ -54,7 +54,7 @@ Alles steckt im Container: Weboberfläche *und* beets. Nach außen führt nur ei
 Volume mit dem fertigen Ergebnis.
 
 ```bash
-# Zielverzeichnis in docker-compose.yml anpassen (Standard: /srv/musik)
+# Zielverzeichnisse in docker-compose.yml anpassen (/srv/music, /srv/audiobooks)
 docker compose up -d --build
 # Oberfläche: http://127.0.0.1:8000
 ```
@@ -81,6 +81,7 @@ Volumes:
 | `/staging` | Laufende Uploads, bis sie importiert sind. |
 | `/config` | beets-Konfiguration (`BEETSDIR`). |
 | `/disc` | Eingelegte Daten-CD, read-only vom Host. |
+| `/audiobooks` | Hörbücher. Getrennt von der Musik, ohne beets. |
 
 ## Eine bestehende beets-Library übernehmen
 

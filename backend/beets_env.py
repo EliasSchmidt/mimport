@@ -90,12 +90,25 @@ def beet_cli_version(beet_bin: str) -> str | None:
         return None
     if proc.returncode != 0:
         return None
-    # Ausgabe beginnt mit "beets version 2.13.1"
-    first = proc.stdout.strip().splitlines()[0] if proc.stdout.strip() else ""
-    for token in first.split():
-        if token and token[0].isdigit():
-            return token
-    return first or None
+
+    # Gesucht ist die Zeile "beets version 2.13.1" -- aber nicht unbedingt die
+    # erste: beets schreibt Hinweise davor, etwa beim Migrieren des
+    # Datenbankschemas ("Created database backup at ..."). Nahm man stumpf
+    # Zeile eins, galt dieser Hinweis als Versionsnummer, der Vergleich mit der
+    # eigenen Version schlug fehl und der Import wurde gesperrt -- beim ersten
+    # Start mit einer neuen Library also zuverlässig.
+    zeilen = (proc.stdout or "").splitlines() + (proc.stderr or "").splitlines()
+    for zeile in zeilen:
+        if "version" not in zeile.lower():
+            continue
+        for token in zeile.split():
+            # Eine Versionsnummer beginnt mit einer Ziffer und enthält Punkte.
+            if token[:1].isdigit():
+                return token.rstrip(".,;")
+
+    # Nichts Versionsförmiges gefunden. Lieber nichts melden als einen
+    # Hinweistext, der später als Versionsunterschied gelesen würde.
+    return None
 
 
 def health() -> dict[str, object]:

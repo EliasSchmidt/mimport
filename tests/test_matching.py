@@ -228,3 +228,56 @@ class TestGegenMusicbrainz:
         assert best.missing_tracks
         assert best.confidence < 100
         assert any("fehlen" in label for label, _ in best.penalties)
+
+
+class TestBeetCliVersion:
+    """Die Versionsauslesung entscheidet, ob der Import freigegeben wird."""
+
+    def test_hinweiszeile_vor_der_version(self, monkeypatch, tmp_path):
+        """beets schreibt beim Migrieren des Schemas eine Meldung davor.
+
+        Wurde die als Version gelesen, galt sie als Versionsunterschied und der
+        Import war gesperrt -- beim ersten Start also zuverlässig.
+        """
+        import subprocess
+
+        from backend import beets_env
+
+        ausgabe = (
+            "Created database backup at: '/data/library.db-before-items.bak'.\n"
+            "beets version 2.13.1\n"
+            "Python version 3.12.7\n"
+        )
+        monkeypatch.setattr(
+            beets_env.subprocess,
+            "run",
+            lambda *a, **k: subprocess.CompletedProcess(a[0], 0, ausgabe, ""),
+        )
+        assert beets_env.beet_cli_version("beet") == "2.13.1"
+
+    def test_normale_ausgabe(self, monkeypatch):
+        import subprocess
+
+        from backend import beets_env
+
+        monkeypatch.setattr(
+            beets_env.subprocess,
+            "run",
+            lambda *a, **k: subprocess.CompletedProcess(
+                a[0], 0, "beets version 2.13.1\nplugins: musicbrainz\n", ""
+            ),
+        )
+        assert beets_env.beet_cli_version("beet") == "2.13.1"
+
+    def test_ohne_erkennbare_version_lieber_nichts(self, monkeypatch):
+        """Ein Hinweistext als 'Version' würde als Unterschied gelesen."""
+        import subprocess
+
+        from backend import beets_env
+
+        monkeypatch.setattr(
+            beets_env.subprocess,
+            "run",
+            lambda *a, **k: subprocess.CompletedProcess(a[0], 0, "irgendwas\n", ""),
+        )
+        assert beets_env.beet_cli_version("beet") is None

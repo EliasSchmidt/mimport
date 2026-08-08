@@ -1,0 +1,23 @@
+{% extends "_layout.html" %}
+
+{% block title %}Hörbücher – mimport{% endblock %}
+{% block lead %}
+    Disc für Disc einlesen, am Ende zu einer m4b mit Kapiteln bündeln.
+{% endblock %}
+
+{# Hörbücher laufen weder über beets noch über den Match-Dialog. Deshalb eine
+   eigene Seite statt eines weiteren Abschnitts auf der Musikseite -- dort wäre
+   die Hälfte der Bedienelemente für diesen Weg sinnlos. #}
+{% block inhalt %}
+<section class="step">
+    <h2><span class="step-num">♪</span> Hörbuch einlesen</h2>
+    <p class="hint">
+        Kein Match und kein beets-Import: MusicBrainz kennt Hörbücher kaum, die
+        Metadaten holt sich Audiobookshelf später über Audible. Hier endet der
+        Weg beim fertigen Buchordner.
+    </p>
+    <div id="audiobook" hx-get="/audiobook" hx-trigger="load" hx-swap="innerHTML">
+        <p class="hint">lade …</p>
+    </div>
+</section>
+{% endblock %}

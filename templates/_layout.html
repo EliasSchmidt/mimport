@@ -1,0 +1,42 @@
+{# Gemeinsames Gerüst der drei Seiten: Auswahl, Musik, Hörbücher.
+
+   Kopf, Zustandsbanner und Fuß stehen nur hier -- sonst müsste man jede
+   Änderung daran dreimal machen und würde es zweimal vergessen. #}
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}mimport{% endblock %}</title>
+    <link rel="stylesheet" href="/static/app.css">
+    <script src="/static/htmx.min.js" defer></script>
+    <script src="/static/index.js" defer></script>
+</head>
+<body>
+<header class="page-head">
+    <h1>
+        {% if selbst != "start" %}<a href="/" class="zurueck">mimport</a>
+        {%- else %}mimport{% endif %}
+    </h1>
+    <p class="lead">{% block lead %}{% endblock %}</p>
+</header>
+
+<main>
+    <div id="health">
+        {% include "_health.html" %}
+    </div>
+
+    {% block inhalt %}{% endblock %}
+</main>
+
+<footer class="page-foot">
+    <p>
+        beets {{ health.beets_version }}
+        {%- if health.metadata_sources %}
+            · Metadaten: {{ health.metadata_sources | join(", ") }}
+        {%- endif %}
+        {%- if health.fingerprint %} · Fingerprinting aktiv{% endif %}
+    </p>
+</footer>
+</body>
+</html>

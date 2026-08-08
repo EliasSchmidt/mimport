@@ -24,6 +24,20 @@
         </p>
     </div>
 
+    {% elif fremder_auftrag %}
+    {# Es gibt ein Laufwerk und damit einen Auftrag. Läuft er für ein Hörbuch,
+       gehört er nicht hierher -- aber ein Knopf, der nur scheitern kann, auch
+       nicht. #}
+    <div class="banner info" hx-get="/rip" hx-trigger="every 5s" hx-target="#rip"
+         hx-swap="innerHTML">
+        <strong>Das Laufwerk liest gerade ein Hörbuch ein</strong>
+        <p>
+            Es gibt nur eines. Der Fortschritt steht unter
+            <a href="/hoerbuch">Hörbücher</a>; sobald es fertig ist, geht es
+            hier weiter.
+        </p>
+    </div>
+
     {% elif job is none %}
     <p class="hint">
         Audio-CD einlegen und lesen lassen. Die Tracks landen als FLAC im

@@ -6,6 +6,21 @@ im Browser statt im Terminal.
 Der Ablauf ist derselbe wie bei `beet import`, nur sichtbar: hochladen,
 Match-Vorschläge mit ihrer Sicherheit ansehen, einen auswählen, importieren.
 
+## Die zwei Wege
+
+Die Startseite stellt nur eine Frage: **Musik oder Hörbuch?** Dahinter liegen
+zwei getrennte Seiten, weil die Wege fast nichts gemeinsam haben.
+
+| Seite | Weg |
+|---|---|
+| `/musik` | Upload, Daten-CD, Audio-CD rippen → Match gegen MusicBrainz → beets |
+| `/hoerbuch` | Disc für Disc einlesen → m4b mit Kapiteln. Kein beets, kein Match. |
+
+Auf einer gemeinsamen Seite war jeweils die Hälfte der Bedienelemente Ballast —
+und ein laufender Hörbuch-Rip tauchte im Musikbereich als eigener Auftrag auf,
+obwohl er dort nichts zu suchen hat. Es gibt nur ein Laufwerk und damit einen
+Auftrag; die jeweils andere Seite meldet jetzt bloß, dass es belegt ist.
+
 ## Was die Oberfläche zeigt
 
 Die drei Angaben, um die es beim Tagging wirklich geht, kommen unverändert aus

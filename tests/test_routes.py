@@ -20,13 +20,40 @@ def client():
 
 
 class TestIndex:
-    def test_seite_wird_ausgeliefert(self, client):
+    """Die Startseite stellt nur die eine Frage, die beiden Wege sind getrennt."""
+
+    def test_startseite_fragt_nach_dem_modus(self, client):
         response = client.get("/")
         assert response.status_code == 200
-        assert "mimport" in response.text
-        # Die vier Schritte sollen in der Seite stehen.
+        assert 'href="/musik"' in response.text
+        assert 'href="/hoerbuch"' in response.text
+        # Nichts vom eigentlichen Ablauf gehört hierher.
+        assert "Dateien auswählen" not in response.text
+        assert "upload-form" not in response.text
+
+    def test_musikseite_hat_den_ganzen_ablauf(self, client):
+        response = client.get("/musik")
+        assert response.status_code == 200
         assert "Dateien auswählen" in response.text
         assert "Match auswählen" in response.text
+        assert "upload-form" in response.text
+
+    def test_musikseite_zeigt_keine_hoerbuecher(self, client):
+        """Auf der Musikseite wäre der halbe Hörbuch-Weg sinnlos."""
+        response = client.get("/musik")
+        assert 'hx-get="/audiobook"' not in response.text
+
+    def test_hoerbuchseite_zeigt_nur_hoerbuecher(self, client):
+        response = client.get("/hoerbuch")
+        assert response.status_code == 200
+        assert 'hx-get="/audiobook"' in response.text
+        # Kein Upload, kein Match -- das gehört zum anderen Weg.
+        assert "upload-form" not in response.text
+        assert "Match auswählen" not in response.text
+
+    def test_zurueck_zur_auswahl(self, client):
+        for pfad in ("/musik", "/hoerbuch"):
+            assert 'href="/"' in client.get(pfad).text
 
 
 class TestUpload:
@@ -632,3 +659,62 @@ class TestHoerbuecher:
     def test_m4b_fuer_unbekanntes_buch(self, client):
         response = client.post("/audiobook/m4b", data={"buch": "../etc"})
         assert "nicht zur Bibliothek" in response.text or "gibt es nicht" in response.text
+
+
+class TestLaufwerkGehoertNurEinemModus:
+    """Ein Laufwerk, ein Auftrag -- aber zwei Seiten, die ihn zeigen könnten."""
+
+    @pytest.fixture(autouse=True)
+    def kein_alter_auftrag(self):
+        from backend import rip
+
+        rip._job = None
+        yield
+        rip._job = None
+
+    @pytest.fixture
+    def werkzeuge(self, monkeypatch):
+        from backend import rip
+
+        monkeypatch.setattr(
+            rip,
+            "tools_available",
+            lambda: {"cdparanoia": True, "flac": True, "device": True},
+        )
+
+    def test_hoerbuch_rip_erscheint_nicht_im_musikbereich(
+        self, client, werkzeuge, monkeypatch
+    ):
+        """Sonst stünde derselbe Fortschritt zweimal auf der Seite."""
+        from backend import rip
+
+        job = rip.RipJob(modus="hoerbuch", zustand="rippt", track=4, tracks_gesamt=9)
+        monkeypatch.setattr(rip, "_job", job)
+
+        musik = client.get("/rip")
+        assert "4 von 9 Tracks fertig" not in musik.text
+        assert "liest gerade ein Hörbuch" in musik.text
+
+    def test_musik_rip_erscheint_nicht_im_hoerbuchbereich(
+        self, client, werkzeuge, monkeypatch, tmp_path
+    ):
+        from backend import audiobook, rip
+
+        monkeypatch.setattr(
+            audiobook.settings, "audiobook_root", tmp_path / "audiobooks"
+        )
+        job = rip.RipJob(modus="musik", zustand="rippt", track=4, tracks_gesamt=9)
+        monkeypatch.setattr(rip, "_job", job)
+
+        hoerbuch = client.get("/audiobook")
+        assert "4 von 9 Tracks fertig" not in hoerbuch.text
+
+    def test_eigener_auftrag_wird_sehr_wohl_gezeigt(
+        self, client, werkzeuge, monkeypatch
+    ):
+        from backend import rip
+
+        job = rip.RipJob(modus="musik", zustand="rippt", track=4, tracks_gesamt=9)
+        monkeypatch.setattr(rip, "_job", job)
+
+        assert "4 von 9 Tracks fertig" in client.get("/rip").text

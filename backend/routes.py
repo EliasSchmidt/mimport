@@ -115,17 +115,46 @@ def _files_fragment(request: Request, session: sessions.StagingSession) -> HTMLR
     )
 
 
-@router.get("/", response_class=HTMLResponse)
-def index(request: Request) -> HTMLResponse:
-    """Die einzige Seite der Anwendung."""
+def _seite(request: Request, name: str, selbst: str, **kontext: object) -> HTMLResponse:
     return templates.TemplateResponse(
         request,
-        "index.html",
+        name,
         {
             "health": beets_env.health(),
             "settings": settings,
+            "selbst": selbst,
+            **kontext,
         },
     )
+
+
+@router.get("/", response_class=HTMLResponse)
+def index(request: Request) -> HTMLResponse:
+    """Die Startseite stellt nur eine Frage: Musik oder Hörbuch?
+
+    Die beiden Wege haben fast nichts gemeinsam -- Musik geht über beets mit
+    Match-Dialog, Hörbücher über keines von beidem. Auf einer gemeinsamen Seite
+    war jeweils die Hälfte der Bedienelemente Ballast.
+    """
+    return _seite(
+        request,
+        "index.html",
+        "start",
+        musik_ziel=settings.staging_root,
+        hoerbuch_ziel=settings.audiobook_root,
+    )
+
+
+@router.get("/musik", response_class=HTMLResponse)
+def musik(request: Request) -> HTMLResponse:
+    """Hochladen, Daten-CD, Audio-CD rippen -- alles mit Match und beets."""
+    return _seite(request, "musik.html", "musik")
+
+
+@router.get("/hoerbuch", response_class=HTMLResponse)
+def hoerbuch(request: Request) -> HTMLResponse:
+    """Discs sammeln und bündeln, ohne beets."""
+    return _seite(request, "hoerbuch.html", "hoerbuch")
 
 
 @router.post("/upload", response_class=HTMLResponse)
@@ -324,11 +353,19 @@ def disc_copy(request: Request, folder: str = Form(default="")) -> HTMLResponse:
 
 
 def _rip_fragment(request: Request) -> HTMLResponse:
-    """Der Stand des Rips. Solange er läuft, fragt die Seite ihn selbst ab."""
+    """Der Stand des Rips. Solange er läuft, fragt die Seite ihn selbst ab.
+
+    Es gibt ein Laufwerk und damit einen Auftrag, aber zwei Seiten, die ihn
+    anzeigen könnten. Ein Hörbuch-Rip gehört nicht hierher: die Musikseite böte
+    danach "Dateien" an, die in einer Session liegen sollen -- ein Hörbuch
+    schreibt aber direkt in seine Bibliothek.
+    """
+    job = rip.current()
     return _fragment(
         request,
         "_rip.html",
-        job=rip.current(),
+        job=job if job is not None and job.modus == "musik" else None,
+        fremder_auftrag=job is not None and job.modus != "musik" and job.laeuft,
         tools=rip.tools_available(),
         device=settings.cdrom_device,
     )

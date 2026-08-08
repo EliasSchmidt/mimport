@@ -1,120 +1,32 @@
-<!DOCTYPE html>
-<html lang="de">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>mimport – Musik taggen und importieren</title>
-    <link rel="stylesheet" href="/static/app.css">
-    <script src="/static/htmx.min.js" defer></script>
-    <script src="/static/index.js" defer></script>
-</head>
-<body>
-<header class="page-head">
-    <h1>mimport</h1>
-    <p class="lead">
-        Musik hochladen oder von CD übernehmen, Match vorher prüfen, dann von
-        beets importieren lassen.
-    </p>
-</header>
+{% extends "_layout.html" %}
 
-<main>
-    <div id="health">
-        {% include "_health.html" %}
-    </div>
+{% block title %}mimport{% endblock %}
+{% block lead %}Was soll rein?{% endblock %}
 
-    <section class="step">
-        <h2><span class="step-num">1</span> Dateien auswählen</h2>
-        <p class="hint">
-            Am besten einen kompletten Albumordner wählen – beets erkennt ein Album
-            deutlich sicherer, wenn es alle Tracks auf einmal sieht.
-        </p>
+{# Die Startseite fragt nur eins. Musik und Hörbücher gehen völlig getrennte
+   Wege -- Musik über beets mit Match-Dialog, Hörbücher ohne beides -- und die
+   Bedienelemente des einen sind auf der Seite des anderen nur Ballast. #}
+{% block inhalt %}
+<div class="modus-wahl">
+    <a class="modus" href="/musik">
+        <span class="modus-icon" aria-hidden="true">♪</span>
+        <span class="modus-titel">Musik</span>
+        <span class="modus-text">
+            Hochladen, von Daten-CD übernehmen oder Audio-CD rippen. Match gegen
+            MusicBrainz prüfen, dann von beets in die Library importieren.
+        </span>
+        <span class="modus-ziel mono">{{ musik_ziel }}</span>
+    </a>
 
-        {# Der Upload läuft in index.js per fetch, nicht über htmx: nur so kommt
-           die Ordnerstruktur aus webkitRelativePath beim Server an. #}
-        <form id="upload-form">
-            <div class="picker">
-                <label class="button" for="upload">Ordner wählen</label>
-                <input type="file" id="upload" name="files" hidden
-                       webkitdirectory directory multiple>
-
-                <label class="button secondary" for="upload-files">Einzelne Dateien</label>
-                <input type="file" id="upload-files" name="files" hidden multiple
-                       accept="audio/*,.flac,.wav,.aiff,.aif,.m4a,.mp3,.ogg,.opus,.wv,.ape">
-
-                <button type="submit" id="upload-submit" class="button primary" disabled>
-                    Hochladen
-                </button>
-                <span id="upload-spinner" class="htmx-indicator spinner">lädt …</span>
-            </div>
-        </form>
-
-        <!-- Vorprüfung im Browser: verrät schon vor dem Upload, ob die
-             Dateien verlustfrei sind. -->
-        <div id="preflight"></div>
-
-        {# Was noch im Staging liegt. Ohne diese Liste wäre ein Upload nach
-           einem Neuladen zwar noch auf der Platte, aber nicht mehr
-           erreichbar -- die Session-ID steht sonst nur im ausgelieferten
-           HTML. #}
-        <div id="sessions" hx-get="/sessions" hx-trigger="load" hx-swap="innerHTML"></div>
-
-        {# Zweite Quelle für denselben Schritt: eine eingelegte Daten-CD.
-           Ab der Übernahme ist der Weg identisch mit dem Upload. Geladen wird
-           beim Seitenaufruf -- ohne CD kostet das nichts. #}
-        <div class="disc-source">
-            <h3>… oder von einer eingelegten Daten-CD</h3>
-            <div id="disc" hx-get="/disc" hx-trigger="load" hx-swap="innerHTML">
-                <p class="hint">suche nach einer CD …</p>
-            </div>
-        </div>
-
-        {# Audio-CDs haben kein Dateisystem und müssen gelesen werden. Deshalb
-           getrennt von der Daten-CD, obwohl beide „CD" heißen. #}
-        <div class="disc-source">
-            <h3>… oder von einer Audio-CD (rippen)</h3>
-            <div id="rip" hx-get="/rip" hx-trigger="load" hx-swap="innerHTML">
-                <p class="hint">prüfe das Laufwerk …</p>
-            </div>
-        </div>
-    </section>
-
-    {# Hörbücher gehen einen eigenen Weg: kein Match, kein beets. Deshalb ein
-       eigener Abschnitt und nicht Schritt 1 mit anderer Einstellung. #}
-    <section class="step" id="audiobook-step">
-        <h2><span class="step-num">H</span> Hörbücher</h2>
-        <p class="hint">
-            Eigene Ablage, eigener Weg: Hörbücher laufen nicht über beets und
-            bekommen keinen Match – Audiobookshelf holt die Metadaten selbst.
-        </p>
-        <div id="audiobook" hx-get="/audiobook" hx-trigger="load" hx-swap="innerHTML">
-            <p class="hint">lade …</p>
-        </div>
-    </section>
-
-    <section class="step" id="files-step" hidden>
-        <h2><span class="step-num">2</span> Übernommene Dateien</h2>
-        <div id="files"></div>
-    </section>
-
-    <section class="step" id="match-step" hidden>
-        <h2><span class="step-num">3</span> Match auswählen</h2>
-        <div id="candidates"></div>
-    </section>
-
-    <section class="step" id="result-step" hidden>
-        <h2><span class="step-num">4</span> Importieren</h2>
-        <div id="result"></div>
-    </section>
-</main>
-
-<footer class="page-foot">
-    <p>
-        beets {{ health.beets_version }}
-        {%- if health.metadata_sources %}
-            · Metadaten: {{ health.metadata_sources | join(", ") }}
-        {%- endif %}
-        {%- if health.fingerprint %} · Fingerprinting aktiv{% endif %}
-    </p>
-</footer>
-</body>
-</html>
+    <a class="modus" href="/hoerbuch">
+        <span class="modus-icon" aria-hidden="true">▤</span>
+        <span class="modus-titel">Hörbücher</span>
+        <span class="modus-text">
+            Disc für Disc einlesen und am Ende zu einer m4b mit Kapiteln
+            bündeln. Ohne beets und ohne Match – die Metadaten holt
+            Audiobookshelf.
+        </span>
+        <span class="modus-ziel mono">{{ hoerbuch_ziel }}</span>
+    </a>
+</div>
+{% endblock %}

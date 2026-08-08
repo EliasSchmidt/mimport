@@ -30,6 +30,7 @@ import re
 import shutil
 import subprocess
 import threading
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -138,11 +139,24 @@ class BookState:
     has_cover: bool = False
     lossy: bool = False
 
+    #: Größe der fertigen m4b. Getrennt von ``total_bytes``, das absichtlich
+    #: nur die Quelldateien zählt -- sonst ginge in der Platzrechnung das
+    #: Ergebnis als Quelle durch.
+    m4b_bytes: int = 0
+
     @property
     def size_label(self) -> str:
-        if self.total_bytes >= 1024**3:
-            return f"{self.total_bytes / 1024**3:.1f} GB"
-        return f"{self.total_bytes / 1024**2:.0f} MB"
+        """Was das Buch auf der Platte belegt.
+
+        Die m4b muss mitzählen: nach dem Bündeln sind die Quellen gelöscht, und
+        ein fertiges Buch stand deshalb mit „0 MB" in der Liste.
+        """
+        gesamt = self.total_bytes + self.m4b_bytes
+        if gesamt >= 1024**3:
+            return f"{gesamt / 1024**3:.1f} GB"
+        if gesamt >= 1024**2:
+            return f"{gesamt / 1024**2:.0f} MB"
+        return f"{max(1, gesamt // 1024)} KB"
 
     @property
     def unstimmig(self) -> bool:
@@ -180,6 +194,11 @@ def state(buch: Path) -> BookState:
         (k.name for k in (buch.iterdir() if buch.is_dir() else []) if _DISC_RE.match(k.name)),
         key=_natural_key,
     )
+    try:
+        m4b_groesse = m4b.stat().st_size if m4b.is_file() else 0
+    except OSError:
+        m4b_groesse = 0
+
     return BookState(
         autor=buch.parent.name,
         titel=buch.name,
@@ -187,6 +206,7 @@ def state(buch: Path) -> BookState:
         discs=discs,
         file_count=len(quellen),
         total_bytes=gesamt,
+        m4b_bytes=m4b_groesse,
         has_m4b=m4b.is_file(),
         has_cover=any((buch / n).is_file() for n in COVER_NAMES),
         lossy=any(p.suffix.lower() in LOSSY_EXTENSIONS for p in quellen),
@@ -223,6 +243,11 @@ class M4bJob:
     geloescht: int = 0
     fehler: str | None = None
 
+    #: Wie lange der Encode gebraucht hat. Der einzige Weg, das Zeitlimit und
+    #: die Bitrate zu belegen statt zu schätzen.
+    gestartet: float = field(default_factory=time.monotonic)
+    beendet: float | None = None
+
     @property
     def laeuft(self) -> bool:
         return self.zustand not in ("fertig", "fehler")
@@ -232,6 +257,31 @@ class M4bJob:
         if self.sekunden_gesamt <= 0:
             return 0
         return min(100, round(100 * self.sekunden_fertig / self.sekunden_gesamt))
+
+    @property
+    def dauer(self) -> float:
+        ende = self.beendet if self.beendet is not None else time.monotonic()
+        return max(0.0, ende - self.gestartet)
+
+    @property
+    def dauer_text(self) -> str:
+        gesamt = int(self.dauer)
+        stunden, rest = divmod(gesamt, 3600)
+        minuten, sekunden = divmod(rest, 60)
+        if stunden:
+            return f"{stunden}:{minuten:02d}:{sekunden:02d}"
+        return f"{minuten}:{sekunden:02d}"
+
+    @property
+    def faktor_text(self) -> str:
+        """Wie viel schneller als Echtzeit encodiert wurde.
+
+        Der Wert, mit dem man das Zeitlimit für längere Bücher abschätzen kann:
+        bei Faktor 8 braucht ein 15-Stunden-Hörbuch knapp zwei Stunden.
+        """
+        if self.dauer <= 0 or self.sekunden_gesamt <= 0:
+            return ""
+        return f"{self.sekunden_gesamt / self.dauer:.1f}× Echtzeit"
 
 
 _m4b_job: M4bJob | None = None
@@ -529,18 +579,25 @@ def _bauen(
         job.meldung = "Vergleiche die Laufzeiten …"
         _quellen_aufraeumen(job, quellen, ziel, gesamt)
 
+        job.beendet = time.monotonic()
         job.zustand = "fertig"
         job.ergebnis = str(ziel)
+        job.meldung += f" Gebaut in {job.dauer_text}"
+        if job.faktor_text:
+            job.meldung += f" ({job.faktor_text})"
+        job.meldung += "."
 
     except AudiobookError as exc:
+        job.beendet = time.monotonic()
         job.zustand = "fehler"
         job.fehler = str(exc)
-        job.meldung = "Der m4b-Bau ist fehlgeschlagen."
+        job.meldung = f"Der m4b-Bau ist nach {job.dauer_text} fehlgeschlagen."
         log.warning("m4b-Bau abgebrochen: %s", exc)
     except Exception as exc:  # noqa: BLE001 -- der Thread darf nie still sterben
+        job.beendet = time.monotonic()
         job.zustand = "fehler"
         job.fehler = f"Unerwarteter Fehler: {exc}"
-        job.meldung = "Der m4b-Bau ist fehlgeschlagen."
+        job.meldung = f"Der m4b-Bau ist nach {job.dauer_text} fehlgeschlagen."
         log.exception("m4b-Bau mit unerwartetem Fehler abgebrochen")
     finally:
         shutil.rmtree(arbeit, ignore_errors=True)

@@ -26,6 +26,7 @@ import re
 import shutil
 import subprocess
 import threading
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -74,6 +75,12 @@ class RipJob:
     #: Fortschritt innerhalb des laufenden Tracks, 0 bis 1.
     track_anteil: float = 0.0
 
+    #: Wann der Auftrag begann und endete. Die Dauer steht in der Oberfläche,
+    #: weil sie sonst niemand kennt: „10 bis 40 Minuten" war eine Schätzung,
+    #: und für Zeitlimits und Bitraten braucht es gemessene Werte.
+    gestartet: float = field(default_factory=time.monotonic)
+    beendet: float | None = None
+
     #: Was cdparanoia gerade tut, sofern es nicht bloß liest -- „Kratzer
     #: erkannt", „liest langsamer" und Ähnliches.
     muehsam: str = ""
@@ -90,6 +97,21 @@ class RipJob:
             return 0
         fertig = self.track + min(1.0, max(0.0, self.track_anteil))
         return min(100, round(100 * fertig / self.tracks_gesamt))
+
+    @property
+    def dauer(self) -> float:
+        """Sekunden seit dem Start, beim fertigen Auftrag die Gesamtzeit."""
+        ende = self.beendet if self.beendet is not None else time.monotonic()
+        return max(0.0, ende - self.gestartet)
+
+    @property
+    def dauer_text(self) -> str:
+        gesamt = int(self.dauer)
+        stunden, rest = divmod(gesamt, 3600)
+        minuten, sekunden = divmod(rest, 60)
+        if stunden:
+            return f"{stunden}:{minuten:02d}:{sekunden:02d}"
+        return f"{minuten}:{sekunden:02d}"
 
     @property
     def buch_anzeige(self) -> str:
@@ -354,20 +376,23 @@ def _arbeite(
                 log.warning("DiscID-Abfrage fehlgeschlagen: %s", exc)
                 job.releases = []
 
+        job.beendet = time.monotonic()
         job.zustand = "fertig"
-        job.meldung = f"{toc.track_count} Tracks gelesen."
+        job.meldung = f"{toc.track_count} Tracks gelesen in {job.dauer_text}."
         log.info("Rip fertig: %s (%s)", zielordner, job.disc_id)
 
     except RipError as exc:
+        job.beendet = time.monotonic()
         job.zustand = "fehler"
         job.fehler = str(exc)
-        job.meldung = "Der Rip ist fehlgeschlagen."
+        job.meldung = f"Der Rip ist nach {job.dauer_text} fehlgeschlagen."
         bei_fehler()
         log.warning("Rip abgebrochen: %s", exc)
     except Exception as exc:  # noqa: BLE001 -- der Thread darf nie still sterben
+        job.beendet = time.monotonic()
         job.zustand = "fehler"
         job.fehler = f"Unerwarteter Fehler: {exc}"
-        job.meldung = "Der Rip ist fehlgeschlagen."
+        job.meldung = f"Der Rip ist nach {job.dauer_text} fehlgeschlagen."
         bei_fehler()
         log.exception("Rip mit unerwartetem Fehler abgebrochen")
 

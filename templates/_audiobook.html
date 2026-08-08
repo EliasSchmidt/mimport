@@ -29,7 +29,7 @@
             {% endif %}
             <p>
                 {{ job.track }} von {{ job.tracks_gesamt }} Tracks fertig –
-                {{ job.prozent }} %
+                {{ job.prozent }} % · läuft seit {{ job.dauer_text }}
                 {%- if job.muehsam %} · <em>{{ job.muehsam }}</em>{% endif %}
             </p>
             <div class="progress"><div class="progress-bar"
@@ -42,7 +42,10 @@
          hx-swap="innerHTML">
         <div class="banner info">
             <strong>{{ m4b.meldung }}</strong>
-            <p>{{ m4b.prozent }} % – das dauert bei einem langen Hörbuch Stunden.</p>
+            <p>
+                {{ m4b.prozent }} % – läuft seit {{ m4b.dauer_text }}
+                {%- if m4b.faktor_text %}, {{ m4b.faktor_text }}{% endif %}
+            </p>
             <div class="progress"><div class="progress-bar"
                  style="width: {{ m4b.prozent }}%"></div></div>
         </div>

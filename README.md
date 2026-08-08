@@ -390,7 +390,14 @@ Buchordners als Tracks desselben Buchs. Bleiben die FLACs neben der m4b liegen,
 steht das Buch doppelt in der Bibliothek.
 
 Ein Encode läuft auf schwacher Hardware Stunden, deshalb wieder ein
-Hintergrundauftrag mit Fortschrittsanzeige. Der Fortschritt kommt als
+Hintergrundauftrag mit Fortschrittsanzeige.
+
+**Beide Vorgänge zeigen ihre Dauer an** — der Rip „läuft seit 4:32" und am Ende
+„9 Tracks gelesen in 23:41", der m4b-Bau zusätzlich seinen Faktor gegenüber
+Echtzeit („8,4× Echtzeit"). Das ist nicht Kosmetik: `MIMPORT_M4B_TIMEOUT` steht
+auf sechs Stunden, und ob das für ein fünfzehnstündiges Hörbuch reicht, lässt
+sich nur mit einem gemessenen Faktor beantworten. Bei Faktor 8 braucht so ein
+Buch knapp zwei Stunden, bei Faktor 1,5 über zehn. Der Fortschritt kommt als
 Zeitstempel („4:32 von 11:04"), nicht als Kapitelzählung — ffmpeg encodiert am
 Stück.
 

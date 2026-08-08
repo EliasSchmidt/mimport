@@ -514,3 +514,44 @@ class TestAnteiligerFortschritt:
         """cdparanoia liest bei Überlappung auch mal über das Trackende."""
         job = rip.RipJob(tracks_gesamt=10, track=9, track_anteil=1.8)
         assert job.prozent == 100
+
+
+class TestRipDauer:
+    """Die Dauer soll ablesbar sein -- „10 bis 40 Minuten" war geschätzt."""
+
+    def test_laufender_auftrag_zaehlt_mit(self):
+        job = rip.RipJob()
+        job.gestartet = rip.time.monotonic() - 125
+        assert job.dauer >= 125
+        assert job.dauer_text == "2:05"
+
+    def test_fertiger_auftrag_bleibt_stehen(self):
+        job = rip.RipJob()
+        job.gestartet = 0.0
+        job.beendet = 761.0
+        assert job.dauer_text == "12:41"
+
+    def test_lange_dauer_mit_stunden(self):
+        job = rip.RipJob()
+        job.gestartet = 0.0
+        job.beendet = 3 * 3600 + 5 * 60 + 9
+        assert job.dauer_text == "3:05:09"
+
+    def test_dauer_steht_in_der_schlussmeldung(self, monkeypatch, toc):
+        from backend import sessions
+
+        monkeypatch.setattr(
+            rip, "_rip_track", lambda n, z, **kw: z.write_bytes(b"fLaC\x00\x00\x00\x22")
+        )
+        monkeypatch.setattr(rip.discid, "lookup", lambda *a, **k: [])
+
+        job = rip.RipJob()
+        session = sessions.create_session()
+        job.session_id = session.session_id
+        rip._arbeite(
+            job, toc, session.directory, bei_fehler=lambda: None
+        )
+
+        assert job.zustand == "fertig"
+        assert "gelesen in" in job.meldung
+        assert job.beendet is not None

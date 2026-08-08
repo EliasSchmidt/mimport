@@ -512,3 +512,51 @@ class _FakeThread:
 
     def start(self):
         pass
+
+
+class TestGroesseUndDauer:
+    """Was in der Liste steht -- und was der Nutzer ablesen soll."""
+
+    def test_fertiges_buch_zeigt_die_m4b_groesse(self, bibliothek):
+        """Stand vorher auf „0 MB": die Quellen sind ja gelöscht."""
+        buch = audiobook.book_dir("A", "B")
+        buch.mkdir(parents=True)
+        (buch / "B.m4b").write_bytes(b"x" * 5 * 1024**2)
+
+        zustand = audiobook.state(buch)
+        assert zustand.total_bytes == 0, "die m4b ist keine Quelle"
+        assert zustand.m4b_bytes == 5 * 1024**2
+        assert zustand.size_label == "5 MB"
+
+    def test_angefangenes_buch_zeigt_die_quellen(self, bibliothek):
+        buch = audiobook.book_dir("A", "B")
+        (buch / "CD 1").mkdir(parents=True)
+        (buch / "CD 1" / "01.flac").write_bytes(b"x" * 3 * 1024**2)
+
+        assert audiobook.state(buch).size_label == "3 MB"
+
+    def test_unstimmiges_buch_zaehlt_beides(self, bibliothek):
+        buch = audiobook.book_dir("A", "B")
+        buch.mkdir(parents=True)
+        (buch / "01.flac").write_bytes(b"x" * 2 * 1024**2)
+        (buch / "B.m4b").write_bytes(b"x" * 1024**2)
+
+        assert audiobook.state(buch).size_label == "3 MB"
+
+    def test_kleine_dateien_werden_nicht_zu_null(self, bibliothek):
+        buch = audiobook.book_dir("A", "B")
+        buch.mkdir(parents=True)
+        (buch / "B.m4b").write_bytes(b"x" * 4096)
+        assert audiobook.state(buch).size_label == "4 KB"
+
+    def test_dauer_und_faktor(self):
+        job = audiobook.M4bJob(buch="/x", sekunden_gesamt=3600.0)
+        job.gestartet = 0.0
+        job.beendet = 450.0
+        assert job.dauer_text == "7:30"
+        # Eine Stunde Audio in 7,5 Minuten sind 8× Echtzeit.
+        assert job.faktor_text == "8.0× Echtzeit"
+
+    def test_faktor_bleibt_leer_ohne_messwerte(self):
+        job = audiobook.M4bJob(buch="/x")
+        assert job.faktor_text == ""

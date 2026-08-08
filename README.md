@@ -275,6 +275,18 @@ Der Rip läuft im Hintergrund, die Oberfläche fragt den Stand alle zwei Sekunde
 ab. **Ein Laufwerk heißt ein Auftrag**: mehr Verwaltung als „läuft gerade einer?"
 braucht es nicht.
 
+Der Fortschritt zählt den angefangenen Track anteilig mit — `cdparanoia -e`
+meldet laufend, wo es steht. Das lohnt sich weniger wegen der Feinheit als bei
+**zerkratzten CDs**: liest das Laufwerk dieselbe Stelle minutenlang neu, stünde
+der Balken sonst still und man wüsste nicht, ob überhaupt noch etwas passiert.
+Meldet cdparanoia dabei Mühe („Kratzer erkannt", „liest langsamer", „Lesefehler"),
+steht das dabei.
+
+> Wieder eine Einheit, die man nachrechnen muss: die Zahl in
+> `##: 0 [read] @ 1009008` steht in **Samples**, 588 je Sektor — nicht in
+> Sektoren und nicht in Bytes. Nur geteilt durch 588 ergeben die gemeldeten
+> Werte glatte Sektornummern.
+
 ### Warum cdparanoia und nicht abcde
 
 `abcde` rippt, encodiert **und taggt** aus CDDB. Das Taggen kollidiert direkt

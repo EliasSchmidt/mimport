@@ -22,6 +22,7 @@ nicht.
 from __future__ import annotations
 
 import logging
+import re
 import shutil
 import subprocess
 import threading
@@ -70,11 +71,25 @@ class RipJob:
     def laeuft(self) -> bool:
         return self.zustand not in ("fertig", "fehler")
 
+    #: Fortschritt innerhalb des laufenden Tracks, 0 bis 1.
+    track_anteil: float = 0.0
+
+    #: Was cdparanoia gerade tut, sofern es nicht bloß liest -- „Kratzer
+    #: erkannt", „liest langsamer" und Ähnliches.
+    muehsam: str = ""
+
     @property
     def prozent(self) -> int:
+        """Fortschritt über die ganze CD.
+
+        Der angefangene Track zählt anteilig mit: bei neun Tracks wäre ein
+        Balken sonst neun Sprünge, und ein zäher Track sähe wie ein Stillstand
+        aus.
+        """
         if not self.tracks_gesamt:
             return 0
-        return min(100, round(100 * self.track / self.tracks_gesamt))
+        fertig = self.track + min(1.0, max(0.0, self.track_anteil))
+        return min(100, round(100 * fertig / self.tracks_gesamt))
 
     @property
     def buch_anzeige(self) -> str:
@@ -98,6 +113,65 @@ _job_lock = threading.Lock()
 def current() -> RipJob | None:
     """Der aktuelle Auftrag, falls es einen gibt."""
     return _job
+
+
+def _lesen(
+    nummer: int, wav: Path, fortschritt: Callable[[str, int], None] | None
+) -> int:
+    """Ruft cdparanoia auf und verfolgt seine Meldungen mit.
+
+    Gibt den Rückgabewert zurück. Die letzten Ausgabezeilen wandern ins Log --
+    bei einem Fehler steht dort, woran es lag, ohne dass sie in die Meldung an
+    den Nutzer müssen.
+    """
+    befehl = [
+        settings.cdparanoia_bin,
+        "-d",
+        settings.cdrom_device,
+        # Meldungen nach stderr, auch ohne Terminal.
+        "-e",
+        "--",
+        str(nummer),
+        str(wav),
+    ]
+    try:
+        prozess = subprocess.Popen(
+            befehl,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            text=True,
+            stdin=subprocess.DEVNULL,
+        )
+    except FileNotFoundError as exc:
+        raise RipError(
+            f"„{settings.cdparanoia_bin}“ wurde nicht gefunden."
+        ) from exc
+
+    letzte: list[str] = []
+    assert prozess.stderr is not None
+    for zeile in prozess.stderr:
+        stand = parse_progress(zeile)
+        if stand is not None:
+            if fortschritt is not None:
+                fortschritt(*stand)
+            continue
+        # Alles, was keine Fortschrittsmeldung ist, kann eine Fehlerursache
+        # sein -- die letzten Zeilen genügen dafür.
+        if zeile.strip():
+            letzte.append(zeile.strip())
+            del letzte[:-10]
+
+    try:
+        prozess.wait(timeout=settings.rip_track_timeout)
+    except subprocess.TimeoutExpired as exc:
+        prozess.kill()
+        raise RipError(
+            f"Track {nummer} dauerte zu lange. Ist die CD stark zerkratzt?"
+        ) from exc
+
+    if prozess.returncode != 0:
+        log.warning("cdparanoia (Track %s): %s", nummer, " | ".join(letzte))
+    return prozess.returncode
 
 
 def _run(command: list[str], *, timeout: float) -> subprocess.CompletedProcess:
@@ -143,26 +217,56 @@ def read_toc() -> discid.Toc:
         raise RipError(str(exc)) from exc
 
 
-def _rip_track(nummer: int, ziel: Path) -> None:
-    """Liest einen Track und schreibt ihn als FLAC nach ``ziel``."""
+#: Eine Fortschrittsmeldung von ``cdparanoia -e``, etwa
+#: ``##: 0 [read] @ 1009008``. Die Zahl hinter dem ``@`` steht in Samples.
+_FORTSCHRITT = re.compile(r"^##:\s*(-?\d+)\s*\[(\w+)\]\s*@\s*(\d+)")
+
+#: Rückmeldungen, die auf Leseprobleme hindeuten. cdparanoia benennt sie
+#: selbst; „read" ist der Normalfall, alles andere heißt, dass es sich mit der
+#: Stelle schwertut.
+_MUEHSAM = {
+    "verify": "prüft nach",
+    "fixup_edge": "korrigiert Ränder",
+    "fixup_atom": "korrigiert",
+    "scratch": "Kratzer erkannt",
+    "repair": "repariert",
+    "skip": "Stelle übersprungen",
+    "drift": "Drift",
+    "backoff": "liest langsamer",
+    "overlap": "sucht Überlappung",
+    "readerr": "Lesefehler",
+}
+
+
+def parse_progress(zeile: str) -> tuple[str, int] | None:
+    """Liest eine Fortschrittszeile: gibt Zustand und Sektor zurück.
+
+    ``None``, wenn die Zeile keine Fortschrittsmeldung ist -- cdparanoia
+    schreibt auch Kopfzeilen und Hinweise auf denselben Kanal.
+    """
+    treffer = _FORTSCHRITT.match(zeile.strip())
+    if treffer is None:
+        return None
+    _, zustand, samples = treffer.groups()
+    return zustand.lower(), int(samples) // discid.SAMPLES_PER_SECTOR
+
+
+def _rip_track(
+    nummer: int, ziel: Path, *, fortschritt: Callable[[str, int], None] | None = None
+) -> None:
+    """Liest einen Track und schreibt ihn als FLAC nach ``ziel``.
+
+    Mit ``-e`` meldet cdparanoia laufend, wo es steht -- die Option ist genau
+    dafür gedacht („for wrapper scripts"). Das lohnt sich weniger wegen der
+    Feinheit als bei zerkratzten CDs: liest das Laufwerk dieselbe Stelle
+    minutenlang neu, stünde der Balken sonst still und man wüsste nicht, ob
+    noch etwas passiert.
+    """
     wav = ziel.with_suffix(".wav")
     try:
-        ergebnis = _run(
-            [
-                settings.cdparanoia_bin,
-                "-d",
-                settings.cdrom_device,
-                "--",
-                str(nummer),
-                str(wav),
-            ],
-            timeout=settings.rip_track_timeout,
-        )
-        if ergebnis.returncode != 0 or not wav.exists():
-            raise RipError(
-                f"Track {nummer} ließ sich nicht lesen. "
-                f"{(ergebnis.stderr or '').strip()[-200:]}"
-            )
+        ergebnis = _lesen(nummer, wav, fortschritt)
+        if ergebnis != 0 or not wav.exists():
+            raise RipError(f"Track {nummer} ließ sich nicht lesen.")
 
         # Die Tracknummer muss mit. Sie ist das Einzige, was eine frisch
         # gerippte Datei über sich weiß, und ohne sie ordnet beets die Dateien
@@ -223,10 +327,22 @@ def _arbeite(
             range(toc.first_track, toc.first_track + toc.track_count), start=1
         ):
             job.track = index - 1
+            job.track_anteil = 0.0
+            job.muehsam = ""
             job.meldung = f"Lese Track {index} von {toc.track_count} …"
             ziel = zielordner / f"{index:02d} Track {index}.flac"
-            _rip_track(nummer, ziel)
+
+            laenge = toc.track_sectors(index - 1)
+
+            def melden(zustand: str, sektor: int, _laenge: int = laenge) -> None:
+                if _laenge > 0:
+                    job.track_anteil = sektor / _laenge
+                job.muehsam = _MUEHSAM.get(zustand, "")
+
+            _rip_track(nummer, ziel, fortschritt=melden)
             job.track = index
+            job.track_anteil = 0.0
+            job.muehsam = ""
 
         if mit_lookup:
             job.meldung = "Frage MusicBrainz nach der CD …"

@@ -106,7 +106,7 @@ class TestAblauf:
     def test_erfolgreicher_rip(self, monkeypatch, toc):
         gelesen = []
 
-        def fake_track(nummer, ziel):
+        def fake_track(nummer, ziel, **kwargs):
             gelesen.append(nummer)
             ziel.write_bytes(b"fLaC\x00\x00\x00\x22")
 
@@ -128,7 +128,7 @@ class TestAblauf:
 
     def test_releases_werden_uebernommen(self, monkeypatch, toc):
         monkeypatch.setattr(
-            rip, "_rip_track", lambda n, z: z.write_bytes(b"fLaC\x00\x00\x00\x22")
+            rip, "_rip_track", lambda n, z, **kw: z.write_bytes(b"fLaC\x00\x00\x00\x22")
         )
         hinweis = discid.ReleaseHint(mbid="x" * 36, title="Album", date="", country="")
         monkeypatch.setattr(rip.discid, "lookup", lambda *a, **k: [hinweis])
@@ -146,7 +146,7 @@ class TestAblauf:
     def test_musicbrainz_ausfall_verwirft_den_rip_nicht(self, monkeypatch, toc):
         """Die Tracks sind gelesen -- die Suche geht notfalls von Hand."""
         monkeypatch.setattr(
-            rip, "_rip_track", lambda n, z: z.write_bytes(b"fLaC\x00\x00\x00\x22")
+            rip, "_rip_track", lambda n, z, **kw: z.write_bytes(b"fLaC\x00\x00\x00\x22")
         )
 
         def kaputt(*args, **kwargs):
@@ -168,7 +168,7 @@ class TestAblauf:
     def test_lesefehler_raeumt_die_session_weg(
         self, monkeypatch, toc, isoliertes_staging
     ):
-        def kaputt(nummer, ziel):
+        def kaputt(nummer, ziel, **kwargs):
             if nummer == 3:
                 raise rip.RipError("Track 3 ließ sich nicht lesen.")
             ziel.write_bytes(b"fLaC\x00\x00\x00\x22")
@@ -194,7 +194,7 @@ class TestAblauf:
     ):
         """Ein Thread, der still stirbt, hinterlässt eine hängende Anzeige."""
 
-        def platzt(nummer, ziel):
+        def platzt(nummer, ziel, **kwargs):
             raise ValueError("etwas ganz anderes")
 
         monkeypatch.setattr(rip, "_rip_track", platzt)
@@ -218,14 +218,16 @@ class TestRipTrack:
         ziel = tmp_path / "01 Track 1.flac"
         wav = ziel.with_suffix(".wav")
 
-        def fake(command, **kwargs):
-            if "cdparanoia" in command[0]:
-                wav.write_bytes(b"RIFF....WAVE")
-            else:
-                ziel.write_bytes(b"fLaC\x00\x00\x00\x22")
+        def fake_lesen(nummer, w, fortschritt):
+            w.write_bytes(b"RIFF....WAVE")
+            return 0
+
+        def fake_run(command, **kwargs):
+            ziel.write_bytes(b"fLaC\x00\x00\x00\x22")
             return subprocess.CompletedProcess(command, 0, "", "")
 
-        monkeypatch.setattr(rip, "_run", fake)
+        monkeypatch.setattr(rip, "_lesen", fake_lesen)
+        monkeypatch.setattr(rip, "_run", fake_run)
         rip._rip_track(1, ziel)
 
         assert ziel.exists()
@@ -235,11 +237,11 @@ class TestRipTrack:
         ziel = tmp_path / "01 Track 1.flac"
         wav = ziel.with_suffix(".wav")
 
-        def fake(command, **kwargs):
-            wav.write_bytes(b"RIFF....WAVE")
-            return subprocess.CompletedProcess(command, 1, "", "Leseschaden")
+        def fake_lesen(nummer, w, fortschritt):
+            w.write_bytes(b"RIFF....WAVE")
+            return 1  # Leseschaden
 
-        monkeypatch.setattr(rip, "_run", fake)
+        monkeypatch.setattr(rip, "_lesen", fake_lesen)
         with pytest.raises(rip.RipError):
             rip._rip_track(1, ziel)
 
@@ -374,7 +376,7 @@ class TestHoerbuchZiel:
         assert dritte.name == "CD 3"
         dritte.mkdir(parents=True)
 
-        def kaputt(nummer, ziel):
+        def kaputt(nummer, ziel, **kwargs):
             raise rip.RipError("Track 1 ließ sich nicht lesen.")
 
         monkeypatch.setattr(rip, "_rip_track", kaputt)
@@ -403,7 +405,7 @@ class TestHoerbuchZiel:
             rip.discid, "lookup", lambda *a, **k: gefragt.append(1) or []
         )
         monkeypatch.setattr(
-            rip, "_rip_track", lambda n, z: z.write_bytes(b"fLaC\x00\x00\x00\x22")
+            rip, "_rip_track", lambda n, z, **kw: z.write_bytes(b"fLaC\x00\x00\x00\x22")
         )
 
         from backend import audiobook
@@ -433,3 +435,82 @@ class TestAnzeigeDesBuchs:
         job = rip.RipJob()
         assert job.buch_anzeige == ""
         assert job.disc_anzeige == ""
+
+
+class TestFortschrittImTrack:
+    """Das echte Ausgabeformat von ``cdparanoia -e``.
+
+    Aus einem tatsächlichen Rip mitgeschnitten -- die Zahl hinter dem ``@``
+    steht in Samples, nicht in Sektoren und nicht in Bytes. Nur geteilt durch
+    588 ergeben die Werte glatte Sektornummern.
+    """
+
+    AUSGABE = """\
+Sending all callbacks to stderr for wrapper script
+cdparanoia III release 10.2 (September 11, 2008)
+
+Ripping from sector       0 (track  1 [0:00.00])
+          to sector   29461 (track  1 [6:32.61])
+
+outputting to track1.wav
+
+##: 0 [read] @ 24696
+##: 0 [read] @ 56448
+##: 0 [read] @ 1009008
+"""
+
+    def test_samples_werden_zu_sektoren(self):
+        assert rip.parse_progress("##: 0 [read] @ 24696") == ("read", 42)
+        assert rip.parse_progress("##: 0 [read] @ 56448") == ("read", 96)
+        assert rip.parse_progress("##: 0 [read] @ 1009008") == ("read", 1716)
+
+    def test_kopfzeilen_sind_kein_fortschritt(self):
+        for zeile in self.AUSGABE.splitlines():
+            if not zeile.startswith("##:"):
+                assert rip.parse_progress(zeile) is None, zeile
+
+    def test_alle_fortschrittszeilen_der_echten_ausgabe(self):
+        erkannt = [
+            rip.parse_progress(z)
+            for z in self.AUSGABE.splitlines()
+            if rip.parse_progress(z) is not None
+        ]
+        assert erkannt == [("read", 42), ("read", 96), ("read", 1716)]
+
+    def test_leseprobleme_werden_erkannt(self):
+        """Bei einer zerkratzten CD meldet cdparanoia andere Zustände."""
+        assert rip.parse_progress("##: 4 [scratch] @ 588") == ("scratch", 1)
+        assert rip.parse_progress("##: -1 [readerr] @ 1176") == ("readerr", 2)
+        # Und die haben einen deutschen Text.
+        assert rip._MUEHSAM["scratch"] == "Kratzer erkannt"
+        assert rip._MUEHSAM["readerr"] == "Lesefehler"
+
+
+class TestTrackLaenge:
+    def test_laenge_aus_dem_toc(self, toc):
+        # Testvektor: Offsets 150, 15363, ... Leadout 95462.
+        assert toc.track_sectors(0) == 15363 - 150
+        assert toc.track_sectors(1) == 32314 - 15363
+        # Der letzte Track reicht bis zum Leadout.
+        assert toc.track_sectors(5) == 95462 - 80489
+
+    def test_ausserhalb_gibt_null(self, toc):
+        assert toc.track_sectors(99) == 0
+        assert toc.track_sectors(-1) == 0
+
+
+class TestAnteiligerFortschritt:
+    """Ein zäher Track soll nicht wie ein Stillstand aussehen."""
+
+    def test_halber_track_zaehlt_halb(self):
+        job = rip.RipJob(tracks_gesamt=10, track=2, track_anteil=0.5)
+        assert job.prozent == 25  # 2,5 von 10
+
+    def test_ohne_anteil_wie_vorher(self):
+        job = rip.RipJob(tracks_gesamt=10, track=2)
+        assert job.prozent == 20
+
+    def test_anteil_wird_begrenzt(self):
+        """cdparanoia liest bei Überlappung auch mal über das Trackende."""
+        job = rip.RipJob(tracks_gesamt=10, track=9, track_anteil=1.8)
+        assert job.prozent == 100

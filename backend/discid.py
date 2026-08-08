@@ -37,6 +37,12 @@ PREGAP_SECTORS = 150
 #: Ein Sektor CD-Audio: 44100 Hz, 2 Kanäle, 16 Bit, 1/75 Sekunde.
 BYTES_PER_SECTOR = 2352
 
+#: Samples je Sektor -- 2352 Byte zu je 4 Byte (zwei Kanäle, 16 Bit).
+#: cdparanoia zählt seinen Fortschritt in dieser Einheit, nicht in Sektoren
+#: und nicht in Bytes. Nachgemessen an einer echten Ausgabe: 24696, 56448,
+#: 88200 ... ergeben nur geteilt durch 588 glatte Sektornummern.
+SAMPLES_PER_SECTOR = 588
+
 _MB_DISCID_URL = "https://musicbrainz.org/ws/2/discid/{}"
 
 #: MusicBrainz verlangt eine aussagekräftige Kennung mit Kontaktmöglichkeit.
@@ -81,6 +87,19 @@ class Toc:
     @property
     def total_seconds(self) -> float:
         return self.total_sectors / 75
+
+    def track_sectors(self, index: int) -> int:
+        """Länge eines Tracks in Sektoren, ``index`` ab 0.
+
+        Grundlage für den Fortschritt *innerhalb* eines Tracks: cdparanoia
+        meldet die gelesene Position, und erst im Verhältnis zur Tracklänge
+        wird daraus ein Anteil.
+        """
+        if index < 0 or index >= len(self.offsets):
+            return 0
+        if index + 1 < len(self.offsets):
+            return self.offsets[index + 1] - self.offsets[index]
+        return self.leadout - self.offsets[index]
 
 
 def calculate(toc: Toc) -> str:

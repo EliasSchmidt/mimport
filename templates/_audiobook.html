@@ -27,7 +27,11 @@
             {% if job.disc_ordner %}
             <p class="hint mono">{{ job.buch_anzeige }} · {{ job.disc_anzeige }}</p>
             {% endif %}
-            <p>{{ job.track }} von {{ job.tracks_gesamt }} Tracks fertig – {{ job.prozent }} %</p>
+            <p>
+                {{ job.track }} von {{ job.tracks_gesamt }} Tracks fertig –
+                {{ job.prozent }} %
+                {%- if job.muehsam %} · <em>{{ job.muehsam }}</em>{% endif %}
+            </p>
             <div class="progress"><div class="progress-bar"
                  style="width: {{ job.prozent }}%"></div></div>
         </div>

@@ -299,6 +299,26 @@ fertigen Buchordner.
                            /<Titel>.m4b      (nach dem Bündeln)
 ```
 
+In der Liste hat jedes Buch die Knöpfe, die zu seinem Zustand passen:
+
+| Zustand | Knöpfe |
+|---|---|
+| angefangen | **Nächste CD** · **m4b bauen** |
+| gebündelt | **Von vorn einlesen** |
+| m4b *und* Quellen | **Neu bauen** (mit Warnung) |
+
+**Nächste CD** übergibt den Buchpfad, damit Autor und Titel nicht erneut
+eingetippt und nicht ein zweites Mal entschärft werden — aus einem schon
+bereinigten Namen könnte sonst ein abweichender Ordner entstehen.
+
+**Von vorn einlesen** ist für den Fall, dass sich der Rip als fehlerhaft
+erweist. Die fertige m4b wird dabei **umbenannt, nicht gelöscht**: sie bekommt
+`.ersetzt` angehängt und gilt damit weder für mimport noch für Audiobookshelf
+als Hörbuch. Wäre sie gelöscht, stünde man nach einem gescheiterten zweiten
+Versuch mit nichts da; bliebe sie liegen, zeigte Audiobookshelf das Buch
+stundenlang doppelt an, solange der neue Rip läuft. Umbenannt wird erst, wenn
+das Einlesen wirklich angelaufen ist — ein Fehlstart lässt das Buch unverändert.
+
 Der Buchordner **ist** der Zustand — welche Discs schon eingelesen sind, steht
 im Dateisystem und in keiner Datenbank. Ein Neustart mitten in einem
 zwölfteiligen Hörbuch verliert deshalb nichts. Für die nächste Disc einfach

@@ -454,6 +454,7 @@ def audiobook_rip(
     autor: str = Form(default=""),
     titel: str = Form(default=""),
     buch: str = Form(default=""),
+    von_vorn: bool = Form(default=False),
 ) -> HTMLResponse:
     """Liest eine Hörbuch-CD in den Ordner eines Buchs.
 
@@ -481,20 +482,42 @@ def audiobook_rip(
             request, fehler="Auf dem Hörbuch-Volume ist nicht genug Platz frei."
         )
 
+    # „Von vorn" legt die fertige m4b beiseite -- aber erst, wenn das Einlesen
+    # wirklich angelaufen ist. Sonst wäre sie nach einem Fehlstart (kein
+    # Laufwerk, keine CD) umbenannt, ohne dass etwas passiert ist, und die
+    # Fehlermeldung verschluckte den Hinweis darauf.
+    def beiseite_legen() -> str:
+        if not von_vorn:
+            return ""
+        weggelegt = audiobook.m4b_beiseite_legen(buchpfad)
+        if weggelegt is None:
+            return ""
+        return (
+            f"Die bisherige m4b liegt jetzt als „{weggelegt.name}“ daneben und "
+            "wird nicht mehr als Hörbuch gelesen. "
+        )
+
     if disc.is_available():
-        return _audiobook_datencd(request, buchpfad)
+        return _audiobook_datencd(request, buchpfad, beiseite_legen=beiseite_legen)
 
     try:
         ordner = audiobook.next_disc_dir(buchpfad)
         rip.start_audiobook(allowance=frei, buch=buchpfad, disc_ordner=ordner)
     except (rip.RipError, audiobook.AudiobookError) as exc:
         log.warning("Hörbuch-Rip nicht gestartet: %s", exc)
+        # Nichts umbenannt -- das Buch ist unverändert.
         return _audiobook_fragment(request, fehler=str(exc))
-    return _audiobook_fragment(request)
+    return _audiobook_fragment(request, meldung=beiseite_legen())
 
 
-def _audiobook_datencd(request: Request, buch: Path) -> HTMLResponse:
-    """Eine Daten-CD ins Buch kopieren -- kein Rippen nötig."""
+def _audiobook_datencd(
+    request: Request, buch: Path, *, beiseite_legen=None
+) -> HTMLResponse:
+    """Eine Daten-CD ins Buch kopieren -- kein Rippen nötig.
+
+    ``beiseite_legen`` wird erst nach dem Kopieren aufgerufen: scheitert es,
+    soll das Buch unverändert bleiben.
+    """
     try:
         quelle = disc.resolve_folder("")
         ordner = audiobook.next_disc_dir(buch, ist_datencd=True)
@@ -504,9 +527,11 @@ def _audiobook_datencd(request: Request, buch: Path) -> HTMLResponse:
         anzahl = disc.copy_into(quelle, ordner, rekursiv=True)
     except (disc.DiscError, audiobook.AudiobookError) as exc:
         return _audiobook_fragment(request, fehler=str(exc))
+    hinweis = beiseite_legen() if beiseite_legen else ""
     wohin = "ins Buch" if ordner == buch else f"nach {ordner.name}"
     return _audiobook_fragment(
-        request, meldung=f"{anzahl} Dateien von der Daten-CD {wohin} kopiert."
+        request,
+        meldung=f"{hinweis}{anzahl} Dateien von der Daten-CD {wohin} kopiert.",
     )
 
 

@@ -789,3 +789,72 @@ class TestHoerbuchFortsetzen:
 
         response = client.get("/audiobook")
         assert ">Nächste CD</button>" not in response.text
+
+
+class TestVonVornUeberDieOberflaeche:
+    """Ein fertiges Buch: kein „Nächste CD", aber auch keine Sackgasse."""
+
+    @pytest.fixture(autouse=True)
+    def bibliothek(self, tmp_path, monkeypatch):
+        from backend import audiobook, rip
+
+        wurzel = tmp_path / "audiobooks"
+        monkeypatch.setattr(audiobook.settings, "audiobook_root", wurzel)
+        rip._job = None
+        audiobook._m4b_job = None
+        yield wurzel
+        rip._job = None
+        audiobook._m4b_job = None
+
+    def _fertiges_buch(self, bibliothek):
+        buch = bibliothek / "Autor" / "Buch"
+        buch.mkdir(parents=True)
+        (buch / "Buch.m4b").write_bytes(b"fertige fassung")
+        return buch
+
+    def test_knopfwechsel_bei_fertigem_buch(self, client, bibliothek):
+        self._fertiges_buch(bibliothek)
+        html = client.get("/audiobook").text
+        assert ">Nächste CD</button>" not in html
+        assert ">Von vorn einlesen</button>" in html
+
+    def test_fehlstart_laesst_das_buch_unangetastet(self, client, bibliothek, monkeypatch):
+        """Ohne Laufwerk darf die fertige m4b nicht umbenannt werden."""
+        from backend import rip
+
+        buch = self._fertiges_buch(bibliothek)
+
+        def kein_laufwerk():
+            raise rip.RipError("Im Laufwerk wurde keine Audio-CD erkannt.")
+
+        monkeypatch.setattr(rip, "read_toc", kein_laufwerk)
+
+        response = client.post(
+            "/audiobook/rip", data={"buch": "Autor/Buch", "von_vorn": "true"}
+        )
+        assert "keine Audio-CD erkannt" in response.text
+        # Entscheidend: die m4b heißt noch wie vorher.
+        assert (buch / "Buch.m4b").read_bytes() == b"fertige fassung"
+        assert not list(buch.glob("*.ersetzt"))
+
+    def test_erfolgreicher_start_legt_die_m4b_beiseite(
+        self, client, bibliothek, tmp_path, monkeypatch
+    ):
+        from backend.config import settings
+
+        buch = self._fertiges_buch(bibliothek)
+        # Daten-CD einlegen, dann läuft es ohne Laufwerk durch.
+        cd = tmp_path / "disc"
+        cd.mkdir()
+        (cd / "01 Kapitel.mp3").write_bytes(b"\xff\xfb\x00\x00")
+        monkeypatch.setattr(settings, "disc_root", cd)
+
+        response = client.post(
+            "/audiobook/rip", data={"buch": "Autor/Buch", "von_vorn": "true"}
+        )
+        assert "liegt jetzt als" in response.text
+        assert not (buch / "Buch.m4b").exists()
+        beiseite = list(buch.glob("*.ersetzt"))
+        assert len(beiseite) == 1
+        # Nicht gelöscht, nur umbenannt.
+        assert beiseite[0].read_bytes() == b"fertige fassung"

@@ -175,7 +175,16 @@
                         </button>
                     </form>
                     {% elif b.has_m4b %}
-                    <span class="hint">fertig</span>
+                    {# Fertig, aber keine Sackgasse: wer merkt, dass der Rip
+                       Fehler hatte, muss von vorn anfangen können. Die alte
+                       m4b wird dabei beiseite gelegt, nicht gelöscht. #}
+                    <form hx-post="/audiobook/rip" hx-target="#audiobook"
+                          hx-swap="innerHTML"
+                          hx-confirm="Von vorn einlesen? Die fertige m4b wird beiseite gelegt (nicht gelöscht) und danach als „.ersetzt“ nicht mehr als Hörbuch erkannt.">
+                        <input type="hidden" name="buch" value="{{ b.relative }}">
+                        <input type="hidden" name="von_vorn" value="true">
+                        <button type="submit" class="button">Von vorn einlesen</button>
+                    </form>
                     {% endif %}
                 </td>
             </tr>

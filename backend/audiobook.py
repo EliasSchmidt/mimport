@@ -362,6 +362,35 @@ def free_bytes() -> int:
         return 0
 
 
+#: Endung für eine beiseite gelegte m4b. Bewusst nichts, was in
+#: ``AUDIO_EXTENSIONS`` steht -- weder mimport noch Audiobookshelf sollen die
+#: Datei danach noch als Hörbuch sehen.
+ERSETZT_SUFFIX = ".ersetzt"
+
+
+def m4b_beiseite_legen(buch: Path) -> Path | None:
+    """Benennt eine vorhandene m4b um, statt sie zu löschen.
+
+    Für „von vorn einlesen": Solange die alte m4b im Buchordner liegt und
+    daneben neue Quelldateien entstehen, zeigt Audiobookshelf das Buch doppelt
+    an -- und ein Rip dauert Stunden, das Fenster ist also real. Gelöscht wird
+    sie aber auch nicht: scheitert der neue Versuch, ist die alte Fassung das
+    Einzige, was noch da ist.
+    """
+    m4b = buch / f"{buch.name}.m4b"
+    if not m4b.is_file():
+        return None
+
+    ziel = m4b.with_suffix(m4b.suffix + ERSETZT_SUFFIX)
+    zaehler = 2
+    while ziel.exists():
+        ziel = m4b.with_suffix(f"{m4b.suffix}{ERSETZT_SUFFIX}{zaehler}")
+        zaehler += 1
+    m4b.rename(ziel)
+    log.info("Alte m4b beiseite gelegt: %s", ziel.name)
+    return ziel
+
+
 def resolve_book(relativ: str) -> Path:
     """Löst einen Buchpfad aus einem Formular auf, ohne die Bibliothek zu verlassen."""
     root = library_root().resolve()

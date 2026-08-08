@@ -440,3 +440,75 @@ class TestZweitesBuendeln:
         assert self._bauen(buch).zustand == "fertig"
         # 2+2+3 Sekunden, alles drin.
         assert abs(audiobook._probe_duration(buch / "B.m4b") - 7) < 0.5
+
+
+class TestVonVornEinlesen:
+    """Ein fertiges Buch darf keine Sackgasse sein."""
+
+    def test_m4b_wird_beiseite_gelegt_nicht_geloescht(self, bibliothek):
+        buch = audiobook.book_dir("A", "B")
+        buch.mkdir(parents=True)
+        m4b = buch / "B.m4b"
+        m4b.write_bytes(b"alte fassung")
+
+        beiseite = audiobook.m4b_beiseite_legen(buch)
+
+        assert beiseite is not None
+        assert not m4b.exists()
+        # Der Inhalt ist erhalten -- scheitert der neue Versuch, ist das alles,
+        # was noch da ist.
+        assert beiseite.read_bytes() == b"alte fassung"
+
+    def test_beiseite_gelegtes_gilt_nicht_mehr_als_hoerbuch(self, bibliothek):
+        """Sonst zeigte Audiobookshelf das Buch doppelt an."""
+        buch = audiobook.book_dir("A", "B")
+        buch.mkdir(parents=True)
+        (buch / "B.m4b").write_bytes(b"x")
+        audiobook.m4b_beiseite_legen(buch)
+
+        zustand = audiobook.state(buch)
+        assert zustand.has_m4b is False
+        assert zustand.file_count == 0
+        assert audiobook.audio_files(buch) == []
+
+    def test_ohne_m4b_passiert_nichts(self, bibliothek):
+        buch = audiobook.book_dir("A", "B")
+        buch.mkdir(parents=True)
+        assert audiobook.m4b_beiseite_legen(buch) is None
+
+    def test_mehrmals_von_vorn_ueberschreibt_nichts(self, bibliothek):
+        buch = audiobook.book_dir("A", "B")
+        buch.mkdir(parents=True)
+
+        (buch / "B.m4b").write_bytes(b"erste")
+        erste = audiobook.m4b_beiseite_legen(buch)
+        (buch / "B.m4b").write_bytes(b"zweite")
+        zweite = audiobook.m4b_beiseite_legen(buch)
+
+        assert erste != zweite
+        assert erste.read_bytes() == b"erste"
+        assert zweite.read_bytes() == b"zweite"
+
+    def test_danach_baut_es_ohne_ersetzen(self, bibliothek, monkeypatch):
+        """Weil keine m4b mehr im Weg liegt, greift die Rückfrage nicht."""
+        buch = audiobook.book_dir("A", "B")
+        buch.mkdir(parents=True)
+        (buch / "B.m4b").write_bytes(b"alt")
+        audiobook.m4b_beiseite_legen(buch)
+        (buch / "01.flac").write_bytes(b"x")
+
+        monkeypatch.setattr(audiobook, "_probe_duration", lambda p: 1.0)
+        monkeypatch.setattr(audiobook, "_probe_kbps", lambda p: 0)
+        monkeypatch.setattr(audiobook.threading, "Thread", _FakeThread)
+
+        # Kein AudiobookError über eine schon vorhandene m4b.
+        job = audiobook.build(buch)
+        assert job.fehler is None
+
+
+class _FakeThread:
+    def __init__(self, *args, **kwargs):
+        pass
+
+    def start(self):
+        pass

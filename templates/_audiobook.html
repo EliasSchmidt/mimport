@@ -129,12 +129,20 @@
                         <input type="hidden" name="buch" value="{{ b.relative }}">
                         {% if b.lossy %}
                         <input type="hidden" name="force" value="true">
-                        <button type="submit" class="button">
-                            Trotzdem bündeln
-                        </button>
-                        {% else %}
-                        <button type="submit" class="button primary">m4b bauen</button>
                         {% endif %}
+
+                        {# Kapitelnamen: bei einem Rip gibt es keine Tags, und
+                           der Dateiname taugt nicht -- jede Disc fängt wieder
+                           bei 01 an. Leer lassen heißt deshalb "durchzählen". #}
+                        <details class="kapitel">
+                            <summary>Kapitel benennen ({{ b.file_count }})</summary>
+                            <textarea name="kapitel" rows="6"
+                                      placeholder="Eine Zeile je Kapitel, in der Reihenfolge der Tracks.&#10;Leer lassen: Titel-Tags, sonst „Kapitel 1“ … „Kapitel {{ b.file_count }}“."></textarea>
+                        </details>
+
+                        <button type="submit" class="button {{ '' if b.lossy else 'primary' }}">
+                            {{ "Trotzdem bündeln" if b.lossy else "m4b bauen" }}
+                        </button>
                     </form>
                     {% elif b.has_m4b %}
                     <span class="hint">fertig</span>

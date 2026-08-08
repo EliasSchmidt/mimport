@@ -373,24 +373,55 @@ def resolve_book(relativ: str) -> Path:
     return kandidat
 
 
-def _kapitel_schreiben(buch: Path, quellen: list[Path], ziel: Path) -> float:
+def chapter_titles(quellen: list[Path]) -> list[str]:
+    """Vorgeschlagene Kapitelnamen, einer je Quelldatei.
+
+    Erste Wahl ist das Titel-Tag -- MP3-Hörbuch-CDs bringen meist brauchbare
+    mit. Eine gerippte Audio-CD hat dagegen gar keine Tags, und der Dateiname
+    taugt nicht: der Rip zählt je Disc wieder von vorn, "01 Track 1" stünde bei
+    zwölf CDs zwölfmal in der Kapitelliste. Deshalb wird in diesem Fall
+    durchgezählt.
+    """
+    getaggt = [_probe_title(p) for p in quellen]
+    if all(getaggt) and len(set(getaggt)) == len(getaggt):
+        return getaggt
+
+    # Sobald Namen fehlen oder sich wiederholen, muss die laufende Nummer
+    # dazu -- zwei Kapitel namens "Intro" sind im Player nicht auseinander-
+    # zuhalten. Ein vorhandener Name bleibt dabei erhalten, er trägt ja
+    # Information; nur eindeutig wird er erst durch die Nummer.
+    return [
+        f"{nummer}. {vorhanden}" if vorhanden else f"Kapitel {nummer}"
+        for nummer, vorhanden in enumerate(getaggt, start=1)
+    ]
+
+
+def _kapitel_schreiben(
+    buch: Path, quellen: list[Path], ziel: Path, titel: list[str] | None = None
+) -> float:
     """Schreibt die FFMETADATA-Datei und liefert die Gesamtdauer in Sekunden.
 
-    Ein Kapitel je Track -- die Grenzen sind die Trackgrenzen. Der Titel kommt
-    aus dem Tag, sonst aus dem Dateinamen.
+    Ein Kapitel je Track -- die Grenzen sind die Trackgrenzen.
     """
-    zeilen = [";FFMETADATA1", f"title={buch.name}", f"artist={buch.parent.name}", "genre=Audiobook"]
+    namen = titel or chapter_titles(quellen)
+    zeilen = [
+        ";FFMETADATA1",
+        f"title={buch.name}",
+        f"artist={buch.parent.name}",
+        "genre=Audiobook",
+    ]
     start_ms = 0
-    for pfad in quellen:
+    for nummer, pfad in enumerate(quellen):
         dauer_ms = int(_probe_duration(pfad) * 1000)
         ende_ms = start_ms + dauer_ms
-        titel = _probe_title(pfad) or pfad.stem
+        name = namen[nummer] if nummer < len(namen) else f"Kapitel {nummer + 1}"
         zeilen += [
             "[CHAPTER]",
             "TIMEBASE=1/1000",
             f"START={start_ms}",
             f"END={ende_ms}",
-            f"title={titel}",
+            # Zeilenumbrüche würden die FFMETADATA-Datei zerlegen.
+            f"title={name.replace(chr(10), ' ').replace(chr(13), ' ')}",
         ]
         start_ms = ende_ms
     ziel.write_text("\n".join(zeilen) + "\n", encoding="utf-8")
@@ -405,7 +436,13 @@ def _cover_von(buch: Path) -> Path | None:
     return None
 
 
-def _bauen(job: M4bJob, buch: Path, quellen: list[Path], arbeit: Path) -> None:
+def _bauen(
+    job: M4bJob,
+    buch: Path,
+    quellen: list[Path],
+    arbeit: Path,
+    titel: list[str] | None = None,
+) -> None:
     """Der Encode. Läuft im Hintergrund-Thread."""
     ziel = buch / f"{buch.name}.m4b"
     try:
@@ -413,7 +450,7 @@ def _bauen(job: M4bJob, buch: Path, quellen: list[Path], arbeit: Path) -> None:
         job.meldung = "Lese Spieldauern und baue die Kapitel …"
         meta = arbeit / "meta.txt"
         liste = arbeit / "list.txt"
-        gesamt = _kapitel_schreiben(buch, quellen, meta)
+        gesamt = _kapitel_schreiben(buch, quellen, meta, titel)
         liste.write_text("".join(_concat_line(p) for p in quellen), encoding="utf-8")
         job.sekunden_gesamt = gesamt
 
@@ -562,7 +599,9 @@ def _quellen_aufraeumen(
     job.meldung += f" -- {job.geloescht} Quelldateien gelöscht."
 
 
-def build(buch: Path, *, force: bool = False) -> M4bJob:
+def build(
+    buch: Path, *, force: bool = False, titel: list[str] | None = None
+) -> M4bJob:
     """Startet das Bündeln eines Buchs zur m4b."""
     global _m4b_job
 
@@ -599,7 +638,10 @@ def build(buch: Path, *, force: bool = False) -> M4bJob:
     arbeit.mkdir(parents=True, exist_ok=True)
 
     thread = threading.Thread(
-        target=_bauen, args=(job, buch, quellen, arbeit), name="mimport-m4b", daemon=True
+        target=_bauen,
+        args=(job, buch, quellen, arbeit, titel),
+        name="mimport-m4b",
+        daemon=True,
     )
     thread.start()
     return job

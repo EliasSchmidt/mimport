@@ -399,3 +399,13 @@ pre {
 }
 
 pre.output { max-height: 22rem; overflow-y: auto; }
+
+/* Kapitelnamen beim Bündeln. Zugeklappt, weil der Normalfall "automatisch" ist. */
+.kapitel { margin: 0 0 0.5rem; text-align: left; }
+.kapitel summary { cursor: pointer; font-size: 0.85rem; color: var(--text-dim); }
+.kapitel textarea {
+    width: 100%;
+    margin-top: 0.4rem;
+    font-family: var(--mono);
+    font-size: 0.82rem;
+}

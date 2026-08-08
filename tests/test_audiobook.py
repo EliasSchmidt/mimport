@@ -293,3 +293,90 @@ class TestUnstimmigerZustand:
         assert job.geloescht == 0, "Quellen müssen stehen bleiben"
         zustand = audiobook.state(buch)
         assert zustand.unstimmig is True
+
+
+class TestKapitelnamen:
+    """Nach einem Rip gibt es keine Tags -- und der Dateiname wiederholt sich."""
+
+    @braucht_ffmpeg
+    def test_rip_ohne_tags_wird_durchgezaehlt(self, bibliothek):
+        buch = audiobook.book_dir("A", "B")
+        # So benennt der Rip: jede Disc fängt wieder bei 01 an.
+        for cd in (1, 2):
+            ordner = buch / f"CD {cd}"
+            ordner.mkdir(parents=True)
+            for i in (1, 2):
+                subprocess.run(
+                    ["ffmpeg", "-hide_banner", "-loglevel", "error", "-f", "lavfi",
+                     "-i", "sine=frequency=300:duration=1",
+                     str(ordner / f"{i:02d} Track {i}.flac"), "-y"],
+                    check=True,
+                )
+
+        namen = audiobook.chapter_titles(audiobook.audio_files(buch))
+        assert namen == ["Kapitel 1", "Kapitel 2", "Kapitel 3", "Kapitel 4"]
+        assert len(set(namen)) == 4, "Kapitelnamen dürfen sich nicht wiederholen"
+
+    @braucht_ffmpeg
+    def test_vorhandene_titel_werden_uebernommen(self, bibliothek):
+        buch = audiobook.book_dir("A", "B")
+        toene(buch, [1, 1], praefix="Die Reise")
+
+        namen = audiobook.chapter_titles(audiobook.audio_files(buch))
+        assert namen == ["Die Reise 1", "Die Reise 2"]
+
+    @braucht_ffmpeg
+    def test_doppelte_titel_werden_durchgezaehlt(self, bibliothek):
+        """Zwei gleich benannte Tracks sind im Player nicht auseinanderzuhalten."""
+        buch = audiobook.book_dir("A", "B")
+        buch.mkdir(parents=True)
+        for i in (1, 2):
+            subprocess.run(
+                ["ffmpeg", "-hide_banner", "-loglevel", "error", "-f", "lavfi",
+                 "-i", "sine=frequency=300:duration=1",
+                 "-metadata", "title=Intro", str(buch / f"{i:02d}.flac"), "-y"],
+                check=True,
+            )
+
+        namen = audiobook.chapter_titles(audiobook.audio_files(buch))
+        # Der Name bleibt erhalten, die Nummer macht ihn unterscheidbar.
+        assert namen == ["1. Intro", "2. Intro"]
+        assert len(set(namen)) == 2
+
+    @braucht_ffmpeg
+    def test_eigene_namen_landen_in_der_m4b(self, bibliothek):
+        import json
+        import time
+
+        buch = audiobook.book_dir("A", "B")
+        toene(buch, [1, 1])
+
+        job = audiobook.build(buch, titel=["Vorwort", "Erstes Kapitel"])
+        for _ in range(300):
+            if not job.laeuft:
+                break
+            time.sleep(0.2)
+        assert job.zustand == "fertig", job.fehler
+
+        roh = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_chapters", "-of", "json",
+             str(buch / "B.m4b")],
+            capture_output=True, text=True, check=True,
+        ).stdout
+        assert [k["tags"]["title"] for k in json.loads(roh)["chapters"]] == [
+            "Vorwort",
+            "Erstes Kapitel",
+        ]
+
+    def test_zeilenumbruch_zerlegt_die_metadatei_nicht(self, bibliothek, monkeypatch):
+        buch = audiobook.book_dir("A", "B")
+        buch.mkdir(parents=True)
+        quelle = buch / "01.flac"
+        quelle.write_bytes(b"x")
+        monkeypatch.setattr(audiobook, "_probe_duration", lambda p: 1.0)
+
+        meta = buch / "meta.txt"
+        audiobook._kapitel_schreiben(buch, [quelle], meta, ["Kapitel\nmit Umbruch"])
+        titel_zeilen = [z for z in meta.read_text().splitlines() if z.startswith("title=")]
+        # Buchtitel plus genau ein Kapitel -- kein zusätzlicher Eintrag.
+        assert len(titel_zeilen) == 2

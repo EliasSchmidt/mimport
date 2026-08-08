@@ -296,10 +296,28 @@ das ganze Buch.
 
 ### Bündeln zur m4b
 
-Aus zwölf CDs FLAC (gut 4 GB) wird eine Datei von etwa 300 MB: 64 kbit/s in
-Mono. Eine Lesung braucht keine Musikqualität, und genau darum geht es hier.
-Kapitelgrenzen sind die Trackgrenzen, der Kapitelname kommt aus dem Titel-Tag,
-sonst aus dem Dateinamen. Ein `cover.jpg` im Buchordner wird eingebettet.
+**Eine Datei je Buch**, alle Discs zusammengeführt: aus zwölf CDs FLAC (gut
+4 GB) wird eine `<Titel>.m4b` von etwa 300 MB, 64 kbit/s in Mono. Eine Lesung
+braucht keine Musikqualität, und genau darum geht es hier. Ein `cover.jpg` im
+Buchordner wird eingebettet.
+
+### Kapitelnamen
+
+Kapitelgrenzen sind die Trackgrenzen. Für den Namen gilt der Reihe nach:
+
+1. **Eigene Angabe.** Beim Bündeln lässt sich eine Liste eintragen — eine Zeile
+   je Kapitel, in der Reihenfolge der Tracks.
+2. **Das Titel-Tag**, sofern jeder Track eines hat und keines doppelt vorkommt.
+   MP3-Hörbuch-CDs bringen meist brauchbare mit.
+3. **Durchgezählt** — `Kapitel 1` … `Kapitel N`.
+
+Der dritte Fall ist beim Rip der Normalfall, und er ist wichtiger, als er
+aussieht: Eine gerippte Audio-CD hat gar keine Tags, und der Dateiname taugt
+nicht als Ersatz, weil der Rip auf jeder Disc wieder bei `01` anfängt. Bei zwölf
+CDs stünde `01 Track 1` sonst zwölfmal in der Kapitelliste. Sind Titel zwar
+vorhanden, aber mehrfach vergeben, wird ihnen die laufende Nummer vorangestellt
+(`1. Intro`, `2. Intro`) — der Name bleibt erhalten, eindeutig wird er
+trotzdem.
 
 Zwei Bremsen, beide aus schmerzhafter Erfahrung:
 

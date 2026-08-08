@@ -718,3 +718,74 @@ class TestLaufwerkGehoertNurEinemModus:
         monkeypatch.setattr(rip, "_job", job)
 
         assert "4 von 9 Tracks fertig" in client.get("/rip").text
+
+
+class TestHoerbuchFortsetzen:
+    """Für die nächste Disc soll man Autor und Titel nicht neu tippen."""
+
+    @pytest.fixture(autouse=True)
+    def bibliothek(self, tmp_path, monkeypatch):
+        from backend import audiobook, rip
+
+        wurzel = tmp_path / "audiobooks"
+        monkeypatch.setattr(audiobook.settings, "audiobook_root", wurzel)
+        rip._job = None
+        audiobook._m4b_job = None
+        yield wurzel
+        rip._job = None
+        audiobook._m4b_job = None
+
+    def test_autorfeld_ist_leer(self, client, bibliothek):
+        """Hier stand einmal der Autor des ersten Buchs der Liste."""
+        buch = bibliothek / "Astrid Lindgren" / "Ronja"
+        (buch / "CD 1").mkdir(parents=True)
+        (buch / "CD 1" / "01.flac").write_bytes(b"fLaC\x00\x00\x00\x22")
+
+        response = client.get("/audiobook")
+        # Das Buch steht in der Liste ...
+        assert "Astrid Lindgren" in response.text
+        # ... aber nicht als Wert im Eingabefeld.
+        assert 'name="autor" required placeholder="Frank Herbert">' in response.text
+        assert 'value="Astrid Lindgren"' not in response.text
+
+    def test_naechste_cd_knopf_je_buch(self, client, bibliothek):
+        buch = bibliothek / "Astrid Lindgren" / "Ronja"
+        (buch / "CD 1").mkdir(parents=True)
+        (buch / "CD 1" / "01.flac").write_bytes(b"fLaC\x00\x00\x00\x22")
+
+        response = client.get("/audiobook")
+        assert ">Nächste CD</button>" in response.text
+        assert 'value="Astrid Lindgren/Ronja"' in response.text
+
+    def test_fortsetzen_ueber_den_buchpfad(self, client, bibliothek, tmp_path, monkeypatch):
+        """Ohne Autor und Titel, allein über den Pfad des Buchs."""
+        from backend.config import settings
+
+        buch = bibliothek / "Astrid Lindgren" / "Ronja"
+        (buch / "CD 1").mkdir(parents=True)
+        (buch / "CD 1" / "01.flac").write_bytes(b"fLaC\x00\x00\x00\x22")
+
+        # Daten-CD einlegen, damit kopiert statt gerippt wird.
+        cd = tmp_path / "disc"
+        cd.mkdir()
+        (cd / "02 Kapitel.mp3").write_bytes(b"\xff\xfb\x00\x00")
+        monkeypatch.setattr(settings, "disc_root", cd)
+
+        response = client.post("/audiobook/rip", data={"buch": "Astrid Lindgren/Ronja"})
+        assert "kopiert" in response.text
+        # Die zweite Disc landet neben der ersten, nicht in einem neuen Buch.
+        assert (buch / "CD 2" / "02 Kapitel.mp3").is_file()
+        assert sorted(p.name for p in bibliothek.iterdir()) == ["Astrid Lindgren"]
+
+    def test_fremder_buchpfad_wird_abgewiesen(self, client, bibliothek):
+        response = client.post("/audiobook/rip", data={"buch": "../../etc"})
+        assert "nicht zur Bibliothek" in response.text or "gibt es nicht" in response.text
+
+    def test_fertiges_buch_hat_keinen_naechste_cd_knopf(self, client, bibliothek):
+        """Nach dem Bündeln wäre eine weitere Disc nur Verwirrung."""
+        buch = bibliothek / "Astrid Lindgren" / "Ronja"
+        buch.mkdir(parents=True)
+        (buch / "Ronja.m4b").write_bytes(b"x")
+
+        response = client.get("/audiobook")
+        assert ">Nächste CD</button>" not in response.text

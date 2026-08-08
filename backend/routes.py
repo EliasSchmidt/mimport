@@ -453,14 +453,23 @@ def audiobook_rip(
     request: Request,
     autor: str = Form(default=""),
     titel: str = Form(default=""),
+    buch: str = Form(default=""),
 ) -> HTMLResponse:
     """Liest eine Hörbuch-CD in den Ordner eines Buchs.
 
     Audio-CD oder Daten-CD entscheidet sich hier: liegt unter ``/disc`` etwas,
     ist es eine Daten-CD und wird kopiert; sonst wird gerippt.
+
+    ``buch`` ist der Weg für Fortsetzungen -- der Pfad eines bereits
+    angefangenen Buchs. Autor und Titel müssen dann nicht erneut eingegeben
+    werden, und sie werden auch nicht ein zweites Mal entschärft: aus einem
+    schon bereinigten Namen könnte sonst ein abweichender Ordner entstehen.
     """
     try:
-        buch = audiobook.book_dir(autor, titel)
+        buchpfad = (
+            audiobook.resolve_book(buch) if buch.strip()
+            else audiobook.book_dir(autor, titel)
+        )
     except audiobook.AudiobookError as exc:
         return _audiobook_fragment(request, fehler=str(exc))
 
@@ -473,11 +482,11 @@ def audiobook_rip(
         )
 
     if disc.is_available():
-        return _audiobook_datencd(request, buch)
+        return _audiobook_datencd(request, buchpfad)
 
     try:
-        ordner = audiobook.next_disc_dir(buch)
-        rip.start_audiobook(allowance=frei, buch=buch, disc_ordner=ordner)
+        ordner = audiobook.next_disc_dir(buchpfad)
+        rip.start_audiobook(allowance=frei, buch=buchpfad, disc_ordner=ordner)
     except (rip.RipError, audiobook.AudiobookError) as exc:
         log.warning("Hörbuch-Rip nicht gestartet: %s", exc)
         return _audiobook_fragment(request, fehler=str(exc))

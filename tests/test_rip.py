@@ -415,3 +415,21 @@ class TestHoerbuchZiel:
 
         assert job.zustand == "fertig"
         assert gefragt == [], "im Hörbuch-Modus darf nicht angefragt werden"
+
+
+class TestAnzeigeDesBuchs:
+    """Nach „Nächste CD" muss sichtbar sein, wohin die Disc geht."""
+
+    def test_buch_und_disc_werden_lesbar(self):
+        job = rip.RipJob(
+            modus="hoerbuch",
+            buch="/audiobooks/Astrid Lindgren/Ronja",
+            disc_ordner="/audiobooks/Astrid Lindgren/Ronja/CD 3",
+        )
+        assert job.buch_anzeige == "Astrid Lindgren – Ronja"
+        assert job.disc_anzeige == "CD 3"
+
+    def test_ohne_buch_leer_statt_fehler(self):
+        job = rip.RipJob()
+        assert job.buch_anzeige == ""
+        assert job.disc_anzeige == ""

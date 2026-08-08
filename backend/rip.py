@@ -76,6 +76,19 @@ class RipJob:
             return 0
         return min(100, round(100 * self.track / self.tracks_gesamt))
 
+    @property
+    def buch_anzeige(self) -> str:
+        """Autor und Titel, wie sie im Pfad stehen."""
+        if not self.buch:
+            return ""
+        pfad = Path(self.buch)
+        return f"{pfad.parent.name} – {pfad.name}"
+
+    @property
+    def disc_anzeige(self) -> str:
+        """Welche Disc gerade gelesen wird, etwa ``CD 3``."""
+        return Path(self.disc_ordner).name if self.disc_ordner else ""
+
 
 #: Es gibt ein Laufwerk, also einen Auftrag. Kein Verzeichnis, keine IDs.
 _job: RipJob | None = None

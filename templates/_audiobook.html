@@ -22,6 +22,11 @@
          hx-swap="innerHTML">
         <div class="banner info">
             <strong>{{ job.meldung }}</strong>
+            {# Welches Buch -- nach einem Klick auf "Nächste CD" ist das die
+               Bestätigung, dass die Disc am richtigen Platz landet. #}
+            {% if job.disc_ordner %}
+            <p class="hint mono">{{ job.buch_anzeige }} · {{ job.disc_anzeige }}</p>
+            {% endif %}
             <p>{{ job.track }} von {{ job.tracks_gesamt }} Tracks fertig – {{ job.prozent }} %</p>
             <div class="progress"><div class="progress-bar"
                  style="width: {{ job.prozent }}%"></div></div>
@@ -79,9 +84,11 @@
             bündelt, kann die früheren Discs nicht mehr mit aufnehmen.
         </p>
         <div class="fields">
+            {# Kein vorbefüllter Wert: hier stand einmal der Autor des ersten
+               Buchs der Liste, was bei jedem Seitenaufruf einen fremden Namen
+               ins Feld schrieb. Fortsetzungen laufen über „Nächste CD" unten. #}
             <label>Autor
-                <input type="text" name="autor" required placeholder="Frank Herbert"
-                       value="{{ buecher[0].autor if buecher else '' }}">
+                <input type="text" name="autor" required placeholder="Frank Herbert">
             </label>
             <label>Titel
                 <input type="text" name="titel" required placeholder="Der Wüstenplanet">
@@ -97,6 +104,13 @@
     {# --------------------------------------------------- angefangene Bücher #}
     {% if buecher %}
     <h4>In der Bibliothek</h4>
+    {% if buecher | rejectattr("has_m4b") | first %}
+    <p class="hint">
+        Für die nächste Disc eines angefangenen Buchs nicht oben neu eintippen –
+        den Knopf in der Zeile des Buchs nehmen. Das legt die Disc am richtigen
+        Platz ab.
+    </p>
+    {% endif %}
     <table class="files">
         <thead>
             <tr><th>Buch</th><th>Discs</th><th>Dateien</th><th>Größe</th><th></th></tr>
@@ -114,6 +128,17 @@
                 <td class="mono small">{{ b.file_count }}</td>
                 <td class="mono small">{{ b.size_label }}</td>
                 <td>
+                    {# Fortsetzen ohne Neueingabe: der Buchpfad steht schon
+                       fest, Autor und Titel müssen nicht erneut getippt und
+                       nicht erneut entschärft werden. #}
+                    {% if not b.has_m4b %}
+                    <form hx-post="/audiobook/rip" hx-target="#audiobook"
+                          hx-swap="innerHTML">
+                        <input type="hidden" name="buch" value="{{ b.relative }}">
+                        <button type="submit" class="button">Nächste CD</button>
+                    </form>
+                    {% endif %}
+
                     {% if b.unstimmig %}
                     {# Nach einem abgebrochenen Bündeln. Nicht stillschweigend
                        „fertig" nennen -- Audiobookshelf zeigt das Buch sonst

@@ -952,3 +952,94 @@ class TestParallelerBetrieb:
         assert "42 %" in html
         # Und man erkennt, welches Buch welcher Balken ist.
         assert "Buch A" in html and "Buch B" in html
+
+
+class TestBenachrichtigungsmarker:
+    """Die Zustandsmarker, an denen static/notify.js den Übergang erkennt.
+
+    Ein Rip dauert eine halbe Stunde, ein Encode Stunden -- ohne Signal müsste
+    man die Seite im Auge behalten.
+    """
+
+    @pytest.fixture(autouse=True)
+    def kein_alter_auftrag(self):
+        from backend import audiobook, rip
+
+        rip._job = None
+        audiobook._m4b_job = None
+        yield
+        rip._job = None
+        audiobook._m4b_job = None
+
+    @pytest.fixture
+    def werkzeuge(self, monkeypatch):
+        from backend import rip
+
+        monkeypatch.setattr(
+            rip,
+            "tools_available",
+            lambda: {"cdparanoia": True, "flac": True, "device": True},
+        )
+
+    def test_skript_ist_eingebunden(self, client):
+        for pfad in ("/", "/musik", "/hoerbuch"):
+            assert "/static/notify.js" in client.get(pfad).text
+
+    def test_ohne_auftrag_kein_marker(self, client, werkzeuge):
+        assert 'data-auftrag="rip-musik"' not in client.get("/rip").text
+
+    def test_laufender_rip_meldet_laeuft(self, client, werkzeuge, monkeypatch):
+        from backend import rip
+
+        monkeypatch.setattr(
+            rip, "_job", rip.RipJob(zustand="rippt", track=1, tracks_gesamt=9)
+        )
+        html = client.get("/rip").text
+        assert 'data-auftrag="rip-musik"' in html
+        assert 'data-zustand="laeuft"' in html
+
+    def test_fertiger_rip_meldet_fertig(self, client, werkzeuge, monkeypatch):
+        from backend import rip
+
+        job = rip.RipJob(zustand="fertig", tracks_gesamt=9)
+        job.meldung = "9 Tracks gelesen in 23:41."
+        monkeypatch.setattr(rip, "_job", job)
+
+        html = client.get("/rip").text
+        assert 'data-zustand="fertig"' in html
+        assert "23:41" in html
+
+    def test_fehler_meldet_fehler(self, client, werkzeuge, monkeypatch):
+        from backend import rip
+
+        monkeypatch.setattr(
+            rip, "_job", rip.RipJob(zustand="fehler", fehler="Track 3 unlesbar")
+        )
+        assert 'data-zustand="fehler"' in client.get("/rip").text
+
+    def test_hoerbuch_hat_zwei_getrennte_marker(
+        self, client, monkeypatch, tmp_path
+    ):
+        """Rip und Bündeln laufen parallel -- jeder braucht seinen eigenen."""
+        from backend import audiobook, rip
+
+        monkeypatch.setattr(
+            audiobook.settings, "audiobook_root", tmp_path / "audiobooks"
+        )
+        monkeypatch.setattr(
+            rip,
+            "_job",
+            rip.RipJob(modus="hoerbuch", zustand="rippt", buch=str(tmp_path / "A" / "B")),
+        )
+        monkeypatch.setattr(
+            audiobook,
+            "_m4b_job",
+            audiobook.M4bJob(buch=str(tmp_path / "A" / "C"), zustand="fertig"),
+        )
+
+        html = client.get("/audiobook").text
+        assert 'data-auftrag="rip-hoerbuch"' in html
+        assert 'data-auftrag="m4b"' in html
+        # Der eine läuft, der andere ist fertig -- beides muss unterscheidbar sein.
+        assert 'data-zustand="laeuft"' in html
+        assert 'data-zustand="fertig"' in html

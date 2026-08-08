@@ -3,6 +3,19 @@
    sich Audiobookshelf später über Audible. #}
 <div id="audiobook-inner">
 
+    {# Zustandsmarker für static/notify.js -- zwei Aufträge können gleichzeitig
+       laufen, also braucht jeder seinen eigenen. #}
+    {% if job %}
+    <span data-auftrag="rip-hoerbuch"
+          data-zustand="{{ 'laeuft' if job.laeuft else job.zustand }}"
+          data-text="{{ job.buch_anzeige }}: {{ job.meldung }}" hidden></span>
+    {% endif %}
+    {% if m4b %}
+    <span data-auftrag="m4b"
+          data-zustand="{{ 'laeuft' if m4b.laeuft else m4b.zustand }}"
+          data-text="{{ m4b.buch_anzeige }}: {{ m4b.meldung }}" hidden></span>
+    {% endif %}
+
     {% if fehler %}
     <div class="banner error"><strong>{{ fehler }}</strong></div>
     {% elif meldung %}

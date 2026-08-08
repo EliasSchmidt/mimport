@@ -2,6 +2,14 @@
    alle zwei Sekunden neu; im Endzustand fehlt der Auslöser und es hört auf. #}
 <div id="rip-inner">
 
+    {# Unsichtbarer Zustandsmarker für static/notify.js. Ein Rip dauert eine
+       halbe Stunde -- ohne Signal müsste man die Seite im Auge behalten. #}
+    {% if job %}
+    <span data-auftrag="rip-musik"
+          data-zustand="{{ 'laeuft' if job.laeuft else job.zustand }}"
+          data-text="{{ job.meldung }}" hidden></span>
+    {% endif %}
+
     {% if not tools.device %}
     <div class="banner info">
         <strong>Kein Laufwerk eingebunden</strong>

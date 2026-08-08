@@ -392,6 +392,27 @@ steht das Buch doppelt in der Bibliothek.
 Ein Encode läuft auf schwacher Hardware Stunden, deshalb wieder ein
 Hintergrundauftrag mit Fortschrittsanzeige.
 
+### Bescheid, wenn es fertig ist
+
+Ein Rip dauert eine halbe Stunde, ein Encode Stunden — niemand sitzt daneben.
+Deshalb meldet sich die Seite, wenn ein Auftrag endet, in drei Stufen:
+
+| Stufe | Bedingung |
+|---|---|
+| **Titel des Tabs** bekommt ein `✓` bzw. `✗` | immer, auch über HTTP |
+| **Kurzer Zweiklang** | nach dem ersten Klick auf der Seite |
+| **Echte Systembenachrichtigung** | **nur über HTTPS oder localhost** |
+
+Die dritte Stufe ist der Haken: Die Notifications-API des Browsers verlangt
+einen *secure context*. Über `http://server:8001` gibt es sie **nicht** — dort
+bleiben Titel und Ton. Wer sie will, muss den Reverse-Proxy mit TLS betreiben;
+das ist derselbe Proxy, der ohnehin für die Authentifizierung zuständig ist.
+
+Erkannt wird der Übergang an unsichtbaren Zustandsmarkern, die jedes Fragment
+mitbringt (`data-auftrag`, `data-zustand`). Gemeldet wird nur der Wechsel von
+„läuft" auf einen Endzustand — sonst käme im Zweisekundentakt eine neue Meldung.
+Rip und m4b-Bau haben getrennte Marker, weil sie gleichzeitig laufen können.
+
 ### Rippen und Bündeln gleichzeitig
 
 Das geht — und ist der Sinn der Sache: während ein Hörbuch encodiert wird, kann

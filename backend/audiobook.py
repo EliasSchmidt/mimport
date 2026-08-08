@@ -600,9 +600,17 @@ def _quellen_aufraeumen(
 
 
 def build(
-    buch: Path, *, force: bool = False, titel: list[str] | None = None
+    buch: Path,
+    *,
+    force: bool = False,
+    ersetzen: bool = False,
+    titel: list[str] | None = None,
 ) -> M4bJob:
-    """Startet das Bündeln eines Buchs zur m4b."""
+    """Startet das Bündeln eines Buchs zur m4b.
+
+    ``ersetzen`` ist nötig, sobald schon eine m4b vorliegt -- siehe unten,
+    warum das keine Formsache ist.
+    """
     global _m4b_job
 
     with _m4b_lock:
@@ -616,6 +624,24 @@ def build(
     if not quellen:
         job.zustand = "fehler"
         job.fehler = "In diesem Buch liegen keine Quelldateien."
+        raise AudiobookError(job.fehler)
+
+    # Eine vorhandene m4b niemals stillschweigend ersetzen. Der gefährliche
+    # Fall: Disc 1 wurde gebündelt, ihre Quellen sind dabei gelöscht worden,
+    # danach kommt Disc 2 dazu. Ein neuer Bau kennt nur noch Disc 2 und würde
+    # die m4b mit Disc 1 überschreiben -- deren Inhalt liegt dann nirgends mehr
+    # vor. Die Laufzeiten machen den Unterschied sichtbar.
+    if ziel.is_file() and not ersetzen:
+        job.zustand = "fehler"
+        vorhanden = _probe_duration(ziel)
+        neu = sum(_probe_duration(p) for p in quellen)
+        job.fehler = (
+            f"Es gibt bereits eine m4b für dieses Buch ({_hms(vorhanden)}), "
+            f"die vorliegenden Quelldateien ergeben aber nur {_hms(neu)}. "
+            "Wurde schon einmal gebündelt, sind die Quellen der früheren Discs "
+            "gelöscht -- ein neuer Bau enthielte dann nur noch die jetzigen. "
+            "Richtig ist: erst alle Discs einlesen, dann einmal bündeln."
+        )
         raise AudiobookError(job.fehler)
 
     # Verlustbehaftete Quellen nicht noch einmal umwandeln. Was fehlt, kommt

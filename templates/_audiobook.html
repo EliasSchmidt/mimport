@@ -73,6 +73,10 @@
             Audio-CD einlegen. Jede Disc landet als <span class="mono">CD n</span>
             im Buchordner; für Fortsetzungen dieselben Angaben erneut eintragen.
             {% endif %}
+            <br>
+            <strong>Erst alle Discs einlesen, dann einmal bündeln.</strong>
+            Beim Bündeln werden die Quelldateien gelöscht – wer zwischendurch
+            bündelt, kann die früheren Discs nicht mehr mit aufnehmen.
         </p>
         <div class="fields">
             <label>Autor
@@ -117,9 +121,10 @@
                        hineinhört. #}
                     <form hx-post="/audiobook/m4b" hx-target="#audiobook"
                           hx-swap="innerHTML"
-                          hx-confirm="Die vorhandene m4b wird überschrieben. Erst hineinhören?">
+                          hx-confirm="Die vorhandene m4b wird überschrieben und enthält danach nur noch die jetzt vorliegenden Quelldateien. Wenn zuvor schon einmal erfolgreich gebündelt wurde, fehlen dessen Discs anschließend. Trotzdem?">
                         <input type="hidden" name="buch" value="{{ b.relative }}">
                         <input type="hidden" name="force" value="true">
+                        <input type="hidden" name="ersetzen" value="true">
                         <button type="submit" class="button danger">Neu bauen</button>
                     </form>
                     {% elif b.file_count and not b.has_m4b %}

@@ -469,6 +469,7 @@ def audiobook_m4b(
     request: Request,
     buch: str = Form(default=""),
     force: bool = Form(default=False),
+    ersetzen: bool = Form(default=False),
     kapitel: str = Form(default=""),
 ) -> HTMLResponse:
     """Bündelt ein Buch zu einer m4b mit Kapiteln.
@@ -479,7 +480,7 @@ def audiobook_m4b(
     namen = [z.strip() for z in kapitel.splitlines() if z.strip()] or None
     try:
         pfad = audiobook.resolve_book(buch)
-        audiobook.build(pfad, force=force, titel=namen)
+        audiobook.build(pfad, force=force, ersetzen=ersetzen, titel=namen)
     except audiobook.AudiobookError as exc:
         return _audiobook_fragment(request, fehler=str(exc))
     return _audiobook_fragment(request)

@@ -380,3 +380,63 @@ class TestKapitelnamen:
         titel_zeilen = [z for z in meta.read_text().splitlines() if z.startswith("title=")]
         # Buchtitel plus genau ein Kapitel -- kein zusätzlicher Eintrag.
         assert len(titel_zeilen) == 2
+
+
+@braucht_ffmpeg
+class TestZweitesBuendeln:
+    """Der Fall, der stillschweigend Discs verlor.
+
+    Nach einem erfolgreichen Bündeln sind die Quellen gelöscht. Kommt danach
+    eine weitere Disc dazu, kennt ein neuer Bau nur noch diese -- und würde
+    die m4b mit allen früheren Discs überschreiben.
+    """
+
+    def _bauen(self, buch, **kwargs):
+        import time
+
+        audiobook._m4b_job = None
+        job = audiobook.build(buch, **kwargs)
+        for _ in range(300):
+            if not job.laeuft:
+                break
+            time.sleep(0.2)
+        return job
+
+    def test_zweiter_bau_wird_abgelehnt(self, bibliothek):
+        buch = audiobook.book_dir("A", "B")
+        toene(buch / "CD 1", [2, 2])
+        assert self._bauen(buch).zustand == "fertig"
+
+        m4b = buch / "B.m4b"
+        vorher = audiobook._probe_duration(m4b)
+        assert vorher > 3
+
+        # Zweite Disc kommt dazu.
+        toene(buch / "CD 2", [2])
+        audiobook._m4b_job = None
+        with pytest.raises(audiobook.AudiobookError, match="bereits eine m4b"):
+            audiobook.build(buch)
+
+        # Entscheidend: die m4b ist unangetastet.
+        assert abs(audiobook._probe_duration(m4b) - vorher) < 0.5
+
+    def test_mit_ersetzen_geht_es_bewusst_doch(self, bibliothek):
+        buch = audiobook.book_dir("A", "B")
+        toene(buch / "CD 1", [2])
+        assert self._bauen(buch).zustand == "fertig"
+
+        toene(buch / "CD 2", [3])
+        job = self._bauen(buch, ersetzen=True)
+        assert job.zustand == "fertig"
+        # Jetzt enthält sie nur noch CD 2 -- so gewollt und bestätigt.
+        assert abs(audiobook._probe_duration(buch / "B.m4b") - 3) < 0.5
+
+    def test_alle_discs_zuerst_ist_der_richtige_weg(self, bibliothek):
+        """Die Reihenfolge, zu der die Oberfläche rät."""
+        buch = audiobook.book_dir("A", "B")
+        toene(buch / "CD 1", [2, 2])
+        toene(buch / "CD 2", [3])
+
+        assert self._bauen(buch).zustand == "fertig"
+        # 2+2+3 Sekunden, alles drin.
+        assert abs(audiobook._probe_duration(buch / "B.m4b") - 7) < 0.5

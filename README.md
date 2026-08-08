@@ -296,6 +296,12 @@ das ganze Buch.
 
 ### Bündeln zur m4b
 
+**Erst alle Discs einlesen, dann einmal bündeln.** Das ist keine Stilfrage: beim
+Bündeln werden die Quelldateien gelöscht. Wer nach Disc 1 bündelt und danach
+Disc 2 einliest, hat für einen zweiten Bau nur noch Disc 2 — der Inhalt von
+Disc 1 liegt dann nirgends mehr vor. mimport lehnt einen zweiten Bau deshalb ab
+und nennt beide Laufzeiten; erzwingen lässt es sich, aber nur ausdrücklich.
+
 **Eine Datei je Buch**, alle Discs zusammengeführt: aus zwölf CDs FLAC (gut
 4 GB) wird eine `<Titel>.m4b` von etwa 300 MB, 64 kbit/s in Mono. Eine Lesung
 braucht keine Musikqualität, und genau darum geht es hier. Ein `cover.jpg` im

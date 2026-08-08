@@ -259,6 +259,12 @@ class M4bJob:
         return min(100, round(100 * self.sekunden_fertig / self.sekunden_gesamt))
 
     @property
+    def buch_anzeige(self) -> str:
+        """Autor und Titel -- nötig, seit zwei Aufträge nebeneinander laufen."""
+        pfad = Path(self.buch)
+        return f"{pfad.parent.name} – {pfad.name}"
+
+    @property
     def dauer(self) -> float:
         ende = self.beendet if self.beendet is not None else time.monotonic()
         return max(0.0, ende - self.gestartet)

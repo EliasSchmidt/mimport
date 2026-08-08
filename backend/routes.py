@@ -423,6 +423,41 @@ def rip_files(request: Request) -> HTMLResponse:
     return _files_fragment(request, session)
 
 
+def _buch_belegt(buch: Path) -> str:
+    """Arbeitet an diesem Buch schon etwas anderes?
+
+    Zwei Bücher gleichzeitig sind kein Problem -- eines bündeln, das nächste
+    rippen, das ist der ganze Sinn. Dasselbe Buch gleichzeitig zerstört sich
+    aber gegenseitig: der m4b-Bau räumt am Ende leere Disc-Ordner weg und
+    erwischt dabei den Ordner, den der Rip gerade angelegt hat. Nachgestellt --
+    der Rip endete mit „No such file or directory".
+
+    Die Prüfung sitzt hier und nicht in den Modulen: nur diese Schicht kennt
+    beide Aufträge, und ein Modul, das das andere importiert, wäre eine
+    Abhängigkeit, die es sonst nicht braucht.
+    """
+    laufender_bau = audiobook.current_m4b()
+    if (
+        laufender_bau is not None
+        and laufender_bau.laeuft
+        and Path(laufender_bau.buch) == buch
+    ):
+        return (
+            "Für dieses Buch läuft gerade der m4b-Bau. Ein zweites Buch "
+            "einzulesen ist kein Problem, dasselbe gleichzeitig schon."
+        )
+
+    laufender_rip = rip.current()
+    if (
+        laufender_rip is not None
+        and laufender_rip.laeuft
+        and laufender_rip.buch
+        and Path(laufender_rip.buch) == buch
+    ):
+        return "Für dieses Buch wird gerade eine Disc eingelesen."
+    return ""
+
+
 def _audiobook_fragment(
     request: Request, *, meldung: str = "", fehler: str = ""
 ) -> HTMLResponse:
@@ -473,6 +508,10 @@ def audiobook_rip(
         )
     except audiobook.AudiobookError as exc:
         return _audiobook_fragment(request, fehler=str(exc))
+
+    belegt = _buch_belegt(buchpfad)
+    if belegt:
+        return _audiobook_fragment(request, fehler=belegt)
 
     # Der Platz muss auf dem Dateisystem der Hörbücher frei sein, nicht auf dem
     # des Stagings -- hierhin wird direkt geschrieben.
@@ -551,6 +590,9 @@ def audiobook_m4b(
     namen = [z.strip() for z in kapitel.splitlines() if z.strip()] or None
     try:
         pfad = audiobook.resolve_book(buch)
+        belegt = _buch_belegt(pfad)
+        if belegt:
+            return _audiobook_fragment(request, fehler=belegt)
         audiobook.build(pfad, force=force, ersetzen=ersetzen, titel=namen)
     except audiobook.AudiobookError as exc:
         return _audiobook_fragment(request, fehler=str(exc))

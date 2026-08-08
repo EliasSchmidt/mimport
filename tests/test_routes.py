@@ -858,3 +858,97 @@ class TestVonVornUeberDieOberflaeche:
         assert len(beiseite) == 1
         # Nicht gelöscht, nur umbenannt.
         assert beiseite[0].read_bytes() == b"fertige fassung"
+
+
+class TestParallelerBetrieb:
+    """Zwei Bücher gleichzeitig ja, dasselbe Buch nein."""
+
+    @pytest.fixture(autouse=True)
+    def bibliothek(self, tmp_path, monkeypatch):
+        from backend import audiobook, rip
+
+        wurzel = tmp_path / "audiobooks"
+        monkeypatch.setattr(audiobook.settings, "audiobook_root", wurzel)
+        rip._job = None
+        audiobook._m4b_job = None
+        yield wurzel
+        rip._job = None
+        audiobook._m4b_job = None
+
+    def _buch(self, bibliothek, name, *, mit_quellen=True):
+        buch = bibliothek / "Autor" / name
+        if mit_quellen:
+            (buch / "CD 1").mkdir(parents=True)
+            (buch / "CD 1" / "01.flac").write_bytes(b"fLaC\x00\x00\x00\x22")
+        else:
+            buch.mkdir(parents=True)
+        return buch
+
+    def test_rip_am_selben_buch_wird_abgelehnt(self, client, bibliothek, monkeypatch):
+        """Der m4b-Bau räumt leere Disc-Ordner weg -- auch den des Rips."""
+        from backend import audiobook
+
+        self._buch(bibliothek, "Buch")
+        laufend = audiobook.M4bJob(
+            buch=str(bibliothek / "Autor" / "Buch"), zustand="encodiert"
+        )
+        monkeypatch.setattr(audiobook, "_m4b_job", laufend)
+
+        response = client.post("/audiobook/rip", data={"buch": "Autor/Buch"})
+        assert "läuft gerade der m4b-Bau" in response.text
+
+    def test_anderes_buch_darf_sehr_wohl(self, client, bibliothek, tmp_path, monkeypatch):
+        from backend import audiobook
+        from backend.config import settings
+
+        self._buch(bibliothek, "Buch A")
+        self._buch(bibliothek, "Buch B")
+        laufend = audiobook.M4bJob(
+            buch=str(bibliothek / "Autor" / "Buch A"), zustand="encodiert"
+        )
+        monkeypatch.setattr(audiobook, "_m4b_job", laufend)
+
+        # Daten-CD, damit es ohne Laufwerk durchläuft.
+        cd = tmp_path / "disc"
+        cd.mkdir()
+        (cd / "02.mp3").write_bytes(b"\xff\xfb\x00\x00")
+        monkeypatch.setattr(settings, "disc_root", cd)
+
+        response = client.post("/audiobook/rip", data={"buch": "Autor/Buch B"})
+        assert "kopiert" in response.text
+        assert "läuft gerade" not in response.text
+
+    def test_m4b_am_selben_buch_wird_abgelehnt(self, client, bibliothek, monkeypatch):
+        from backend import rip
+
+        buch = self._buch(bibliothek, "Buch")
+        laufend = rip.RipJob(
+            modus="hoerbuch", zustand="rippt", buch=str(buch),
+            disc_ordner=str(buch / "CD 2"),
+        )
+        monkeypatch.setattr(rip, "_job", laufend)
+
+        response = client.post("/audiobook/m4b", data={"buch": "Autor/Buch"})
+        assert "wird gerade eine Disc eingelesen" in response.text
+
+    def test_beide_balken_gleichzeitig_sichtbar(self, client, bibliothek, monkeypatch):
+        """Vorher verdeckte der Rip den m4b-Fortschritt komplett."""
+        from backend import audiobook, rip
+
+        rip_job = rip.RipJob(
+            modus="hoerbuch", zustand="rippt", track=2, tracks_gesamt=9,
+            buch=str(bibliothek / "Autor" / "Buch B"),
+            disc_ordner=str(bibliothek / "Autor" / "Buch B" / "CD 1"),
+        )
+        m4b_job = audiobook.M4bJob(
+            buch=str(bibliothek / "Autor" / "Buch A"),
+            zustand="encodiert", sekunden_gesamt=100.0, sekunden_fertig=42.0,
+        )
+        monkeypatch.setattr(rip, "_job", rip_job)
+        monkeypatch.setattr(audiobook, "_m4b_job", m4b_job)
+
+        html = client.get("/audiobook").text
+        assert "2 von 9 Tracks fertig" in html
+        assert "42 %" in html
+        # Und man erkennt, welches Buch welcher Balken ist.
+        assert "Buch A" in html and "Buch B" in html

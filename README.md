@@ -392,6 +392,21 @@ steht das Buch doppelt in der Bibliothek.
 Ein Encode läuft auf schwacher Hardware Stunden, deshalb wieder ein
 Hintergrundauftrag mit Fortschrittsanzeige.
 
+### Rippen und Bündeln gleichzeitig
+
+Das geht — und ist der Sinn der Sache: während ein Hörbuch encodiert wird, kann
+schon die erste Disc des nächsten eingelesen werden. Der m4b-Bau braucht das
+Laufwerk nicht, und beide Fortschrittsbalken stehen nebeneinander.
+
+**Dasselbe Buch gleichzeitig geht nicht** und wird abgelehnt. Nachgestellt, weil
+es harmloser klingt, als es ist: der m4b-Bau räumt am Ende leere Disc-Ordner
+weg und erwischt dabei den Ordner, den der Rip gerade angelegt hat — der Rip
+endete mit „No such file or directory".
+
+Auf schwacher Hardware konkurrieren beide um die CPU. Wenn ein Rip auffällig
+länger dauert als sonst oder cdparanoia oft „liest langsamer" meldet, lohnt es
+sich, nacheinander zu arbeiten.
+
 **Beide Vorgänge zeigen ihre Dauer an** — der Rip „läuft seit 4:32" und am Ende
 „9 Tracks gelesen in 23:41", der m4b-Bau zusätzlich seinen Faktor gegenüber
 Echtzeit („8,4× Echtzeit"). Das ist nicht Kosmetik: `MIMPORT_M4B_TIMEOUT` steht

@@ -47,7 +47,21 @@ def server(tmp_path_factory):
     (buch / "CD 1" / "01 Ein reichlich langer Titel.flac").write_bytes(b"fLaC\x00\x00\x00\x22")
     # Mit Cover: die Bildspalte nimmt Platz weg, und genau das war beim letzten
     # Mal die Ursache für zu enge Texte in der Tabelle.
-    (buch / "cover.jpg").write_bytes(b"\xff\xd8\xff\xe0" + b"x" * 200)
+    #
+    # Ein echtes JPEG, keine Attrappe aus ein paar Bytes: die Kachel hat feste
+    # Maße im CSS, ein kaputtes Bild misst sich also genauso wie ein geladenes.
+    # Der Test unten prüft deshalb naturalWidth -- sonst bliebe er grün, wenn
+    # die Adresse ins Leere zeigt, und das ist zweimal an einem Tag passiert.
+    import shutil as _shutil
+    import subprocess as _subprocess
+
+    if _shutil.which("ffmpeg"):
+        _subprocess.run(
+            ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi",
+             "-i", "color=c=teal:s=300x300:d=1", "-frames:v", "1",
+             str(buch / "cover.jpg")],
+            check=True,
+        )
     audiobook._m4b_job = None
 
     from backend.main import app
@@ -146,7 +160,18 @@ def test_coverspalte_druckt_den_buchtitel_nicht_zusammen(browser, server):
 
         assert ueberlauf(seite) <= 0, "Die Coverspalte sprengt die Breite"
 
-        bild = seite.locator("#audiobook .cover-mini").first
+        geladen = seite.evaluate(
+            "[...document.querySelectorAll('#audiobook img.cover-mini')]"
+            ".map(e => e.naturalWidth)"
+        )
+        if not geladen:
+            pytest.skip("ffmpeg fehlt, kein echtes Cover in der Bibliothek")
+        assert all(b > 0 for b in geladen), (
+            f"Bild nicht geladen (naturalWidth {geladen}) -- die Adresse zeigt "
+            "ins Leere, und die feste CSS-Größe verdeckt das"
+        )
+
+        bild = seite.locator("#audiobook img.cover-mini").first
         kasten = bild.bounding_box()
         assert kasten and kasten["width"] >= 32, f"Cover zu klein: {kasten}"
         # Quadratisch -- ein verzerrtes Cover sieht nach Fehler aus.

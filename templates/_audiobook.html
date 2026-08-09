@@ -77,6 +77,10 @@
                 von selbst ab.
             </p>
         </div>
+        {# In der Prüfphase ist ffmpeg schon durch -- ein Abbruch verhindert
+           dann nichts mehr, und ein Knopf, der nur noch absagt, ist eine
+           Falle. #}
+        {% if m4b.zustand != "pruefen" %}
         <div class="actions">
             <button type="button" class="button secondary"
                     hx-post="/audiobook/m4b/abbruch"
@@ -85,6 +89,7 @@
                 Bau abbrechen
             </button>
         </div>
+        {% endif %}
     </div>
 
     {% endif %}

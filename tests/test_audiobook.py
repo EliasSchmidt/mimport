@@ -856,3 +856,53 @@ class TestFfprobeHaengt:
 
         monkeypatch.setattr(audiobook.subprocess, "run", fehlt)
         assert audiobook._probe_duration(tmp_path / "x.flac") == 0.0
+
+
+class TestAbbruchNachDemEncode:
+    """Ein Abbruch, den niemand mehr liest, ist schlimmer als eine Absage.
+
+    In der Prüfphase ist ffmpeg schon durch: das Prozesshandle ist wieder frei,
+    der Auftrag läuft aber noch. Wer hier „Abbruch vorgemerkt" antwortet, sagt
+    die Unwahrheit -- der Bau läuft weiter, besteht die Laufzeitprüfung und
+    löscht die Quelldateien.
+    """
+
+    def test_in_der_pruefphase_wird_abgelehnt(self, tmp_path):
+        audiobook.reset_m4b()
+        job = audiobook.M4bJob(buch=str(tmp_path))
+        job.zustand = "pruefen"
+        audiobook._m4b_job = job
+        try:
+            with pytest.raises(audiobook.AudiobookError, match="verhindert jetzt nichts"):
+                audiobook.abbrechen_m4b()
+            assert job.abbruchgrund is None, (
+                "Eine abgelehnte Bitte darf keine Spur hinterlassen -- sonst "
+                "stünde sie später in der Meldung eines erfolgreichen Baus"
+            )
+        finally:
+            audiobook._m4b_job = None
+
+    def test_beim_vorbereiten_wird_vorgemerkt(self, tmp_path):
+        audiobook.reset_m4b()
+        job = audiobook.M4bJob(buch=str(tmp_path))
+        job.zustand = "vorbereiten"
+        audiobook._m4b_job = job
+        try:
+            antwort = audiobook.abbrechen_m4b()
+            assert "vorgemerkt" in antwort
+            assert job.abbruchgrund
+        finally:
+            audiobook._m4b_job = None
+
+    def test_encode_gerade_beendet_wird_abgelehnt(self, tmp_path):
+        """Das Rennen: ffmpeg endet zwischen Anzeige und Klick."""
+        audiobook.reset_m4b()
+        job = audiobook.M4bJob(buch=str(tmp_path))
+        job.zustand = "encodiert"
+        job.prozess = None
+        audiobook._m4b_job = job
+        try:
+            with pytest.raises(audiobook.AudiobookError, match="verhindert jetzt nichts"):
+                audiobook.abbrechen_m4b()
+        finally:
+            audiobook._m4b_job = None

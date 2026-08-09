@@ -1011,19 +1011,32 @@ def abbrechen_m4b() -> str:
         job = _m4b_job
         if job is None or not job.laeuft:
             raise AudiobookError("Es läuft gerade kein m4b-Bau.")
-        prozess = job.prozess
-        job.abbruchgrund = "Der m4b-Bau wurde von Hand abgebrochen."
 
-    if prozess is None:
-        # Noch beim Vorbereiten -- ffmpeg läuft nicht, es gibt nichts zu
-        # beenden. Der Zustand wird hier bewusst *nicht* gesetzt: das täte
-        # gleichzeitig der Bau-Thread, und wessen Wert am Ende stünde, wäre
-        # Zufall. Stattdessen liegt die Bitte vor, und der Thread liest sie,
-        # bevor er ffmpeg startet.
-        return (
-            "Der Abbruch ist vorgemerkt. Die Kapitel werden gerade gelesen; "
-            "sobald das fertig ist, endet der Auftrag."
-        )
+        # Entschieden wird am Zustand, nicht daran, ob gerade ein Prozess
+        # läuft. Beides fällt nur beim Encode zusammen: danach ist das
+        # Prozesshandle wieder frei, der Auftrag aber noch nicht fertig -- und
+        # eine Antwort „Abbruch vorgemerkt", auf die niemand mehr hört, wäre
+        # schlimmer als eine Absage. Die Quellen wären dann trotzdem gelöscht.
+        if job.zustand == "vorbereiten":
+            job.abbruchgrund = "Der m4b-Bau wurde von Hand abgebrochen."
+            # Der Zustand wird hier bewusst nicht gesetzt: das täte gleichzeitig
+            # der Bau-Thread, und wessen Wert am Ende stünde, wäre Zufall. Der
+            # Thread liest die Bitte, bevor er ffmpeg startet.
+            return (
+                "Der Abbruch ist vorgemerkt. Die Spieldauern werden gerade "
+                "gelesen; danach endet der Auftrag, ohne dass etwas gelöscht "
+                "wird."
+            )
+
+        prozess = job.prozess
+        if job.zustand == "encodiert" and prozess is not None:
+            job.abbruchgrund = "Der m4b-Bau wurde von Hand abgebrochen."
+        else:
+            raise AudiobookError(
+                "Der Encode ist durch, der Bau wird gerade abgeschlossen. Ein "
+                "Abbruch verhindert jetzt nichts mehr -- bitte das Ergebnis "
+                "abwarten."
+            )
 
     _beenden(prozess)
     return job.abbruchgrund

@@ -19,11 +19,25 @@ let tonErlaubt = false;
 let titelOriginal = document.title;
 let offeneMeldungen = 0;
 
+// Solange eine Anfrage läuft, darf keine zweite hinterher: Browser lehnen den
+// zweiten Aufruf ab, während der erste noch offen ist. Ohne diese Sperre traf
+// genau das den Knopf im Hinweiskasten -- der Klick löste den Knopf-Handler
+// **und** den allgemeinen Klick-Handler unten aus.
+let anfrageLaeuft = false;
+
 /** Fragt die Erlaubnis für Benachrichtigungen -- nur aus einem Klick heraus. */
 function erlaubnisAnfragen() {
   if (!("Notification" in window)) return;
-  if (Notification.permission !== "default") return;
-  Notification.requestPermission().catch(() => {});
+  if (Notification.permission !== "default" || anfrageLaeuft) return;
+  anfrageLaeuft = true;
+  Notification.requestPermission()
+    .catch(() => {})
+    // Der Kasten nennt den Zustand -- der hat sich gerade geändert, egal wie
+    // die Antwort ausfiel.
+    .finally(() => {
+      anfrageLaeuft = false;
+      zustandZeigen();
+    });
 }
 
 /**
@@ -168,9 +182,9 @@ function zustandZeigen() {
   kasten.innerHTML = `<span>${text}</span>${knopf}`;
   kasten.hidden = false;
 
-  kasten.querySelector("button")?.addEventListener("click", () => {
-    Notification.requestPermission().then(zustandZeigen).catch(() => {});
-  });
+  // Kein eigener requestPermission-Aufruf: der allgemeine Klick-Handler oben
+  // fasst beide Wege zusammen und zieht danach diesen Kasten nach.
+  kasten.querySelector("button")?.addEventListener("click", erlaubnisAnfragen);
 }
 
 document.addEventListener("DOMContentLoaded", zustandZeigen);

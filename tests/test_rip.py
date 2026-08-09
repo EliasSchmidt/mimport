@@ -628,6 +628,24 @@ class TestFortschrittUeberDieGanzeCD:
         verlauf = self._lauf(monkeypatch, toc, meldungen)
         assert verlauf == sorted(verlauf), f"Balken springt zurück: {verlauf}"
 
+    def test_spaeterer_track_zeigt_seinen_eigenen_stand(self, monkeypatch, toc):
+        """Halb durch Track 3 heißt (2 + 0.5) / 6, nicht „irgendwas über 33".
+
+        Der monotone Deckel liegt auf dem Job, die Tracklänge dagegen im
+        Aufruf je Track -- ohne Zurücksetzen bei Trackbeginn schleppte Track 3
+        die 1.0 von Track 2 mit und stünde sofort am nächsten Trackende.
+        """
+        def meldungen(nummer):
+            start = toc.track_start(nummer - 1)
+            laenge = toc.track_sectors(nummer - 1)
+            if nummer < 3:
+                return [("read", start + laenge)]
+            return [("read", start + laenge // 2)]
+
+        verlauf = self._lauf(monkeypatch, toc, meldungen)
+        # Erste Meldung von Track 3 ist der dritte Eintrag im Verlauf.
+        assert verlauf[2] == round((2 + 0.5) / 6 * 100), verlauf
+
     def test_ohne_toc_kein_absturz(self, monkeypatch, toc):
         """Eine Position vor dem Trackanfang darf nichts kaputt machen."""
 

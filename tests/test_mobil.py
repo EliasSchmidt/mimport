@@ -277,3 +277,67 @@ def test_ohne_notifications_api_bleibt_der_rest(browser, server):
     text, knoepfe = _kasten_text(browser, server, api=False)
     assert "Tab-Titel" in text
     assert knoepfe == 0
+
+
+def test_knopf_fragt_genau_einmal_und_zieht_den_kasten_nach(browser, server):
+    """Der Klick darf nicht zwei Anfragen auslösen.
+
+    Der Knopf im Kasten ist ein <button> -- und damit greift auch der
+    allgemeine Klick-Handler, der die Erlaubnis beiläufig anfragt. Zwei Aufrufe
+    im selben Tick lehnt der Browser ab, und der Kasten bliebe stumm stehen:
+    genau die Ratlosigkeit, gegen die er gebaut wurde.
+    """
+    seite = browser.new_page(viewport={"width": 900, "height": 800})
+    try:
+        _zustand_setzen(seite, erlaubnis="default")
+        seite.add_init_script(
+            """
+            // Wie im echten Browser: die Antwort kommt später, und bis
+            // dahin steht permission weiter auf "default". Ein Stub, der sie
+            // sofort setzt, würde den zweiten Aufruf von allein abfangen und
+            // den Fehler verdecken -- nachgeprüft, der Test blieb dann auch
+            // ohne die Sperre grün.
+            window.__anfragen = 0;
+            Notification.requestPermission = () => {
+              window.__anfragen += 1;
+              return new Promise((fertig) => setTimeout(() => {
+                Object.defineProperty(Notification, 'permission',
+                  {configurable: true, get: () => 'granted'});
+                fertig('granted');
+              }, 50));
+            };
+            """
+        )
+        seite.goto(server + "/musik", wait_until="networkidle")
+        seite.locator("#benachrichtigung button").click()
+        kasten = seite.locator("#benachrichtigung")
+        kasten.get_by_text("Benachrichtigung an").wait_for(timeout=3000)
+        assert seite.evaluate("window.__anfragen") == 1
+        assert kasten.locator("button").count() == 0
+    finally:
+        seite.close()
+
+
+def test_beilaeufige_erlaubnis_aktualisiert_den_kasten(browser, server):
+    """Auch wer die Erlaubnis über einen Start-Knopf erteilt, sieht es im Kasten."""
+    seite = browser.new_page(viewport={"width": 900, "height": 800})
+    try:
+        _zustand_setzen(seite, erlaubnis="default")
+        seite.add_init_script(
+            """
+            Notification.requestPermission = () => new Promise((fertig) =>
+              setTimeout(() => {
+                Object.defineProperty(Notification, 'permission',
+                  {configurable: true, get: () => 'denied'});
+                fertig('denied');
+              }, 50));
+            """
+        )
+        seite.goto(server + "/musik", wait_until="networkidle")
+        # Ein anderer Knopf auf der Seite, nicht der im Kasten.
+        seite.get_by_role("button", name="Neu einlesen").click()
+        seite.locator("#benachrichtigung").get_by_text(
+            "Browsereinstellungen"
+        ).wait_for(timeout=3000)
+    finally:
+        seite.close()

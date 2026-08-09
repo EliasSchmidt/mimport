@@ -356,10 +356,24 @@ def _arbeite(
             ziel = zielordner / f"{index:02d} Track {index}.flac"
 
             laenge = toc.track_sectors(index - 1)
+            start = toc.track_start(index - 1)
 
-            def melden(zustand: str, sektor: int, _laenge: int = laenge) -> None:
+            def melden(
+                zustand: str, sektor: int, _laenge: int = laenge, _start: int = start
+            ) -> None:
                 if _laenge > 0:
-                    job.track_anteil = sektor / _laenge
+                    # cdparanoia meldet die Position auf der ganzen CD, nicht
+                    # innerhalb des Tracks. Bei Track 1 fällt beides zusammen
+                    # -- deshalb war der Fehler an einer Beispielausgabe von
+                    # Track 1 nicht zu sehen und der Balken ab Track 2 sofort
+                    # bei hundert Prozent.
+                    im_track = sektor - _start if sektor >= _start else sektor
+                    anteil = min(1.0, max(0.0, im_track / _laenge))
+                    # Nur vorwärts: bei einer schwierigen Stelle liest
+                    # cdparanoia zurück und noch einmal ("backoff", "overlap").
+                    # Das ist Fehlerkorrektur, kein Rückschritt -- ein Balken,
+                    # der zurückspringt, sieht dagegen nach Fehler aus.
+                    job.track_anteil = max(job.track_anteil, anteil)
                 job.muehsam = _MUEHSAM.get(zustand, "")
 
             _rip_track(nummer, ziel, fortschritt=melden)

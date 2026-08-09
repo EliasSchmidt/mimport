@@ -88,6 +88,19 @@ class Toc:
     def total_seconds(self) -> float:
         return self.total_sectors / 75
 
+    def track_start(self, index: int) -> int:
+        """Startsektor eines Tracks in der Zählung von cdparanoia, ``index`` ab 0.
+
+        ``offsets`` zählt wie MusicBrainz, also einschließlich der 150 Sektoren
+        Vorlauf. cdparanoia lässt die weg -- und meldet beim Rippen die Position
+        auf der **ganzen CD**, nicht innerhalb des Tracks. Ohne diesen
+        Startwert abzuziehen, wäre der Fortschritt ab Track 2 sofort am
+        Anschlag.
+        """
+        if index < 0 or index >= len(self.offsets):
+            return 0
+        return max(0, self.offsets[index] - PREGAP_SECTORS)
+
     def track_sectors(self, index: int) -> int:
         """Länge eines Tracks in Sektoren, ``index`` ab 0.
 

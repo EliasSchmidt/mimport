@@ -555,3 +555,84 @@ class TestRipDauer:
         assert job.zustand == "fertig"
         assert "gelesen in" in job.meldung
         assert job.beendet is not None
+
+
+class TestFortschrittUeberDieGanzeCD:
+    """Der Fortschritt muss über alle Tracks stimmen, nicht nur über den ersten.
+
+    cdparanoia meldet die Position auf der **ganzen CD**. Bei Track 1 fällt
+    das mit der Position im Track zusammen -- und genau daran war der Fehler
+    an einer echten Beispielausgabe nicht zu erkennen: ab Track 2 stand der
+    Balken sofort bei hundert Prozent.
+    """
+
+    def test_startsektor_je_track(self, toc):
+        # Offsets 150, 15363, 32314 ... -- cdparanoia zählt ohne den Vorlauf.
+        assert toc.track_start(0) == 0
+        assert toc.track_start(1) == 15363 - 150
+        assert toc.track_start(5) == 80489 - 150
+
+    def _lauf(self, monkeypatch, toc, meldungen_je_track):
+        """Rippt und zeichnet auf, welche Prozentwerte angezeigt würden."""
+        from backend import sessions
+
+        verlauf = []
+
+        def fake(nummer, ziel, fortschritt=None):
+            for zustand, sektor in meldungen_je_track(nummer):
+                if fortschritt:
+                    fortschritt(zustand, sektor)
+                verlauf.append(job.prozent)
+            ziel.write_bytes(b"fLaC\x00\x00\x00\x22")
+
+        monkeypatch.setattr(rip, "_rip_track", fake)
+        monkeypatch.setattr(rip.discid, "lookup", lambda *a, **k: [])
+
+        job = rip.RipJob(disc_id=VEKTOR_ID)
+        session = sessions.create_session()
+        job.session_id = session.session_id
+        rip._arbeite(job, toc, session.directory, bei_fehler=lambda: None)
+        return verlauf
+
+    def test_absolute_sektoren_ergeben_einen_echten_verlauf(self, monkeypatch, toc):
+        """So meldet cdparanoia: Position auf der CD, nicht im Track."""
+
+        def meldungen(nummer):
+            start = toc.track_start(nummer - 1)
+            laenge = toc.track_sectors(nummer - 1)
+            return [("read", start + int(laenge * anteil))
+                    for anteil in (0.25, 0.5, 0.75, 1.0)]
+
+        verlauf = self._lauf(monkeypatch, toc, meldungen)
+
+        # Vorher klebte alles ab Track 2 bei 100 -- jetzt steigt es gleichmäßig.
+        assert verlauf[0] < 10, f"Anfang zu hoch: {verlauf[:4]}"
+        assert verlauf[-1] == 100
+        assert verlauf == sorted(verlauf), f"nicht monoton: {verlauf}"
+        # Und es steht nicht die halbe Zeit auf 100.
+        assert verlauf.count(100) <= 2, f"zu lange bei 100: {verlauf}"
+
+    def test_rueckwaertslesen_laesst_den_balken_stehen(self, monkeypatch, toc):
+        """Bei einer schwierigen Stelle liest cdparanoia zurück und neu."""
+
+        def meldungen(nummer):
+            start = toc.track_start(nummer - 1)
+            laenge = toc.track_sectors(nummer - 1)
+            return [
+                ("read", start + int(laenge * 0.5)),
+                ("backoff", start + int(laenge * 0.3)),   # springt zurück
+                ("overlap", start + int(laenge * 0.35)),
+                ("read", start + laenge),
+            ]
+
+        verlauf = self._lauf(monkeypatch, toc, meldungen)
+        assert verlauf == sorted(verlauf), f"Balken springt zurück: {verlauf}"
+
+    def test_ohne_toc_kein_absturz(self, monkeypatch, toc):
+        """Eine Position vor dem Trackanfang darf nichts kaputt machen."""
+
+        def meldungen(nummer):
+            return [("read", 5), ("read", 10)]
+
+        verlauf = self._lauf(monkeypatch, toc, meldungen)
+        assert all(0 <= p <= 100 for p in verlauf)

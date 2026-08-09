@@ -513,6 +513,9 @@ Drei Wege aus dem Stillstand, in dieser Reihenfolge:
 2. **Das Zeitlimit** `MIMPORT_M4B_TIMEOUT` als zweite Bremse, falls ffmpeg zwar
    Fortschritt meldet, aber nie ankommt.
 3. **Der Knopf „Bau abbrechen"** neben dem Fortschrittsbalken, für alles andere.
+   Er verschwindet, sobald ffmpeg durch ist und nur noch die Laufzeit geprüft
+   und die Datei verschoben wird — ab da verhindert ein Abbruch nichts mehr,
+   und ein Knopf, der das nur noch absagt, wäre eine Falle.
 
 In allen drei Fällen wird **nichts gelöscht**. Die Quelldateien fasst erst
 `_quellen_loeschen` an, und dorthin führt der Weg nur über die bestandene

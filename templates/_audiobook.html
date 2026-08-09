@@ -166,6 +166,15 @@
                     </form>
                     {% endif %}
 
+                    {# Cover abfotografieren. Vor dem Bündeln, denn danach ist
+                       es in der m4b eingebettet. #}
+                    {% if not b.has_m4b %}
+                    <button type="button" class="button"
+                            onclick="coverAufnehmen('/cover/audiobook?buch={{ b.relative | urlencode }}', 'audiobook', '{{ b.titel }}')">
+                        {{ "Cover ersetzen" if b.has_cover else "Cover" }}
+                    </button>
+                    {% endif %}
+
                     {% if b.unstimmig %}
                     {# Nach einem abgebrochenen Bündeln. Nicht stillschweigend
                        „fertig" nennen -- Audiobookshelf zeigt das Buch sonst

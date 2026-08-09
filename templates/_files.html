@@ -88,6 +88,10 @@
             <span id="match-spinner" class="htmx-indicator spinner">
                 frage MusicBrainz …
             </span>
+            <button type="button" class="button"
+                    onclick="coverAufnehmen('/cover/session/{{ session_id }}', 'files', 'Cover für diesen Upload')">
+                Cover fotografieren
+            </button>
             <button type="button" class="button danger"
                     hx-delete="/session/{{ session_id }}"
                     hx-target="#files"

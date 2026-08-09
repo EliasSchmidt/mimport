@@ -178,6 +178,41 @@ aus **keine** Genres (`genres: False`). `lastgenre` tritt also nicht gegen
 MusicBrainz an. Mit `force: yes` und `keep_existing: no` überschreibt es aber ein
 Genre, das bereits **in der hochgeladenen Datei** stand.
 
+## Cover abfotografieren
+
+Auf dem Handy: Cover fotografieren, Ecken zurechtziehen, fertig. Der Ablauf ist
+der eines Dokumentenscanners — Foto, geschätzter Rahmen, Korrektur,
+perspektivische Entzerrung auf ein Quadrat.
+
+**Alles davon läuft im Browser.** Das Handy hat das Foto ohnehin und rechnet für
+sich, statt ein paar Megabyte hochzuladen und den Laptop zu beschäftigen. Zum
+Server geht nur das fertige JPEG, 1000 × 1000 Pixel.
+
+Wohin es kommt, war an beiden Wegen schon vorbereitet:
+
+| Weg | Ziel | Wer nimmt es auf |
+|---|---|---|
+| Hörbuch | `cover.jpg` im Buchordner | wird beim Bündeln in die m4b eingebettet |
+| Musik | `cover.jpg` in der Upload-Session | beets über `fetchart` (`cautious`, `cover_names: cover`) |
+
+Deshalb heißt die Datei in beiden Fällen genau so.
+
+### Wie die Ecken gefunden werden
+
+Der Trick eines Dokumentenscanners, ohne Bibliothek: Bei einem Viereck sind die
+Ecken die **Extrema von x+y und x−y**. Es genügt also, mit einem Sobel-Filter
+kontrastreiche Punkte zu sammeln und darunter die vier äußersten zu suchen —
+keine Linienerkennung, kein OpenCV, kein Wachstum des Images um 200 MB.
+
+Die Schwelle richtet sich nach dem Bild selbst; ein fester Wert fände bei
+dunklen Fotos alles und bei hellen nichts. Punkte am äußersten Rand werden
+verworfen, sonst zieht ein Finger oder eine Tischkante den Rahmen auseinander.
+Findet sich zu wenig, kommt ein ehrlicher Standardrahmen statt geratener Ecken.
+
+Gemessen an einem gemalten, schrägen Viereck: alle vier Ecken auf **1,4 Pixel**
+genau. Die Homographie ist gegen eine unabhängige Rechnung in Python geprüft;
+beide Prüfungen laufen als Test mit (`tests/test_cover_js.py`, braucht Node).
+
 ## Von einer Daten-CD importieren
 
 Gemeint ist die CD mit einem Dateisystem darauf — typischerweise eine

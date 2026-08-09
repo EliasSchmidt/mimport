@@ -16,13 +16,14 @@ import logging
 import shutil
 from pathlib import Path
 
-from fastapi import APIRouter, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse
 
 from backend import (
     audio,
     audiobook,
     beets_env,
+    cover,
     disc,
     importer,
     matching,
@@ -655,6 +656,41 @@ def audiobook_m4b_reset(request: Request) -> HTMLResponse:
     except audiobook.AudiobookError as exc:
         return _audiobook_fragment(request, fehler=str(exc))
     return _audiobook_fragment(request)
+
+
+@router.post("/cover/audiobook", response_class=HTMLResponse)
+async def cover_audiobook(
+    request: Request, buch: str = "", bild: UploadFile = File(...)
+) -> HTMLResponse:
+    """Nimmt ein abfotografiertes Cover für ein Hörbuch entgegen.
+
+    ``buch`` kommt als Abfrageparameter, nicht als Formularfeld: der Knopf in
+    der Buchliste baut damit die Ziel-Adresse, und das Formular trägt nur das
+    Bild.
+    """
+    try:
+        pfad = audiobook.resolve_book(buch)
+        cover.speichern(pfad, await bild.read())
+    except (audiobook.AudiobookError, cover.CoverError) as exc:
+        return _audiobook_fragment(request, fehler=str(exc))
+    return _audiobook_fragment(request, meldung="Cover übernommen.")
+
+
+@router.post("/cover/session/{session_id}", response_class=HTMLResponse)
+async def cover_session(
+    request: Request, session_id: str, bild: UploadFile = File(...)
+) -> HTMLResponse:
+    """Nimmt ein Cover für einen laufenden Musik-Upload entgegen.
+
+    Es landet als ``cover.jpg`` neben den Audiodateien; beim Import zieht beets
+    es über ``fetchart`` heran, statt selbst eines zu suchen.
+    """
+    session = _session_or_404(session_id)
+    try:
+        cover.speichern(session.directory, await bild.read())
+    except cover.CoverError as exc:
+        return _fragment(request, "_error.html", message=str(exc))
+    return _files_fragment(request, session)
 
 
 @router.post("/match/{session_id}", response_class=HTMLResponse)

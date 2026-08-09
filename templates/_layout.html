@@ -12,6 +12,7 @@
     <script src="/static/htmx.min.js" defer></script>
     <script src="/static/index.js" defer></script>
     <script src="/static/notify.js" defer></script>
+    <script src="/static/cover.js" defer></script>
 </head>
 <body>
 <header class="page-head">
@@ -29,6 +30,8 @@
 
     {% block inhalt %}{% endblock %}
 </main>
+
+{% if selbst != "start" %}{% include "_cover_dialog.html" %}{% endif %}
 
 <footer class="page-foot">
     <p>

@@ -1046,3 +1046,85 @@ class TestBenachrichtigungsmarker:
         # Der eine läuft, der andere ist fertig -- beides muss unterscheidbar sein.
         assert 'data-zustand="laeuft"' in html
         assert 'data-zustand="fertig"' in html
+
+
+class TestCoverEntgegennehmen:
+    """Das fertige Bild kommt vom Handy; hier landet es am richtigen Platz."""
+
+    JPEG = b"\xff\xd8\xff\xe0" + b"x" * 200
+
+    @pytest.fixture(autouse=True)
+    def bibliothek(self, tmp_path, monkeypatch):
+        from backend import audiobook
+
+        wurzel = tmp_path / "audiobooks"
+        monkeypatch.setattr(audiobook.settings, "audiobook_root", wurzel)
+        return wurzel
+
+    def test_dialog_liegt_auf_beiden_seiten(self, client):
+        for pfad in ("/musik", "/hoerbuch"):
+            html = client.get(pfad).text
+            assert 'id="cover-dialog"' in html
+            assert "/static/cover.js" in html
+
+    def test_startseite_braucht_ihn_nicht(self, client):
+        """Dort gibt es nichts, wozu ein Cover gehören könnte."""
+        assert 'id="cover-dialog"' not in client.get("/").text
+
+    def test_hoerbuch_cover_landet_im_buchordner(self, client, bibliothek):
+        buch = bibliothek / "Autor" / "Buch"
+        (buch / "CD 1").mkdir(parents=True)
+        (buch / "CD 1" / "01.flac").write_bytes(b"fLaC\x00\x00\x00\x22")
+
+        response = client.post(
+            "/cover/audiobook?buch=Autor/Buch",
+            files={"bild": ("cover.jpg", self.JPEG, "image/jpeg")},
+        )
+        assert "Cover übernommen" in response.text
+        assert (buch / "cover.jpg").read_bytes() == self.JPEG
+
+    def test_musik_cover_landet_in_der_session(self, client):
+        session = sessions.create_session()
+        (session.directory / "01.flac").write_bytes(b"fLaC\x00\x00\x00\x22")
+
+        response = client.post(
+            f"/cover/session/{session.session_id}",
+            files={"bild": ("cover.jpg", self.JPEG, "image/jpeg")},
+        )
+        assert response.status_code == 200
+        # beets zieht genau diesen Namen über fetchart heran.
+        assert (session.directory / "cover.jpg").read_bytes() == self.JPEG
+
+    def test_kein_bild_wird_abgelehnt(self, client, bibliothek):
+        buch = bibliothek / "Autor" / "Buch"
+        buch.mkdir(parents=True)
+
+        response = client.post(
+            "/cover/audiobook?buch=Autor/Buch",
+            files={"bild": ("cover.jpg", b"<?php echo 1; ?>", "image/jpeg")},
+        )
+        assert "nicht nach einem Bild" in response.text
+        assert not (buch / "cover.jpg").exists()
+
+    def test_fremder_buchpfad(self, client):
+        response = client.post(
+            "/cover/audiobook?buch=../../etc",
+            files={"bild": ("cover.jpg", self.JPEG, "image/jpeg")},
+        )
+        assert "nicht zur Bibliothek" in response.text or "gibt es nicht" in response.text
+
+    def test_unbekannte_session(self, client):
+        response = client.post(
+            "/cover/session/AAAAAAAAAAAAAAAAAA",
+            files={"bild": ("cover.jpg", self.JPEG, "image/jpeg")},
+        )
+        assert response.status_code == 404
+
+    def test_knopf_erscheint_je_buch(self, client, bibliothek):
+        buch = bibliothek / "Autor" / "Buch"
+        (buch / "CD 1").mkdir(parents=True)
+        (buch / "CD 1" / "01.flac").write_bytes(b"fLaC\x00\x00\x00\x22")
+
+        html = client.get("/audiobook").text
+        assert "coverAufnehmen(" in html
+        assert "/cover/audiobook?buch=Autor/Buch" in html

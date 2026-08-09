@@ -1,0 +1,70 @@
+"""Ein abfotografiertes Cover entgegennehmen.
+
+Das Bild kommt aus einem Formular und ist damit beliebig -- die Endung sagt
+nichts, entschieden wird an den ersten Bytes.
+"""
+
+from __future__ import annotations
+
+import pytest
+
+from backend import cover
+
+JPEG = b"\xff\xd8\xff\xe0" + b"x" * 100
+PNG = b"\x89PNG\r\n\x1a\n" + b"x" * 100
+
+
+class TestFormatErkennen:
+    def test_jpeg(self):
+        assert cover.format_erkennen(JPEG) == "jpeg"
+
+    def test_png(self):
+        assert cover.format_erkennen(PNG) == "png"
+
+    @pytest.mark.parametrize(
+        "daten", [b"", b"kein bild", b"GIF89a", b"<html>", b"%PDF-1.4"]
+    )
+    def test_alles_andere_wird_abgelehnt(self, daten):
+        with pytest.raises(cover.CoverError):
+            cover.format_erkennen(daten)
+
+
+class TestSpeichern:
+    def test_landet_als_cover_jpg(self, tmp_path):
+        """Der Name ist keine Willkür -- beets und ABS suchen genau danach."""
+        ziel = cover.speichern(tmp_path, JPEG)
+        assert ziel.name == "cover.jpg"
+        assert ziel.read_bytes() == JPEG
+
+    def test_ersetzt_ein_vorhandenes(self, tmp_path):
+        cover.speichern(tmp_path, JPEG)
+        neu = b"\xff\xd8\xff\xe0" + b"neu" * 50
+        cover.speichern(tmp_path, neu)
+        assert (tmp_path / "cover.jpg").read_bytes() == neu
+
+    def test_kein_zwischenprodukt_bleibt_liegen(self, tmp_path):
+        cover.speichern(tmp_path, JPEG)
+        assert sorted(p.name for p in tmp_path.iterdir()) == ["cover.jpg"]
+
+    def test_leeres_bild(self, tmp_path):
+        with pytest.raises(cover.CoverError, match="kein Bild"):
+            cover.speichern(tmp_path, b"")
+
+    def test_zu_gross(self, tmp_path):
+        riesig = b"\xff\xd8\xff" + b"x" * cover.MAX_BYTES
+        with pytest.raises(cover.CoverError, match="zu groß"):
+            cover.speichern(tmp_path, riesig)
+
+    def test_fremdes_format(self, tmp_path):
+        with pytest.raises(cover.CoverError, match="nicht nach einem Bild"):
+            cover.speichern(tmp_path, b"<?php echo 1; ?>")
+        assert not (tmp_path / "cover.jpg").exists()
+
+    def test_ohne_zielordner(self, tmp_path):
+        with pytest.raises(cover.CoverError, match="gibt es nicht"):
+            cover.speichern(tmp_path / "weg", JPEG)
+
+    def test_vorhanden(self, tmp_path):
+        assert cover.vorhanden(tmp_path) is False
+        cover.speichern(tmp_path, JPEG)
+        assert cover.vorhanden(tmp_path) is True

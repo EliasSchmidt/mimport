@@ -1,0 +1,34 @@
+{# Cover abfotografieren. Steht einmal je Seite und wird von den Knöpfen in
+   den Fragmenten aufgerufen -- die kommen und gehen mit htmx, der Dialog
+   bleibt. #}
+<dialog id="cover-dialog" class="cover-dialog">
+    <form method="dialog" enctype="multipart/form-data">
+        <h3 class="cover-titel">Cover aufnehmen</h3>
+
+        <p class="hint">
+            Cover fotografieren – am besten formatfüllend und von oben. Die
+            Ecken werden geschätzt; sitzt der Rahmen nicht, zieh ihn zurecht.
+        </p>
+
+        {# capture="environment" öffnet auf dem Handy direkt die Kamera statt
+           der Dateiauswahl. Am Rechner bleibt es eine normale Dateiauswahl. #}
+        <input type="file" accept="image/*" capture="environment" hidden>
+
+        <div class="actions">
+            <button type="button" class="button primary cover-neu">
+                Foto aufnehmen
+            </button>
+            <button type="button" class="button cover-abbrechen">Abbrechen</button>
+        </div>
+
+        <div class="cover-schritt-2" hidden>
+            <canvas id="cover-canvas" class="cover-canvas"></canvas>
+            <div class="actions">
+                <button type="button" class="button primary cover-uebernehmen">
+                    Als Cover übernehmen
+                </button>
+                <button type="button" class="button cover-neu">Neues Foto</button>
+            </div>
+        </div>
+    </form>
+</dialog>

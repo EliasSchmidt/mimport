@@ -562,3 +562,31 @@ pre.output { max-height: 22rem; overflow-y: auto; }
 
 .benachrichtigung span { flex: 1 1 16rem; }
 .benachrichtigung strong { color: var(--text); }
+
+/* --------------------------------------------------- Cover in der Buchliste */
+/* Feste Maße auch für den Platzhalter: sonst wären die Zeilen unterschiedlich
+   hoch, je nachdem ob ein Buch ein Cover hat. Das Bild kommt in voller Größe
+   (1000 px) und wird hier verkleinert -- ein Thumbnail zu erzeugen wäre auf
+   dem Server teurer als die einmalige Übertragung, weil die Adresse die
+   Änderungszeit trägt und der Browser das Bild danach behält. */
+.cover-spalte {
+    width: 3rem;
+    padding-right: 0;
+}
+
+.cover-mini {
+    display: block;
+    width: 2.75rem;
+    height: 2.75rem;
+    object-fit: cover;
+    border-radius: 4px;
+    background: var(--flaeche-2, #eee);
+}
+
+.cover-mini.leer {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-schwach, #999);
+    font-size: 1.2rem;
+}

@@ -197,6 +197,22 @@ Wohin es kommt, war an beiden Wegen schon vorbereitet:
 
 Deshalb heißt die Datei in beiden Fällen genau so.
 
+### In der Liste
+
+Jedes Buch zeigt sein Cover als kleine Kachel, Bücher ohne bekommen einen
+Platzhalter derselben Größe — sonst wären die Zeilen unterschiedlich hoch.
+
+Bewusst **ohne Thumbnails**: Die Adresse trägt die Änderungszeit des Bilds
+(`?v=…`) und darf deshalb als unveränderlich gelten. Der Browser holt jedes
+Cover genau einmal und zeigt ein neu fotografiertes trotzdem sofort, weil sich
+die Adresse mitändert. Die 198 KB eines Covers sind damit einmalige Kosten je
+Buch — ein Thumbnail (3,5 KB, 32 ms) müsste dagegen irgendwo zwischengelagert
+werden, und dafür gibt es keinen guten Ort: nicht im Buchordner (den scannt
+Audiobookshelf) und nicht im Staging (das wird bei jedem Start geleert).
+
+Die Liste steht ohnehin nur im DOM, wenn kein Auftrag läuft — der
+Zweisekundentakt der Fortschrittsanzeige lädt also keine Bilder nach.
+
 ### Auch nachträglich, wenn die m4b schon steht
 
 Solange Quelldateien im Buchordner liegen, genügt das Bild daneben — der Encode

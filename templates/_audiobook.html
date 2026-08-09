@@ -164,11 +164,21 @@
     {% endif %}
     <table class="stapelbar files">
         <thead>
-            <tr><th>Buch</th><th>Discs</th><th>Dateien</th><th>Größe</th><th></th></tr>
+            <tr><th class="cover-spalte"></th><th>Buch</th><th>Discs</th><th>Dateien</th><th>Größe</th><th></th></tr>
         </thead>
         <tbody>
             {% for b in buecher %}
             <tr>
+                {# Feste Kachelgröße, auch ohne Bild: sonst springen die Zeilen
+                   in der Höhe, je nachdem ob ein Cover da ist. #}
+                <td class="cover-spalte">
+                    {% if b.has_cover %}
+                    <img class="cover-mini" loading="lazy" alt=""
+                         src="/audiobook/cover?buch={{ b.relative | urlencode }}&amp;v={{ b.cover_mtime }}">
+                    {% else %}
+                    <span class="cover-mini leer" aria-hidden="true">♪</span>
+                    {% endif %}
+                </td>
                 <td class="name">{{ b.autor }} – {{ b.titel }}
                     {%- if b.unstimmig %}
                     <span class="badge lossy">m4b + Quellen</span>

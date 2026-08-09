@@ -17,7 +17,7 @@ import shutil
 from pathlib import Path
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse
 
 from backend import (
     audio,
@@ -716,6 +716,34 @@ async def cover_audiobook(
     except audiobook.AudiobookError as exc:
         return _audiobook_fragment(request, fehler=str(exc))
     return _audiobook_fragment(request, meldung=meldung)
+
+
+@router.get("/audiobook/cover")
+def audiobook_cover(buch: str = "", v: str = "") -> FileResponse:
+    """Liefert das Coverbild eines Buchs für die Liste aus.
+
+    ``v`` trägt die Änderungszeit und wird nicht ausgewertet -- es steht nur in
+    der Adresse, damit ein neu fotografiertes Cover eine andere ergibt. Deshalb
+    darf das Bild hier als unveränderlich gelten: Der Browser holt es einmal
+    und danach nie wieder, zeigt aber trotzdem sofort das neue.
+
+    Der Pfad kommt aus dem Formular, also durch ``resolve_book`` -- ein
+    Endpunkt, der eine Datei zu einem übergebenen Pfad ausliefert, ist sonst
+    die Einladung, damit aus der Bibliothek herauszulaufen.
+    """
+    try:
+        pfad = audiobook.resolve_book(buch)
+    except audiobook.AudiobookError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    bild = audiobook.cover_pfad(pfad)
+    if bild is None:
+        raise HTTPException(status_code=404, detail="Für dieses Buch gibt es kein Cover.")
+
+    return FileResponse(
+        bild,
+        headers={"Cache-Control": "public, max-age=31536000, immutable"},
+    )
 
 
 @router.post("/cover/session/{session_id}", response_class=HTMLResponse)

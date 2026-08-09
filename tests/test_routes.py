@@ -1149,6 +1149,67 @@ class TestCoverEntgegennehmen:
         finally:
             audiobook._m4b_job = None
 
+    def test_cover_wird_fuer_die_liste_ausgeliefert(self, client, bibliothek):
+        buch = bibliothek / "Autor" / "Buch"
+        buch.mkdir(parents=True)
+        (buch / "cover.jpg").write_bytes(self.JPEG)
+
+        antwort = client.get("/audiobook/cover?buch=Autor/Buch&v=123")
+        assert antwort.status_code == 200
+        assert antwort.content == self.JPEG
+        # Die Adresse trägt die Änderungszeit, das Bild darf also bleiben.
+        assert "immutable" in antwort.headers["cache-control"]
+
+    def test_auch_folder_jpg_wird_gefunden(self, client, bibliothek):
+        """Von Hand kopierte Sammlungen bringen oft diesen Namen mit.
+
+        ``has_cover`` prüft fünf Namen. Wer beim Ausliefern nur ``cover.jpg``
+        sucht, zeigt bei genau diesen Büchern ein kaputtes Bild -- die Liste
+        führt sie ja als „hat Cover".
+        """
+        buch = bibliothek / "Autor" / "Buch"
+        buch.mkdir(parents=True)
+        (buch / "folder.jpg").write_bytes(self.JPEG)
+
+        antwort = client.get("/audiobook/cover?buch=Autor/Buch")
+        assert antwort.status_code == 200
+        assert antwort.content == self.JPEG
+
+    def test_ohne_cover_gibt_es_404(self, client, bibliothek):
+        buch = bibliothek / "Autor" / "Buch"
+        buch.mkdir(parents=True)
+        assert client.get("/audiobook/cover?buch=Autor/Buch").status_code == 404
+
+    def test_cover_fuehrt_nicht_aus_der_bibliothek(self, client, bibliothek):
+        """Ein Endpunkt, der eine Datei zu einem Pfad liefert, ist das Ziel."""
+        (bibliothek / "Autor").mkdir(parents=True)
+        for versuch in ("../../etc/passwd", "/etc/passwd", "Autor/../../geheim"):
+            antwort = client.get("/audiobook/cover", params={"buch": versuch})
+            assert antwort.status_code == 404, versuch
+
+    def test_liste_zeigt_das_cover_mit_cache_schluessel(self, client, bibliothek):
+        buch = bibliothek / "Autor" / "Buch"
+        (buch / "CD 1").mkdir(parents=True)
+        (buch / "CD 1" / "01.flac").write_bytes(b"fLaC\x00\x00\x00\x22")
+        (buch / "cover.jpg").write_bytes(self.JPEG)
+
+        html = client.get("/audiobook").text
+        assert "/audiobook/cover?buch=Autor/Buch" in html
+        # Ohne die Änderungszeit in der Adresse bliebe ein neues Cover
+        # unsichtbar, weil der Browser das alte behalten darf.
+        import re
+        assert re.search(r"/audiobook/cover\?buch=Autor/Buch&amp;v=\d{9,}", html), html[:600]
+
+    def test_buch_ohne_cover_bekommt_einen_platzhalter(self, client, bibliothek):
+        """Sonst wären die Zeilen unterschiedlich hoch."""
+        buch = bibliothek / "Autor" / "Ohne"
+        (buch / "CD 1").mkdir(parents=True)
+        (buch / "CD 1" / "01.flac").write_bytes(b"fLaC\x00\x00\x00\x22")
+
+        html = client.get("/audiobook").text
+        assert "cover-mini leer" in html
+        assert "/audiobook/cover?buch=Autor/Ohne" not in html
+
     def test_musik_cover_landet_in_der_session(self, client):
         session = sessions.create_session()
         (session.directory / "01.flac").write_bytes(b"fLaC\x00\x00\x00\x22")

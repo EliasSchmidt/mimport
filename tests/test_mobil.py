@@ -45,6 +45,9 @@ def server(tmp_path_factory):
     buch = config.settings.audiobook_root / "Astrid Lindgren" / "Ronja Räubertochter"
     (buch / "CD 1").mkdir(parents=True)
     (buch / "CD 1" / "01 Ein reichlich langer Titel.flac").write_bytes(b"fLaC\x00\x00\x00\x22")
+    # Mit Cover: die Bildspalte nimmt Platz weg, und genau das war beim letzten
+    # Mal die Ursache für zu enge Texte in der Tabelle.
+    (buch / "cover.jpg").write_bytes(b"\xff\xd8\xff\xe0" + b"x" * 200)
     audiobook._m4b_job = None
 
     from backend.main import app
@@ -125,6 +128,34 @@ def test_hoerbuch_bibliothek_passt(browser, server):
         seite.goto(server + "/hoerbuch", wait_until="networkidle")
         seite.wait_for_selector("#audiobook table", timeout=10000)
         assert ueberlauf(seite) <= 0
+    finally:
+        seite.close()
+
+
+def test_coverspalte_druckt_den_buchtitel_nicht_zusammen(browser, server):
+    """Eine Spalte mehr ist genau das, was die Tabelle zuletzt gesprengt hat.
+
+    Gemessen wird nicht nur der Überlauf der Seite, sondern auch die Breite,
+    die dem Buchtitel bleibt -- ein Titel in einer 60 Pixel schmalen Spalte
+    passt formal in den Bildschirm und ist trotzdem unlesbar.
+    """
+    seite = browser.new_page(viewport={"width": BREITE, "height": 780})
+    try:
+        seite.goto(server + "/hoerbuch", wait_until="networkidle")
+        seite.wait_for_selector("#audiobook table", timeout=10000)
+
+        assert ueberlauf(seite) <= 0, "Die Coverspalte sprengt die Breite"
+
+        bild = seite.locator("#audiobook .cover-mini").first
+        kasten = bild.bounding_box()
+        assert kasten and kasten["width"] >= 32, f"Cover zu klein: {kasten}"
+        # Quadratisch -- ein verzerrtes Cover sieht nach Fehler aus.
+        assert abs(kasten["width"] - kasten["height"]) < 2, kasten
+
+        titel = seite.locator("#audiobook td.name").first.bounding_box()
+        assert titel and titel["width"] >= 120, (
+            f"Für den Buchtitel bleiben nur {titel['width'] if titel else 0} px"
+        )
     finally:
         seite.close()
 

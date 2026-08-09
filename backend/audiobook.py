@@ -251,6 +251,11 @@ class BookState:
     has_cover: bool = False
     lossy: bool = False
 
+    #: Änderungszeit des Coverbilds, als Cache-Schlüssel in der Bildadresse.
+    #: Damit darf der Browser das Bild dauerhaft behalten -- und sieht ein neu
+    #: fotografiertes trotzdem sofort, weil sich die Adresse mitändert.
+    cover_mtime: int = 0
+
     #: Größe der fertigen m4b. Getrennt von ``total_bytes``, das absichtlich
     #: nur die Quelldateien zählt -- sonst ginge in der Platzrechnung das
     #: Ergebnis als Quelle durch.
@@ -284,10 +289,19 @@ class BookState:
 
     @property
     def relative(self) -> str:
-        """Pfad relativ zur Bibliothek -- so kommt er ins Formular zurück."""
+        """Pfad relativ zur Bibliothek -- so kommt er ins Formular zurück.
+
+        Beide Seiten werden aufgelöst. Vorher wurde nur die Wurzel aufgelöst,
+        der Buchpfad aber nicht: Führt irgendein Stück des Wegs über einen
+        Symlink, passten die beiden nicht mehr zusammen, und heraus kam der
+        leere String -- „Nächste CD" und der Cover-Knopf zeigten dann ins
+        Nichts. Aufgefallen an einem Bibliotheksordner unter ``/var/folders``,
+        das auf macOS ein Symlink auf ``/private/var/folders`` ist; ein
+        eingehängtes ``/srv/audiobooks`` kann genauso beschaffen sein.
+        """
         try:
-            return str(self.path.relative_to(settings.audiobook_root.resolve()))
-        except ValueError:
+            return str(self.path.resolve().relative_to(settings.audiobook_root.resolve()))
+        except (ValueError, OSError):
             return ""
 
 
@@ -320,7 +334,8 @@ def state(buch: Path) -> BookState:
         total_bytes=gesamt,
         m4b_bytes=m4b_groesse,
         has_m4b=m4b.is_file(),
-        has_cover=any((buch / n).is_file() for n in COVER_NAMES),
+        has_cover=cover_pfad(buch) is not None,
+        cover_mtime=_cover_mtime(buch),
         lossy=any(p.suffix.lower() in LOSSY_EXTENSIONS for p in quellen),
     )
 
@@ -665,12 +680,29 @@ def _kapitel_schreiben(
     return start_ms / 1000
 
 
-def _cover_von(buch: Path) -> Path | None:
+def cover_pfad(buch: Path) -> Path | None:
+    """Das Coverbild eines Buchs, falls eines danebenliegt.
+
+    Fünf mögliche Namen, weil Bücher nicht nur aus mimport kommen -- eine von
+    Hand kopierte Sammlung bringt oft ``folder.jpg`` mit. Wer hier nur
+    ``cover.jpg`` sucht, zeigt bei genau diesen Büchern ein kaputtes Bild an,
+    obwohl die Liste sie als „hat Cover" führt.
+    """
     for name in COVER_NAMES:
         kandidat = buch / name
         if kandidat.is_file():
             return kandidat
     return None
+
+
+def _cover_mtime(buch: Path) -> int:
+    pfad = cover_pfad(buch)
+    if pfad is None:
+        return 0
+    try:
+        return int(pfad.stat().st_mtime)
+    except OSError:
+        return 0
 
 
 def _bauen(
@@ -712,7 +744,7 @@ def _bauen(
             "-i",
             str(meta),
         ]
-        cover = _cover_von(buch)
+        cover = cover_pfad(buch)
         if cover:
             befehl += ["-i", str(cover)]
 

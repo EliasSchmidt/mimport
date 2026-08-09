@@ -1169,3 +1169,37 @@ class TestCoverNachtraeglich:
             audiobook.cover_einbetten(buch, bild)
 
         assert m4b.read_bytes() == vorher
+
+
+class TestRelativerPfadUeberSymlink:
+    """Der Buchpfad muss auch dann stimmen, wenn ein Symlink im Weg liegt.
+
+    Aufgefallen beim Anzeigen der Cover: die Bilder blieben leer, weil in der
+    Adresse kein Buchpfad stand. Aufgelöst wurde nur die Wurzel, nicht der
+    Buchpfad -- passten die beiden nicht zusammen, kam der leere String heraus.
+    Getroffen hätte es nicht nur die Cover: „Nächste CD" und der Cover-Knopf
+    bauen ihre Adresse aus demselben Wert.
+    """
+
+    def test_symlink_in_der_wurzel(self, tmp_path, monkeypatch):
+        echt = tmp_path / "echt"
+        (echt / "Autor" / "Buch").mkdir(parents=True)
+        verweis = tmp_path / "verweis"
+        verweis.symlink_to(echt, target_is_directory=True)
+
+        monkeypatch.setattr(audiobook.settings, "audiobook_root", verweis)
+        zustand = audiobook.state(verweis / "Autor" / "Buch")
+        assert zustand.relative == "Autor/Buch"
+
+    def test_ohne_symlink_unveraendert(self, tmp_path, monkeypatch):
+        (tmp_path / "Autor" / "Buch").mkdir(parents=True)
+        monkeypatch.setattr(audiobook.settings, "audiobook_root", tmp_path)
+        assert audiobook.state(tmp_path / "Autor" / "Buch").relative == "Autor/Buch"
+
+    def test_ausserhalb_bleibt_leer(self, tmp_path, monkeypatch):
+        """Ein Pfad außerhalb der Bibliothek darf keinen Knopf ergeben."""
+        monkeypatch.setattr(audiobook.settings, "audiobook_root", tmp_path / "lib")
+        (tmp_path / "lib").mkdir()
+        fremd = tmp_path / "woanders" / "Buch"
+        fremd.mkdir(parents=True)
+        assert audiobook.state(fremd).relative == ""

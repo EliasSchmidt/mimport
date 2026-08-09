@@ -331,6 +331,29 @@ Versuch mit nichts da; bliebe sie liegen, zeigte Audiobookshelf das Buch
 stundenlang doppelt an, solange der neue Rip läuft. Umbenannt wird erst, wenn
 das Einlesen wirklich angelaufen ist — ein Fehlstart lässt das Buch unverändert.
 
+### Unfertiges liegt nicht im Buchordner
+
+Discs und m4b entstehen in `/audiobooks/.mimport-unfertig/` und werden erst
+fertig an ihren Platz geschoben. Der Grund ist Audiobookshelf: Es scannt die
+Bibliothek, und eine halb gelesene Disc oder eine noch wachsende m4b würde es
+als unvollständiges Buch einlesen — bei zwölf CDs ein Fenster von Stunden.
+Während eines Rips existiert der Buchordner deshalb noch gar nicht.
+
+Warum dieser Ordner *innerhalb* der Bibliothek liegt und nicht im
+`/staging`-Volume der Uploads: Das ist ein Named Volume, die Bibliothek ein
+Bind-Mount vom Host — **verschiedene Dateisysteme**. Ein Verschieben dorthin
+wäre ein Kopiervorgang, bei zwölf CDs also mehrere Gigabyte zweimal geschrieben.
+Von hier aus ist es ein `rename`: sofort und ohne zusätzlichen Platz. Der Punkt
+am Anfang hält Audiobookshelf davon ab, den Ordner selbst als Buch zu lesen.
+
+Ein Nebeneffekt, den man mitnimmt: Scheitert das Bündeln an der Laufzeitprüfung,
+kommt die m4b gar nicht erst ins Buch. Der Zustand „m4b und Quellen liegen
+nebeneinander" entsteht dadurch nicht mehr von selbst — nur noch über
+*Von vorn einlesen*.
+
+Reste eines Absturzes räumt der nächste Start weg; sonst läge dort dauerhaft
+das halbe Hörbuch.
+
 Der Buchordner **ist** der Zustand — welche Discs schon eingelesen sind, steht
 im Dateisystem und in keiner Datenbank. Ein Neustart mitten in einem
 zwölfteiligen Hörbuch verliert deshalb nichts. Für die nächste Disc einfach

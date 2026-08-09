@@ -126,7 +126,8 @@ class TestQuellenAufraeumen:
         job = audiobook.M4bJob(buch=str(buch))
         # m4b und Quellen sind gleich lang.
         monkeypatch.setattr(audiobook, "_probe_duration", lambda p: 3600.0)
-        audiobook._quellen_aufraeumen(job, quellen, ziel, 3600.0)
+        audiobook._laufzeit_pruefen(job, ziel, 3600.0)
+        audiobook._quellen_loeschen(job, quellen, ziel)
 
         assert job.geloescht == 2
         assert not any(q.exists() for q in quellen)
@@ -145,7 +146,7 @@ class TestQuellenAufraeumen:
 
         job = audiobook.M4bJob(buch=str(buch))
         with pytest.raises(audiobook.AudiobookError, match="passen nicht zusammen"):
-            audiobook._quellen_aufraeumen(job, quellen, ziel, 3600.0)
+            audiobook._laufzeit_pruefen(job, ziel, 3600.0)
 
         assert job.geloescht == 0
         assert all(q.exists() for q in quellen), "Quellen müssen unangetastet bleiben"
@@ -161,7 +162,8 @@ class TestQuellenAufraeumen:
 
         monkeypatch.setattr(audiobook, "_probe_duration", lambda p: 3600.9)
         job = audiobook.M4bJob(buch=str(buch))
-        audiobook._quellen_aufraeumen(job, [quelle], ziel, 3600.0)
+        audiobook._laufzeit_pruefen(job, ziel, 3600.0)
+        audiobook._quellen_loeschen(job, [quelle], ziel)
         assert job.geloescht == 1
 
 
@@ -266,16 +268,19 @@ class TestUnstimmigerZustand:
         assert audiobook.state(buch).unstimmig is False
 
     @braucht_ffmpeg
-    def test_abgebrochener_bau_hinterlaesst_genau_diesen_zustand(
-        self, bibliothek, monkeypatch
-    ):
-        """Der Weg dorthin -- damit der Zustand nicht bloß theoretisch ist."""
+    def test_abgebrochener_bau_laesst_das_buch_sauber(self, bibliothek, monkeypatch):
+        """Seit die m4b im Staging entsteht, gibt es diesen Zustand nicht mehr.
+
+        Früher hatte ffmpeg schon in den Buchordner geschrieben, bevor die
+        Laufzeitprüfung durchfiel -- m4b und Quellen lagen nebeneinander, und
+        Audiobookshelf zeigte das Buch doppelt. Jetzt kommt die m4b gar nicht
+        erst dorthin.
+        """
         import time
 
         buch = audiobook.book_dir("A", "B")
         toene(buch, [2, 2])
 
-        # Die m4b fällt kürzer aus, als sie darf.
         echt = audiobook._probe_duration
         monkeypatch.setattr(
             audiobook,
@@ -292,7 +297,9 @@ class TestUnstimmigerZustand:
         assert job.zustand == "fehler"
         assert job.geloescht == 0, "Quellen müssen stehen bleiben"
         zustand = audiobook.state(buch)
-        assert zustand.unstimmig is True
+        assert zustand.unstimmig is False
+        assert zustand.has_m4b is False, "die m4b darf nicht im Buch liegen"
+        assert zustand.file_count == 2, "die Quellen aber schon"
 
 
 class TestKapitelnamen:
@@ -560,3 +567,139 @@ class TestGroesseUndDauer:
     def test_faktor_bleibt_leer_ohne_messwerte(self):
         job = audiobook.M4bJob(buch="/x")
         assert job.faktor_text == ""
+
+
+class TestStagingInDerBibliothek:
+    """Unfertiges entsteht neben der Bibliothek, nicht darin.
+
+    Audiobookshelf scannt den Buchordner; eine halb gelesene Disc oder eine
+    wachsende m4b würde es als unvollständiges Buch einlesen. Das Staging liegt
+    trotzdem unter ``audiobook_root`` -- nur so ist das Verschieben ein
+    Umbenennen und kein Kopiervorgang über Dateisystemgrenzen.
+    """
+
+    def test_staging_liegt_in_der_bibliothek(self, bibliothek):
+        assert audiobook.staging_dir().parent == bibliothek.resolve()
+        assert audiobook.staging_dir().name.startswith(".")
+
+    def test_arbeitsordner_sind_eindeutig(self, bibliothek):
+        a = audiobook.neuer_arbeitsordner("disc")
+        b = audiobook.neuer_arbeitsordner("disc")
+        assert a != b and a.is_dir() and b.is_dir()
+
+    def test_staging_taucht_nicht_als_buch_auf(self, bibliothek):
+        arbeit = audiobook.neuer_arbeitsordner("disc")
+        (arbeit / "01.flac").write_bytes(b"fLaC\x00\x00\x00\x22")
+
+        assert audiobook.list_books() == [], "Unfertiges ist kein Buch"
+
+    def test_fertigstellen_ist_ein_umbenennen(self, bibliothek):
+        arbeit = audiobook.neuer_arbeitsordner("disc")
+        (arbeit / "01.flac").write_bytes(b"fLaC\x00\x00\x00\x22")
+        buch = audiobook.book_dir("A", "B")
+
+        ziel = audiobook.fertigstellen(arbeit, audiobook.next_disc_dir(buch))
+
+        assert ziel.name == "CD 1"
+        assert (ziel / "01.flac").is_file()
+        assert not arbeit.exists()
+
+    def test_belegtes_ziel_gibt_einen_klaren_fehler(self, bibliothek):
+        """Nach Stunden Arbeit darf nichts stillschweigend danebenlanden."""
+        buch = audiobook.book_dir("A", "B")
+        (buch / "CD 1").mkdir(parents=True)
+        (buch / "CD 1" / "schon da.flac").write_bytes(b"x")
+
+        arbeit = audiobook.neuer_arbeitsordner("disc")
+        (arbeit / "neu.flac").write_bytes(b"x")
+
+        with pytest.raises(audiobook.AudiobookError, match="nicht verloren"):
+            audiobook.fertigstellen(arbeit, buch / "CD 1")
+
+        # Das Ergebnis liegt noch im Staging, nichts ist weg.
+        assert (arbeit / "neu.flac").is_file()
+        assert (buch / "CD 1" / "schon da.flac").is_file()
+
+    def test_aufraeumen_entfernt_reste(self, bibliothek):
+        arbeit = audiobook.neuer_arbeitsordner("disc")
+        (arbeit / "halb.flac").write_bytes(b"x" * 1000)
+
+        assert audiobook.staging_aufraeumen() == 1
+        assert not arbeit.exists()
+        # Der Staging-Ordner selbst bleibt.
+        assert audiobook.staging_dir().is_dir()
+
+    @braucht_ffmpeg
+    def test_m4b_entsteht_im_staging_und_wird_verschoben(self, bibliothek):
+        import time
+
+        buch = audiobook.book_dir("A", "B")
+        toene(buch, [1, 1])
+
+        job = audiobook.build(buch)
+        for _ in range(300):
+            if not job.laeuft:
+                break
+            time.sleep(0.2)
+
+        assert job.zustand == "fertig", job.fehler
+        assert (buch / "B.m4b").is_file()
+        # Im Staging bleibt nichts zurück.
+        assert list(audiobook.staging_dir().iterdir()) == []
+
+
+class TestDiscsNormalisieren:
+    """Die erste Daten-CD liegt flach -- kommt eine zweite, muss sie umziehen."""
+
+    def test_flache_dateien_wandern_nach_cd1(self, bibliothek):
+        buch = audiobook.book_dir("A", "B")
+        buch.mkdir(parents=True)
+        (buch / "01.mp3").write_bytes(b"\xff\xfb")
+        (buch / "02.mp3").write_bytes(b"\xff\xfb")
+
+        audiobook.discs_normalisieren(buch)
+
+        assert (buch / "CD 1" / "01.mp3").is_file()
+        assert not (buch / "01.mp3").exists()
+
+    def test_unterordner_wandern_mit(self, bibliothek):
+        buch = audiobook.book_dir("A", "B")
+        (buch / "Disc 1").mkdir(parents=True)
+        (buch / "Disc 1" / "01.mp3").write_bytes(b"\xff\xfb")
+
+        audiobook.discs_normalisieren(buch)
+
+        assert (buch / "CD 1" / "Disc 1" / "01.mp3").is_file()
+
+    def test_reihenfolge_stimmt_danach(self, bibliothek):
+        """Der eigentliche Zweck: sonst käme Disc 2 vor Disc 1."""
+        buch = audiobook.book_dir("A", "B")
+        (buch / "Disc 1").mkdir(parents=True)
+        (buch / "Disc 1" / "01.mp3").write_bytes(b"\xff\xfb")
+
+        audiobook.discs_normalisieren(buch)
+        (buch / "CD 2").mkdir()
+        (buch / "CD 2" / "01.mp3").write_bytes(b"\xff\xfb")
+
+        reihenfolge = [str(p.relative_to(buch)) for p in audiobook.audio_files(buch)]
+        assert reihenfolge == ["CD 1/Disc 1/01.mp3", "CD 2/01.mp3"]
+
+    def test_bereits_geordnetes_bleibt_unberuehrt(self, bibliothek):
+        buch = audiobook.book_dir("A", "B")
+        (buch / "CD 1").mkdir(parents=True)
+        (buch / "CD 1" / "01.mp3").write_bytes(b"\xff\xfb")
+
+        assert audiobook.discs_normalisieren(buch) is None
+        assert (buch / "CD 1" / "01.mp3").is_file()
+
+    def test_die_m4b_bleibt_liegen(self, bibliothek):
+        """Sie ist das Ergebnis, keine Quelle -- sie gehört nicht in CD 1."""
+        buch = audiobook.book_dir("A", "B")
+        buch.mkdir(parents=True)
+        (buch / "B.m4b").write_bytes(b"x")
+        (buch / "01.mp3").write_bytes(b"\xff\xfb")
+
+        audiobook.discs_normalisieren(buch)
+
+        assert (buch / "B.m4b").is_file()
+        assert (buch / "CD 1" / "01.mp3").is_file()

@@ -332,6 +332,7 @@ def _arbeite(
     *,
     bei_fehler: Callable[[], None],
     mit_lookup: bool = True,
+    danach: Callable[[], None] | None = None,
 ) -> None:
     """Der eigentliche Rip. Läuft im Hintergrund-Thread.
 
@@ -375,6 +376,9 @@ def _arbeite(
                 # auch von Hand.
                 log.warning("DiscID-Abfrage fehlgeschlagen: %s", exc)
                 job.releases = []
+
+        if danach is not None:
+            danach()
 
         job.beendet = time.monotonic()
         job.zustand = "fertig"
@@ -472,12 +476,13 @@ def _starten(
     *,
     bei_fehler: Callable[[], None],
     mit_lookup: bool = True,
+    danach: Callable[[], None] | None = None,
 ) -> None:
     zielordner.mkdir(parents=True, exist_ok=True)
     thread = threading.Thread(
         target=_arbeite,
         args=(job, toc, zielordner),
-        kwargs={"bei_fehler": bei_fehler, "mit_lookup": mit_lookup},
+        kwargs={"bei_fehler": bei_fehler, "mit_lookup": mit_lookup, "danach": danach},
         name="mimport-rip",
         daemon=True,
     )
@@ -490,21 +495,41 @@ def start_audiobook(*, allowance: int, buch: Path, disc_ordner: Path) -> RipJob:
     Kein DiscID-Lookup: MusicBrainz kennt Hörbücher praktisch nicht, und die
     Metadaten holt sich später Audiobookshelf über Audible. Der Rip endet
     hier, es folgt kein Match und kein beets-Import.
+
+    Geschrieben wird zunächst neben die Bibliothek, nicht hinein: eine halb
+    gelesene Disc im Buchordner würde Audiobookshelf bei einem Scan als
+    unvollständiges Buch einlesen, und ein Rip dauert eine halbe Stunde. Erst
+    am Ende wird der fertige Ordner an seinen Platz geschoben -- auf demselben
+    Dateisystem ist das ein Umbenennen und kostet nichts.
     """
+    from backend import audiobook
+
     job, toc = _vorbereiten(allowance)
     job.modus = "hoerbuch"
     job.buch = str(buch)
     job.disc_ordner = str(disc_ordner)
     job.meldung = f"Lese {toc.track_count} Tracks …"
 
+    arbeit = audiobook.neuer_arbeitsordner("disc")
+
+    def ablegen() -> None:
+        # Der Zielname erst jetzt: zwischen Start und Ende könnte eine weitere
+        # Disc dazugekommen sein, und ein rename auf einen belegten Ordner
+        # scheitert.
+        buchpfad = Path(job.buch or "")
+        audiobook.discs_normalisieren(buchpfad)
+        ziel = audiobook.next_disc_dir(buchpfad)
+        job.disc_ordner = str(audiobook.fertigstellen(arbeit, ziel))
+
     _starten(
         job,
         toc,
-        disc_ordner,
-        # Nur die angefangene Disc, niemals das Buch: dort liegen womöglich
-        # schon Stunden Arbeit aus vorherigen CDs.
-        bei_fehler=lambda: shutil.rmtree(disc_ordner, ignore_errors=True),
+        arbeit,
+        # Nur der Arbeitsordner, niemals das Buch: dort liegen womöglich schon
+        # Stunden Arbeit aus vorherigen CDs.
+        bei_fehler=lambda: shutil.rmtree(arbeit, ignore_errors=True),
         mit_lookup=False,
+        danach=ablegen,
     )
     return job
 

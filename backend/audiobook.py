@@ -27,6 +27,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import secrets
 import shutil
 import subprocess
 import threading
@@ -60,6 +61,77 @@ def library_root() -> Path:
     root = settings.audiobook_root
     root.mkdir(parents=True, exist_ok=True)
     return root
+
+
+#: Hier entsteht alles Unfertige. Der Punkt am Anfang hält Audiobookshelf
+#: davon ab, den Ordner als Buch zu lesen.
+STAGING_NAME = ".mimport-unfertig"
+
+
+def staging_dir() -> Path:
+    """Wo Discs und m4b entstehen, bevor sie im Buchordner auftauchen.
+
+    Bewusst *innerhalb* der Hörbuch-Bibliothek und nicht im ``/staging``-Volume
+    der Uploads: das ist ein Named Volume, die Bibliothek ein Bind-Mount vom
+    Host. Ein Verschieben dorthin wäre ein Kopiervorgang über
+    Dateisystemgrenzen -- bei zwölf CDs mehrere Gigabyte, die zweimal
+    geschrieben würden. Von hier aus ist es ein ``rename`` auf demselben
+    Dateisystem: sofort und ohne zusätzlichen Platz.
+
+    Auch nicht über ``backend.sessions``: dessen Staging hängt an
+    ``staging_root``, an Session-IDs und an der TTL-Aufräumung für Uploads --
+    drei Lebenszyklen, die mit Hörbüchern nichts zu tun haben.
+    """
+    ordner = library_root() / STAGING_NAME
+    ordner.mkdir(parents=True, exist_ok=True)
+    return ordner
+
+
+def neuer_arbeitsordner(zweck: str) -> Path:
+    """Ein leerer Ordner für einen Vorgang, der noch nicht fertig ist."""
+    ordner = staging_dir() / f"{zweck}-{secrets.token_urlsafe(8)}"
+    ordner.mkdir(parents=True, exist_ok=False)
+    return ordner
+
+
+def staging_aufraeumen() -> int:
+    """Entfernt Reste abgebrochener Vorgänge.
+
+    Ein Absturz mitten im Rip lässt mehrere Gigabyte liegen, die sonst niemand
+    je wieder anfasst. Läuft beim Start -- da kann nichts in Arbeit sein.
+    """
+    ordner = settings.audiobook_root / STAGING_NAME
+    if not ordner.is_dir():
+        return 0
+    entfernt = 0
+    for kind in ordner.iterdir():
+        shutil.rmtree(kind, ignore_errors=True) if kind.is_dir() else kind.unlink(
+            missing_ok=True
+        )
+        entfernt += 1
+    if entfernt:
+        log.info("%d unfertige(r) Hörbuch-Vorgang aufgeräumt.", entfernt)
+    return entfernt
+
+
+def fertigstellen(arbeit: Path, ziel: Path) -> Path:
+    """Schiebt ein fertiges Ergebnis an seinen Platz.
+
+    Ein ``rename`` auf ein vorhandenes, nicht leeres Verzeichnis scheitert --
+    und das nach Stunden Arbeit. Deshalb wird der Zielname erst hier bestimmt,
+    unmittelbar davor, und ein Fehlschlag bleibt ein Fehlschlag: still
+    danebenlegen wäre schlimmer als eine klare Meldung.
+    """
+    ziel.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        arbeit.rename(ziel)
+    except OSError as exc:
+        raise AudiobookError(
+            f"„{ziel.name}“ ließ sich nicht an seinen Platz schieben: {exc}. "
+            "Das Ergebnis liegt noch unter "
+            f"{STAGING_NAME}/{arbeit.name} und ist nicht verloren."
+        ) from exc
+    return ziel
 
 
 def book_dir(autor: str, titel: str) -> Path:
@@ -123,6 +195,45 @@ def next_disc_dir(buch: Path, *, ist_datencd: bool = False) -> Path:
     while nummer in belegt:
         nummer += 1
     return buch / f"CD {nummer}"
+
+
+def discs_normalisieren(buch: Path) -> Path | None:
+    """Räumt flach liegende Dateien nach ``CD 1``, bevor eine Disc dazukommt.
+
+    Die erste Daten-CD landet absichtlich flach im Buchordner -- eine MP3-CD
+    trägt meist das ganze Buch, ein einsames „CD 1" wäre albern. Kommt aber
+    doch eine zweite Disc, ist die Struktur uneinheitlich, und das verdreht die
+    Kapitelreihenfolge: die natürliche Sortierung stellt ``CD 1/…`` vor
+    ``Disc 1/…``, die zweite Disc käme also vor der ersten.
+
+    Deshalb wandert das Flache vorher nach ``CD 1``. Auf demselben Dateisystem
+    kostet das nichts.
+    """
+    if not buch.is_dir():
+        return None
+    flach = [
+        p
+        for p in buch.iterdir()
+        if p.is_file() and p.suffix.lower() in AUDIO_EXTENSIONS
+        and p.name != f"{buch.name}.m4b"
+    ]
+    ordner_flach = [
+        p
+        for p in buch.iterdir()
+        if p.is_dir() and not _DISC_RE.match(p.name) and audio_files(p)
+    ]
+    if not flach and not ordner_flach:
+        return None
+
+    ziel = buch / "CD 1"
+    if ziel.exists():
+        return None
+
+    ziel.mkdir()
+    for pfad in flach + ordner_flach:
+        pfad.rename(ziel / pfad.name)
+    log.info("Bisherigen Inhalt von %s nach „CD 1“ geräumt.", buch.name)
+    return ziel
 
 
 @dataclass
@@ -219,7 +330,9 @@ def list_books() -> list[BookState]:
     if not root.is_dir():
         return []
     buecher = []
-    for autor in sorted(p for p in root.iterdir() if p.is_dir()):
+    for autor in sorted(
+        p for p in root.iterdir() if p.is_dir() and p.name != STAGING_NAME
+    ):
         for buch in sorted(p for p in autor.iterdir() if p.is_dir()):
             zustand = state(buch)
             if zustand.file_count or zustand.has_m4b:
@@ -528,8 +641,15 @@ def _bauen(
     arbeit: Path,
     titel: list[str] | None = None,
 ) -> None:
-    """Der Encode. Läuft im Hintergrund-Thread."""
-    ziel = buch / f"{buch.name}.m4b"
+    """Der Encode. Läuft im Hintergrund-Thread.
+
+    Geschrieben wird in ``arbeit`` und erst am Ende in den Buchordner
+    geschoben. Während des Encodierens wächst die Datei stundenlang und ist
+    unabspielbar -- läge sie im Buchordner, würde Audiobookshelf sie bei einem
+    Scan als Hörbuch einlesen.
+    """
+    endziel = buch / f"{buch.name}.m4b"
+    ziel = arbeit / f"{buch.name}.m4b"
     try:
         job.zustand = "vorbereiten"
         job.meldung = "Lese Spieldauern und baue die Kapitel …"
@@ -583,7 +703,11 @@ def _bauen(
 
         job.zustand = "pruefen"
         job.meldung = "Vergleiche die Laufzeiten …"
-        _quellen_aufraeumen(job, quellen, ziel, gesamt)
+        # Erst prüfen, dann verschieben, dann löschen. Andersherum stünde man
+        # nach einem gescheiterten Verschieben ohne Quellen und ohne m4b da.
+        _laufzeit_pruefen(job, ziel, gesamt)
+        ziel = fertigstellen(ziel, endziel)
+        _quellen_loeschen(job, quellen, ziel)
 
         job.beendet = time.monotonic()
         job.zustand = "fertig"
@@ -649,15 +773,11 @@ def _hms(sekunden: float) -> str:
     return f"{gesamt // 3600}:{gesamt // 60 % 60:02d}:{gesamt % 60:02d}"
 
 
-def _quellen_aufraeumen(
-    job: M4bJob, quellen: list[Path], ziel: Path, quell_sekunden: float
-) -> None:
-    """Löscht die Quelldateien -- aber nur, wenn die m4b vollständig ist.
+def _laufzeit_pruefen(job: M4bJob, ziel: Path, quell_sekunden: float) -> None:
+    """Ist die m4b so lang wie die Summe ihrer Quellen?
 
-    Audiobookshelf liest *alle* Audiodateien eines Buchordners als Tracks
-    desselben Buchs. Bleiben die FLACs liegen, steht das Buch doppelt in der
-    Bibliothek. Die CD ist das Archiv, ein misslungener Encode wäre trotzdem
-    Datenverlust -- deshalb wird vorher die Laufzeit verglichen.
+    Die Bremse vor dem Löschen: die CD ist das Archiv, ein misslungener Encode
+    wäre trotzdem Datenverlust.
     """
     m4b_sekunden = _probe_duration(ziel)
     abweichung_ms = abs(int(m4b_sekunden * 1000) - int(quell_sekunden * 1000))
@@ -674,6 +794,14 @@ def _quellen_aufraeumen(
             "und dann selbst entscheiden."
         )
 
+
+def _quellen_loeschen(job: M4bJob, quellen: list[Path], ziel: Path) -> None:
+    """Räumt die Quelldateien weg, nachdem die m4b an ihrem Platz liegt.
+
+    Audiobookshelf liest *alle* Audiodateien eines Buchordners als Tracks
+    desselben Buchs. Bleiben die FLACs neben der m4b liegen, steht das Buch
+    doppelt in der Bibliothek.
+    """
     # Nur die eingesammelte Liste, niemals "alles außer der m4b": ein Fehler
     # in der Suche würde sonst Fremdes mitnehmen.
     for pfad in quellen:
@@ -752,8 +880,7 @@ def build(
         )
         raise AudiobookError(job.fehler)
 
-    arbeit = Path(str(buch)) / ".mimport-m4b"
-    arbeit.mkdir(parents=True, exist_ok=True)
+    arbeit = neuer_arbeitsordner("m4b")
 
     thread = threading.Thread(
         target=_bauen,

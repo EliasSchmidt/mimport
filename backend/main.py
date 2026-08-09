@@ -29,7 +29,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
-from backend import beets_env, sessions
+from backend import audiobook, beets_env, sessions
 from backend.config import settings
 from backend.routes import router
 
@@ -62,6 +62,10 @@ async def lifespan(app: FastAPI):
     entfernt = sessions.sweep_expired(settings.session_ttl_hours)
     if entfernt:
         log.info("%d verwaiste Session(s) beim Start entfernt.", entfernt)
+
+    # Unfertige Hörbuch-Vorgänge liegen neben der Bibliothek und würden sonst
+    # nie wieder angefasst -- ein Absturz mitten im Rip kostet Gigabyte.
+    audiobook.staging_aufraeumen()
 
     log.info(
         "Staging-Ordner: %s | belegt %.1f GB von %.1f GB | frei auf dem "

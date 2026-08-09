@@ -775,7 +775,10 @@ class TestHoerbuchFortsetzen:
         assert "kopiert" in response.text
         # Die zweite Disc landet neben der ersten, nicht in einem neuen Buch.
         assert (buch / "CD 2" / "02 Kapitel.mp3").is_file()
-        assert sorted(p.name for p in bibliothek.iterdir()) == ["Astrid Lindgren"]
+        # Kein zweites Buch -- der Staging-Ordner zählt nicht, der ist kein Buch.
+        assert sorted(
+            p.name for p in bibliothek.iterdir() if not p.name.startswith(".")
+        ) == ["Astrid Lindgren"]
 
     def test_fremder_buchpfad_wird_abgewiesen(self, client, bibliothek):
         response = client.post("/audiobook/rip", data={"buch": "../../etc"})

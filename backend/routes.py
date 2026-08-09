@@ -13,6 +13,7 @@ FastAPI führt ``def``-Endpunkte dagegen in einem Threadpool aus.
 from __future__ import annotations
 
 import logging
+import shutil
 from pathlib import Path
 
 from fastapi import APIRouter, Form, HTTPException, Request, UploadFile
@@ -549,6 +550,28 @@ def audiobook_rip(
     return _audiobook_fragment(request, meldung=beiseite_legen())
 
 
+def _einsortieren(arbeit: Path, ziel: Path) -> Path:
+    """Schiebt kopierte Dateien an ihren Platz.
+
+    Ist der Zielordner schon da (weitere Disc eines angefangenen Buchs), kann
+    der Arbeitsordner nicht einfach umbenannt werden -- dann wandern die
+    Dateien einzeln, was auf demselben Dateisystem ebenfalls nur Metadaten
+    kostet.
+    """
+    if not ziel.exists():
+        return audiobook.fertigstellen(arbeit, ziel)
+
+    ziel.mkdir(parents=True, exist_ok=True)
+    for quelle in sorted(arbeit.rglob("*")):
+        if not quelle.is_file():
+            continue
+        neu = ziel / quelle.relative_to(arbeit)
+        neu.parent.mkdir(parents=True, exist_ok=True)
+        quelle.rename(neu)
+    shutil.rmtree(arbeit, ignore_errors=True)
+    return ziel
+
+
 def _audiobook_datencd(
     request: Request, buch: Path, *, beiseite_legen=None
 ) -> HTMLResponse:
@@ -557,14 +580,30 @@ def _audiobook_datencd(
     ``beiseite_legen`` wird erst nach dem Kopieren aufgerufen: scheitert es,
     soll das Buch unverändert bleiben.
     """
+    arbeit = audiobook.neuer_arbeitsordner("datencd")
     try:
         quelle = disc.resolve_folder("")
-        ordner = audiobook.next_disc_dir(buch, ist_datencd=True)
+        # Erst neben die Bibliothek kopieren: 700 MB dauern Minuten, und ein
+        # ABS-Scan in dieser Zeit läse ein halbes Buch ein.
+        #
         # Rekursiv: Hörbuch-CDs legen ihre Kapitel oft in einen Unterordner
         # ("Disc 1", "CD1", nach dem Titel benannt). Anders als bei Musik gibt
         # es hier keinen Ordner-Auswähler -- eine Hörbuch-CD ist ein Buch.
-        anzahl = disc.copy_into(quelle, ordner, rekursiv=True)
+        anzahl = disc.copy_into(quelle, arbeit, rekursiv=True)
+
+        # Zielnamen erst jetzt bestimmen, unmittelbar vor dem Umbenennen.
+        # Vorher aufräumen: liegt schon eine Disc flach im Buchordner, muss sie
+        # nach „CD 1", sonst stünde die neue Disc beim Bündeln davor.
+        audiobook.discs_normalisieren(buch)
+        ordner = audiobook.next_disc_dir(buch, ist_datencd=True)
+        if ordner == buch and not buch.exists():
+            # Die erste Daten-CD landet flach im Buchordner -- dann ist das
+            # Umbenennen des Arbeitsordners genau der Buchordner.
+            ordner = audiobook.fertigstellen(arbeit, buch)
+        else:
+            ordner = _einsortieren(arbeit, ordner)
     except (disc.DiscError, audiobook.AudiobookError) as exc:
+        shutil.rmtree(arbeit, ignore_errors=True)
         return _audiobook_fragment(request, fehler=str(exc))
     hinweis = beiseite_legen() if beiseite_legen else ""
     wohin = "ins Buch" if ordner == buch else f"nach {ordner.name}"

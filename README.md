@@ -213,6 +213,27 @@ Audiobookshelf) und nicht im Staging (das wird bei jedem Start geleert).
 Die Liste steht ohnehin nur im DOM, wenn kein Auftrag läuft — der
 Zweisekundentakt der Fortschrittsanzeige lädt also keine Bilder nach.
 
+**Auch Cover, die nur in der m4b stecken.** Bücher, die nicht über mimport
+kamen, haben oft kein Bild im Ordner, sondern nur eines in der Datei — und
+`has_cover` sieht den Ordner. Beim Start holt mimport diese Cover deshalb
+einmal heraus und legt sie als `cover.jpg` daneben. Danach ist die Frage „hat
+dieses Buch ein Cover" wieder eine reine Dateisystemabfrage, und Audiobookshelf
+findet das Bild ebenfalls.
+
+Das läuft im Hintergrund und kostet pro Buch etwa 25 ms zum Nachsehen und
+34 ms zum Herausholen (gemessen an 111 MB; ohne `faststart` genauso schnell,
+ffprobe springt zum Index statt zu lesen). Drei Dinge sind dabei nicht
+selbstverständlich:
+
+- Geprüft wird die **disposition** `attached_pic`, nicht bloß „gibt es eine
+  Videospur". Manche Hörbücher bringen ein echtes Video mit, und daraus ein
+  Einzelbild in die Bibliothek zu schreiben wäre grob daneben.
+- Geschrieben wird **immer JPEG**, auch wenn eingebettet ein PNG steckt. `-c
+  copy` wäre schneller, legte dann aber ein PNG namens `cover.jpg` ab — Browser
+  kommen damit klar, die eigene Formatprüfung nicht.
+- Erst danebenschreiben, dann umbenennen, und nur bei nicht leerer Datei. Eine
+  halbe `cover.jpg` machte `has_cover` wahr und ergäbe ein kaputtes Bild.
+
 ### Auch nachträglich, wenn die m4b schon steht
 
 Solange Quelldateien im Buchordner liegen, genügt das Bild daneben — der Encode

@@ -695,6 +695,104 @@ def cover_pfad(buch: Path) -> Path | None:
     return None
 
 
+def _eingebettetes_cover(datei: Path) -> bool:
+    """Steckt in dieser m4b ein Titelbild?
+
+    Geprüft wird die *disposition*, nicht bloß „gibt es eine Videospur". Manche
+    Hörbücher bringen eine echte Videospur mit; von der einen Einzelbild als
+    Cover in die Bibliothek zu schreiben, wäre grob daneben.
+    """
+    # ``-show_streams``, nicht ``-show_entries stream=disposition``: die
+    # disposition ist bei ffprobe ein eigener Abschnitt und fehlt in der
+    # gefilterten Ausgabe schlicht. Der erste Versuch lief damit ins Leere und
+    # meldete für jede m4b „kein Bild".
+    roh = _ffprobe(
+        ["-select_streams", "v", "-show_streams", "-print_format", "json",
+         str(datei)]
+    )
+    try:
+        daten = json.loads(roh or "{}")
+    except ValueError:
+        return False
+    return any(
+        s.get("disposition", {}).get("attached_pic")
+        for s in daten.get("streams", [])
+    )
+
+
+def cover_aus_m4b_holen(buch: Path) -> bool:
+    """Legt das eingebettete Cover einer m4b als Datei daneben.
+
+    Für Bücher, die nicht über mimport kamen: dort steckt das Bild oft nur in
+    der m4b, und die Liste zeigte deshalb einen Platzhalter, obwohl ein Cover
+    vorhanden ist.
+
+    Geschrieben wird immer JPEG, auch wenn das eingebettete Bild ein PNG ist.
+    Ein ``-c copy`` wäre verlustfrei und schneller, legte dann aber ein PNG
+    unter dem Namen ``cover.jpg`` ab -- Browser kommen damit klar, die eigene
+    Formatprüfung beim Hochladen nicht. Ein Einzelbild neu zu encodieren kostet
+    neben den 25 ms für die Abfrage ohnehin nichts.
+    """
+    if cover_pfad(buch) is not None:
+        return False
+    m4b = m4b_pfad(buch)
+    if not m4b.is_file() or not _eingebettetes_cover(m4b):
+        return False
+
+    ziel = buch / "cover.jpg"
+    # Erst danebenschreiben, dann umbenennen: ein abgebrochener ffmpeg soll
+    # keine halbe Datei hinterlassen, die als „hat Cover" durchgeht und in der
+    # Liste als kaputtes Bild erscheint.
+    vorlaeufig = buch / ".cover-aus-m4b.neu"
+    try:
+        ergebnis = subprocess.run(
+            [settings.ffmpeg_bin, "-hide_banner", "-loglevel", "error", "-nostdin",
+             "-y", "-i", str(m4b), "-map", "0:v:0", "-frames:v", "1",
+             "-f", "mjpeg", "-q:v", "2", str(vorlaeufig)],
+            capture_output=True,
+            text=True,
+            stdin=subprocess.DEVNULL,
+            timeout=COVER_EINBETTEN_TIMEOUT,
+        )
+        if ergebnis.returncode != 0 or not vorlaeufig.is_file():
+            return False
+        if vorlaeufig.stat().st_size == 0:
+            return False
+        vorlaeufig.replace(ziel)
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as exc:
+        log.warning("Cover aus %s nicht lesbar: %s", m4b.name, exc)
+        return False
+    finally:
+        vorlaeufig.unlink(missing_ok=True)
+    return True
+
+
+def cover_nachziehen() -> int:
+    """Holt die Cover aller m4bs, die noch keine Bilddatei danebenliegen haben.
+
+    Läuft einmal beim Start. Danach ist die Frage „hat dieses Buch ein Cover"
+    wieder eine reine Dateisystemabfrage -- deshalb hier und nicht beim
+    Auflisten: ein ffprobe je Buch bei jedem Seitenaufruf wäre auf dem
+    Zielrechner spürbar, einmal beim Start ist es das nicht.
+
+    Bücher ohne eingebettetes Bild kosten bei jedem Start erneut eine Abfrage
+    (gemessen 25 ms). Das ist der Preis dafür, ein später hinzugefügtes Cover
+    ohne weiteres Zutun zu finden.
+    """
+    geholt = 0
+    for zustand in list_books():
+        if zustand.has_cover or not zustand.has_m4b:
+            continue
+        try:
+            if cover_aus_m4b_holen(zustand.path):
+                geholt += 1
+        except Exception:  # noqa: BLE001 -- ein Buch darf den Lauf nicht beenden
+            log.exception("Cover aus %s fehlgeschlagen", zustand.path)
+    if geholt:
+        log.info("%d Cover aus m4bs geholt", geholt)
+    return geholt
+
+
 def _cover_mtime(buch: Path) -> int:
     pfad = cover_pfad(buch)
     if pfad is None:

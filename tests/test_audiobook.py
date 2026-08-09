@@ -1203,3 +1203,127 @@ class TestRelativerPfadUeberSymlink:
         fremd = tmp_path / "woanders" / "Buch"
         fremd.mkdir(parents=True)
         assert audiobook.state(fremd).relative == ""
+
+
+@braucht_ffmpeg
+class TestCoverAusM4bHolen:
+    """Cover von Büchern, die nicht über mimport kamen.
+
+    Dort steckt das Bild oft nur in der m4b, und die Liste zeigte einen
+    Platzhalter, obwohl ein Cover vorhanden ist -- has_cover sieht nur den
+    Ordner. Einmal beim Start herausgeholt, ist die Frage danach wieder eine
+    reine Dateisystemabfrage.
+    """
+
+    def _m4b(self, buch: Path, *, bild: str | None = "attached", video: bool = False):
+        buch.mkdir(parents=True, exist_ok=True)
+        befehl = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+                  "-f", "lavfi", "-i", "sine=f=440:d=3"]
+        if bild or video:
+            befehl += ["-f", "lavfi", "-i", "testsrc=s=200x200:d=1"]
+        befehl += ["-map", "0:a"]
+        if video:
+            # Eine echte Videospur, kein Titelbild.
+            befehl += ["-map", "1:v", "-c:v", "mpeg4", "-frames:v", "10"]
+        elif bild:
+            befehl += ["-map", "1:v", "-frames:v", "1", "-c:v", "mjpeg",
+                       "-disposition:v:0", "attached_pic"]
+        befehl += ["-c:a", "aac", str(audiobook.m4b_pfad(buch))]
+        subprocess.run(befehl, check=True, capture_output=True)
+        return buch
+
+    def test_eingebettetes_cover_wird_zur_datei(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(audiobook.settings, "audiobook_root", tmp_path)
+        buch = self._m4b(tmp_path / "Autor" / "Fremdes Buch")
+        assert not audiobook.state(buch).has_cover
+
+        assert audiobook.cover_aus_m4b_holen(buch) is True
+
+        bild = buch / "cover.jpg"
+        assert bild.is_file() and bild.stat().st_size > 500
+        # Wirklich ein JPEG, nicht bloß so benannt.
+        from backend import cover as cover_modul
+
+        assert cover_modul.format_erkennen(bild.read_bytes())
+        assert audiobook.state(buch).has_cover
+
+    def test_ohne_bild_bleibt_der_ordner_unberuehrt(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(audiobook.settings, "audiobook_root", tmp_path)
+        buch = self._m4b(tmp_path / "Autor" / "Ohne Bild", bild=None)
+
+        assert audiobook.cover_aus_m4b_holen(buch) is False
+        assert sorted(p.name for p in buch.iterdir()) == ["Ohne Bild.m4b"]
+
+    def test_echte_videospur_ist_kein_cover(self, tmp_path, monkeypatch):
+        """Manche Hörbücher bringen ein Video mit -- daraus kein Bild schneiden."""
+        monkeypatch.setattr(audiobook.settings, "audiobook_root", tmp_path)
+        buch = self._m4b(tmp_path / "Autor" / "Mit Video", bild=None, video=True)
+
+        assert audiobook.cover_aus_m4b_holen(buch) is False
+        assert not (buch / "cover.jpg").exists()
+
+    def test_vorhandenes_ordnerbild_wird_nicht_ueberschrieben(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(audiobook.settings, "audiobook_root", tmp_path)
+        buch = self._m4b(tmp_path / "Autor" / "Hat schon eins")
+        (buch / "cover.jpg").write_bytes(b"das hier soll bleiben")
+
+        assert audiobook.cover_aus_m4b_holen(buch) is False
+        assert (buch / "cover.jpg").read_bytes() == b"das hier soll bleiben"
+
+    def test_zweiter_lauf_tut_nichts_mehr(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(audiobook.settings, "audiobook_root", tmp_path)
+        self._m4b(tmp_path / "Autor" / "Eins")
+        self._m4b(tmp_path / "Autor" / "Zwei", bild=None)
+
+        assert audiobook.cover_nachziehen() == 1
+        assert audiobook.cover_nachziehen() == 0
+
+    def test_kein_rest_bei_fehlschlag(self, tmp_path, monkeypatch):
+        """Eine halbe Datei ginge als „hat Cover" durch und zeigte ein Loch."""
+        monkeypatch.setattr(audiobook.settings, "audiobook_root", tmp_path)
+        buch = self._m4b(tmp_path / "Autor" / "Buch")
+
+        echt = audiobook.subprocess.run
+
+        def scheitert(befehl, *args, **kwargs):
+            if audiobook.settings.ffprobe_bin in befehl[0]:
+                return echt(befehl, *args, **kwargs)
+            # ffmpeg legt eine leere Datei an und bricht ab.
+            import pathlib
+
+            pathlib.Path(befehl[-1]).write_bytes(b"")
+            return subprocess.CompletedProcess(befehl, 1, "", "kaputt")
+
+        monkeypatch.setattr(audiobook.subprocess, "run", scheitert)
+        assert audiobook.cover_aus_m4b_holen(buch) is False
+        monkeypatch.undo()
+
+        assert not (buch / "cover.jpg").exists()
+        assert not list(buch.glob(".cover*"))
+
+    def test_leere_datei_trotz_erfolg_wird_verworfen(self, tmp_path, monkeypatch):
+        """ffmpeg meldet Erfolg, hat aber nichts geschrieben.
+
+        Eigener Test, weil der Fehlschlag oben schon am Rückgabewert hängt --
+        die Größenprüfung wäre sonst unbelegt. Eine leere cover.jpg machte
+        has_cover wahr und ergäbe in der Liste ein kaputtes Bild.
+        """
+        import pathlib
+
+        monkeypatch.setattr(audiobook.settings, "audiobook_root", tmp_path)
+        buch = self._m4b(tmp_path / "Autor" / "Buch")
+
+        echt = audiobook.subprocess.run
+
+        def leer(befehl, *args, **kwargs):
+            if audiobook.settings.ffprobe_bin in befehl[0]:
+                return echt(befehl, *args, **kwargs)
+            pathlib.Path(befehl[-1]).write_bytes(b"")
+            return subprocess.CompletedProcess(befehl, 0, "", "")
+
+        monkeypatch.setattr(audiobook.subprocess, "run", leer)
+        assert audiobook.cover_aus_m4b_holen(buch) is False
+        monkeypatch.undo()
+
+        assert not (buch / "cover.jpg").exists()
+        assert not audiobook.state(buch).has_cover

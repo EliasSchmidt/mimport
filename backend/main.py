@@ -23,6 +23,7 @@ Abfrage gar nicht. Ausführlich in der README unter „Wie der Import abläuft".
 from __future__ import annotations
 
 import logging
+import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -66,6 +67,18 @@ async def lifespan(app: FastAPI):
     # Unfertige Hörbuch-Vorgänge liegen neben der Bibliothek und würden sonst
     # nie wieder angefasst -- ein Absturz mitten im Rip kostet Gigabyte.
     audiobook.staging_aufraeumen()
+
+    # Cover aus m4bs holen, die keine Bilddatei danebenliegen haben. Im
+    # Hintergrund: bei einer großen Bibliothek sind das ein paar Sekunden, und
+    # solange soll die Oberfläche nicht warten. Ein Fehler darin darf den Start
+    # erst recht nicht verhindern -- es geht um ein Vorschaubild.
+    def _cover_nachziehen() -> None:
+        try:
+            audiobook.cover_nachziehen()
+        except Exception:  # noqa: BLE001
+            log.exception("Cover aus m4bs holen fehlgeschlagen")
+
+    threading.Thread(target=_cover_nachziehen, daemon=True).start()
 
     log.info(
         "Staging-Ordner: %s | belegt %.1f GB von %.1f GB | frei auf dem "

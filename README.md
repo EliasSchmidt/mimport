@@ -501,6 +501,38 @@ Buch knapp zwei Stunden, bei Faktor 1,5 über zehn. Der Fortschritt kommt als
 Zeitstempel („4:32 von 11:04"), nicht als Kapitelzählung — ffmpeg encodiert am
 Stück.
 
+### Wenn ffmpeg hängen bleibt
+
+Drei Wege aus dem Stillstand, in dieser Reihenfolge:
+
+1. **Die Stillstandsüberwachung.** Meldet ffmpeg `MIMPORT_M4B_STILLSTAND`
+   Sekunden lang keinen Fortschritt (Vorgabe: 15 Minuten), wird er beendet und
+   der Auftrag als fehlgeschlagen markiert. Das ist das schärfere Kriterium als
+   eine Wanduhr: ein ehrlicher Encode läuft auf dem alten Laptop stundenlang,
+   meldet dabei aber ständig Fortschritt.
+2. **Das Zeitlimit** `MIMPORT_M4B_TIMEOUT` als zweite Bremse, falls ffmpeg zwar
+   Fortschritt meldet, aber nie ankommt.
+3. **Der Knopf „Bau abbrechen"** neben dem Fortschrittsbalken, für alles andere.
+
+In allen drei Fällen wird **nichts gelöscht**. Die Quelldateien fasst erst
+`_quellen_loeschen` an, und dorthin führt der Weg nur über die bestandene
+Laufzeitprüfung — ein abgebrochener Bau kommt dort nie an. Die halbfertige m4b
+liegt im Arbeitsordner und wird mit ihm weggeräumt.
+
+Drei Dinge standen dem vorher im Weg, alle drei behoben:
+
+- Die Schleife über `prozess.stdout` blockierte unbegrenzt. Das Zeitlimit stand
+  **dahinter** und konnte deshalb nie greifen — es war toter Code.
+- `stderr` ging in eine Pipe, die niemand las. Die fasst 64 KiB, und ffmpeg
+  schreibt dorthin rund 210 Byte je Sekunde Laufzeit — auch ohne
+  `-loglevel debug`, nachgemessen. Nach gut fünf Minuten wäre sie voll gewesen,
+  ffmpeg hätte beim Schreiben blockiert und mimport auf stdout gewartet: beide
+  für immer. Nachgestellt und bestätigt. Jetzt geht `stderr` in eine Datei im
+  Arbeitsordner, deren Ende bei einem Fehler in der Oberfläche erscheint.
+- „Verwerfen" verweigerte die Arbeit, solange der Auftrag lief — und er lief
+  für immer. Damit sperrte `_buch_belegt()` das Buch dauerhaft, und nur ein
+  Neustart des Containers half.
+
 > Eine Falle am Rande, nachgemessen statt geglaubt: `ffmpeg -progress` liefert
 > einen Schlüssel `out_time_ms`, dessen Wert in **Mikrosekunden** steht. mimport
 > liest deshalb `out_time_us`, das wenigstens ehrlich benannt ist.
@@ -580,6 +612,7 @@ Probelauf funktioniert weiterhin.
 | `MIMPORT_M4B_MONO` | `1` | Auf einen Kanal mischen |
 | `MIMPORT_M4B_MIN_KBPS` | `96` | Darunter gilt Umwandeln als nicht lohnend |
 | `MIMPORT_M4B_TIMEOUT` | `21600` | Zeitlimit für den m4b-Bau (s) |
+| `MIMPORT_M4B_STILLSTAND` | `900` | So lange darf ffmpeg schweigen, dann gilt er als hängend (s) |
 | `MIMPORT_BEET_BIN` | `beet` | Pfad zum beets-Executable |
 | `MIMPORT_MOVE` | `1` | Dateien verschieben (`0` = kopieren) |
 | `MIMPORT_MAX_UPLOAD_BYTES` | 4 GB | Obergrenze pro Upload |

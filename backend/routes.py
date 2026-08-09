@@ -472,6 +472,7 @@ def _audiobook_fragment(
         m4b=audiobook.current_m4b(),
         buecher=audiobook.list_books(),
         tools={**rip.tools_available(), **audiobook.tools_available()},
+        stillstand_minuten=settings.m4b_stillstand // 60,
         root=settings.audiobook_root,
         disc_da=disc.is_available(),
         meldung=meldung,
@@ -656,6 +657,20 @@ def audiobook_m4b_reset(request: Request) -> HTMLResponse:
     except audiobook.AudiobookError as exc:
         return _audiobook_fragment(request, fehler=str(exc))
     return _audiobook_fragment(request)
+
+
+@router.post("/audiobook/m4b/abbruch", response_class=HTMLResponse)
+def audiobook_m4b_abbruch(request: Request) -> HTMLResponse:
+    """Beendet einen laufenden m4b-Bau.
+
+    Der Ausweg für den Fall, dass ffmpeg steht: vorher blieb nur, den Container
+    neu zu starten, weil ein Auftrag auf „läuft" das Buch dauerhaft sperrte.
+    """
+    try:
+        hinweis = audiobook.abbrechen_m4b()
+    except audiobook.AudiobookError as exc:
+        return _audiobook_fragment(request, fehler=str(exc))
+    return _audiobook_fragment(request, meldung=hinweis)
 
 
 @router.post("/cover/audiobook", response_class=HTMLResponse)

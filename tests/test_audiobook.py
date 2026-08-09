@@ -703,3 +703,156 @@ class TestDiscsNormalisieren:
 
         assert (buch / "B.m4b").is_file()
         assert (buch / "CD 1" / "01.mp3").is_file()
+
+
+@braucht_ffmpeg
+class TestHaengenderEncode:
+    """Was passiert, wenn ffmpeg nicht mehr weiterkommt.
+
+    Vorher: gar nichts Gutes. Die Leseschleife über ``prozess.stdout``
+    blockierte unbegrenzt, das Zeitlimit stand dahinter und konnte deshalb nie
+    greifen, und ``reset_m4b`` verweigerte die Arbeit, solange der Auftrag auf
+    „läuft" stand -- was er dann für immer tat. Der einzige Ausweg war, den
+    Container neu zu starten.
+    """
+
+    def test_viel_stderr_blockiert_nicht(self, tmp_path):
+        """Der Deadlock, der von allein eintrat -- nach gut fünf Minuten.
+
+        Eine ungelesene Pipe fasst 64 KiB. ffmpeg schreibt dorthin rund
+        210 Byte je Sekunde Laufzeit, auch ohne ``-loglevel debug`` -- gemessen.
+        Ein Hörbuch-Encode läuft Stunden, also lief er zwangsläufig hinein.
+
+        Hier wird dieselbe Menge in Sekunden erzeugt, statt sie abzuwarten.
+        Entscheidend ist, dass der Weg der ausgelieferte ist: stderr landet in
+        einer Datei, nicht in einer Pipe.
+        """
+        job = audiobook.M4bJob(buch=str(tmp_path))
+        ziel = tmp_path / "out.m4a"
+        # -loglevel debug erzeugt die 64 KiB sofort; der Punkt ist nicht der
+        # Loglevel, sondern dass beliebig viel stderr folgenlos bleibt.
+        befehl = [
+            "ffmpeg", "-hide_banner", "-nostdin", "-y", "-loglevel", "debug",
+            "-f", "lavfi", "-i", "sine=f=440:d=20", "-c:a", "aac",
+            "-progress", "pipe:1", str(ziel),
+        ]
+        audiobook._encodieren(job, befehl, tmp_path)
+
+        protokoll = tmp_path / "ffmpeg-stderr.log"
+        assert protokoll.stat().st_size > 64 * 1024, (
+            "Der Test prüft nichts, wenn weniger als eine Pipe voll anfällt: "
+            f"{protokoll.stat().st_size} Byte"
+        )
+        assert ziel.is_file()
+        assert job.sekunden_fertig > 19
+
+    def test_stillstand_wird_beendet(self, tmp_path, monkeypatch):
+        """Ein ffmpeg, der nichts mehr meldet, wird abgeräumt statt abgewartet."""
+        monkeypatch.setattr(audiobook.settings, "m4b_stillstand", 1)
+        job = audiobook.M4bJob(buch=str(tmp_path))
+        # -re bremst auf Echtzeit; ohne Fortschrittsausgabe (kein -progress)
+        # sieht die Wache nie eine Regung und greift ein.
+        befehl = [
+            "ffmpeg", "-hide_banner", "-nostdin", "-y", "-loglevel", "quiet",
+            "-re", "-f", "lavfi", "-i", "sine=f=440:d=120", "-c:a", "aac",
+            str(tmp_path / "out.m4a"),
+        ]
+        with pytest.raises(audiobook.AudiobookError, match="keinen Fortschritt"):
+            audiobook._encodieren(job, befehl, tmp_path)
+        assert job.prozess is None, "Das Prozesshandle muss wieder frei sein"
+
+    def test_zeitlimit_greift_auch_bei_fortschritt(self, tmp_path, monkeypatch):
+        """Die Wanduhr als zweite Bremse -- vorher war sie toter Code.
+
+        Sie stand hinter der Leseschleife, die bei einem hängenden ffmpeg nie
+        endet. Das Zeitlimit, für das Messwerte vom Server angefordert wurden,
+        konnte damit nie zuschlagen.
+        """
+        monkeypatch.setattr(audiobook.settings, "m4b_timeout", 1)
+        monkeypatch.setattr(audiobook.settings, "m4b_stillstand", 3600)
+        job = audiobook.M4bJob(buch=str(tmp_path))
+        befehl = [
+            "ffmpeg", "-hide_banner", "-nostdin", "-y", "-loglevel", "quiet",
+            "-re", "-f", "lavfi", "-i", "sine=f=440:d=120", "-c:a", "aac",
+            "-progress", "pipe:1", str(tmp_path / "out.m4a"),
+        ]
+        with pytest.raises(audiobook.AudiobookError, match="Zeitlimit"):
+            audiobook._encodieren(job, befehl, tmp_path)
+
+    def test_abbruch_von_hand(self, tmp_path, monkeypatch):
+        """Der Knopf, den es nicht gab."""
+        import threading
+
+        monkeypatch.setattr(audiobook.settings, "audiobook_root", tmp_path)
+        buch = tmp_path / "Autor" / "Titel"
+        (buch / "Disc 1").mkdir(parents=True)
+        for nummer in range(1, 4):
+            subprocess.run(
+                ["ffmpeg", "-hide_banner", "-loglevel", "error", "-f", "lavfi",
+                 "-i", "sine=f=440:d=30", "-c:a", "flac",
+                 str(buch / "Disc 1" / f"{nummer:02d}.flac")],
+                check=True,
+            )
+
+        audiobook.reset_m4b()
+        job = audiobook.build(buch)
+        try:
+            # Warten, bis ffmpeg wirklich läuft -- vorher gäbe es nichts zu
+            # beenden, und der Test prüfte den falschen Zweig.
+            for _ in range(200):
+                if job.prozess is not None:
+                    break
+                threading.Event().wait(0.05)
+            assert job.prozess is not None, "ffmpeg kam nie in Gang"
+
+            audiobook.abbrechen_m4b()
+            for _ in range(200):
+                if not job.laeuft:
+                    break
+                threading.Event().wait(0.05)
+
+            assert not job.laeuft
+            assert job.zustand == "fehler"
+            assert "abgebrochen" in (job.fehler or "").lower()
+            # Und das Wichtigste: die Quellen sind noch da.
+            assert len(list((buch / "Disc 1").glob("*.flac"))) == 3
+            assert not (buch / f"{buch.name}.m4b").exists()
+        finally:
+            audiobook.reset_m4b()
+
+    def test_verwerfen_waehrend_es_laeuft_wird_abgelehnt(self, tmp_path):
+        """Verwerfen ist nicht abbrechen -- der Unterschied muss deutlich sein."""
+        audiobook.reset_m4b()
+        job = audiobook.M4bJob(buch=str(tmp_path))
+        job.zustand = "encodiert"
+        audiobook._m4b_job = job
+        try:
+            with pytest.raises(audiobook.AudiobookError, match="erst abbrechen"):
+                audiobook.reset_m4b()
+        finally:
+            audiobook._m4b_job = None
+
+
+class TestFfprobeHaengt:
+    """Auch die kleinen Abfragen brauchen ein Limit.
+
+    Sie laufen in der Vorbereitungsphase -- dort gibt es noch keinen ffmpeg,
+    den man abbrechen könnte, also hinge der Bau-Thread ohne Ausweg fest.
+    """
+
+    def test_timeout_gibt_ersatzwert(self, monkeypatch, tmp_path):
+        def haengt(*args, **kwargs):
+            assert kwargs.get("timeout"), "ohne Zeitlimit hinge es hier für immer"
+            raise subprocess.TimeoutExpired(cmd="ffprobe", timeout=kwargs["timeout"])
+
+        monkeypatch.setattr(audiobook.subprocess, "run", haengt)
+        assert audiobook._probe_duration(tmp_path / "x.flac") == 0.0
+        assert audiobook._probe_title(tmp_path / "x.flac") == ""
+        assert audiobook._probe_kbps(tmp_path / "x.flac") == 0
+
+    def test_fehlendes_ffprobe_reisst_nichts_mit(self, monkeypatch, tmp_path):
+        def fehlt(*args, **kwargs):
+            raise FileNotFoundError("ffprobe")
+
+        monkeypatch.setattr(audiobook.subprocess, "run", fehlt)
+        assert audiobook._probe_duration(tmp_path / "x.flac") == 0.0

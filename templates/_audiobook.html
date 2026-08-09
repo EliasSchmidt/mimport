@@ -66,6 +66,24 @@
             </p>
             <div class="progress"><div class="progress-bar"
                  style="width: {{ m4b.prozent }}%"></div></div>
+            {# Ohne diesen Knopf war ein hängender ffmpeg nur durch einen
+               Neustart des Containers loszuwerden -- der Auftrag blieb auf
+               „läuft" und sperrte das Buch. Gelöscht wird beim Abbruch
+               nichts: an die Quelldateien geht erst die Laufzeitprüfung,
+               und dorthin kommt ein abgebrochener Bau nicht. #}
+            <p class="hint">
+                Steht der Fortschritt? Nach
+                {{ (stillstand_minuten) }} Minuten ohne Regung bricht mimport
+                von selbst ab.
+            </p>
+        </div>
+        <div class="actions">
+            <button type="button" class="button secondary"
+                    hx-post="/audiobook/m4b/abbruch"
+                    hx-target="#audiobook" hx-swap="innerHTML"
+                    hx-confirm="Den m4b-Bau abbrechen? Die Quelldateien bleiben erhalten.">
+                Bau abbrechen
+            </button>
         </div>
     </div>
 

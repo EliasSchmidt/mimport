@@ -168,6 +168,15 @@ class Settings:
         default_factory=lambda: _env_int("MIMPORT_M4B_TIMEOUT", 6 * 3600)
     )
 
+    #: Wie lange ffmpeg schweigen darf, bevor er als hängend gilt. Das ist das
+    #: schärfere Kriterium: ein ehrlicher Encode auf dem alten Laptop läuft
+    #: stundenlang, meldet dabei aber im Sekundentakt Fortschritt. Ein hängender
+    #: meldet gar nichts mehr -- und darauf lässt sich viel früher reagieren als
+    #: auf eine Wanduhr, die für den Normalfall großzügig stehen muss.
+    m4b_stillstand: int = field(
+        default_factory=lambda: _env_int("MIMPORT_M4B_STILLSTAND", 15 * 60)
+    )
+
     #: Das CD-Laufwerk für Audio-CDs. Anders als bei der Daten-CD hilft kein
     #: Mount vom Host: eine Audio-CD hat kein Dateisystem, ihre Sektoren müssen
     #: direkt aus dem Gerät gelesen werden.

@@ -34,6 +34,7 @@ import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from backend import sessions
 from backend.config import AUDIO_EXTENSIONS, LOSSY_EXTENSIONS, settings
@@ -361,9 +362,28 @@ class M4bJob:
     gestartet: float = field(default_factory=time.monotonic)
     beendet: float | None = None
 
+    #: Der laufende ffmpeg, damit ein hängender Bau überhaupt zu beenden ist.
+    #: Ohne diesen Griff blieb nur, den Container neu zu starten.
+    prozess: Any = None
+
+    #: Wann zuletzt etwas passiert ist. Grundlage der Stillstandsüberwachung.
+    letzte_regung: float = field(default_factory=time.monotonic)
+
+    #: Gesetzt, wenn nicht ffmpeg selbst aufgehört hat, sondern jemand ihn
+    #: beendet hat -- der Nutzer oder die Überwachung. Sonst wäre die Meldung
+    #: „ffmpeg endete mit -9" alles, was davon zu sehen wäre.
+    abbruchgrund: str | None = None
+
     @property
     def laeuft(self) -> bool:
         return self.zustand not in ("fertig", "fehler")
+
+    def regung(self) -> None:
+        self.letzte_regung = time.monotonic()
+
+    @property
+    def stiller_moment(self) -> float:
+        return max(0.0, time.monotonic() - self.letzte_regung)
 
     @property
     def prozent(self) -> int:
@@ -411,70 +431,58 @@ def current_m4b() -> M4bJob | None:
     return _m4b_job
 
 
+#: Zeitlimit für die kleinen ffprobe-Abfragen. Sie lesen nur den Kopf einer
+#: lokalen Datei und sind in Millisekunden fertig; braucht eine länger, stimmt
+#: etwas nicht -- eine kaputte Datei, ein Laufwerk, das nicht antwortet. Ohne
+#: Limit hinge daran der ganze Bau-Thread, und zwar in der Vorbereitungsphase,
+#: in der es noch keinen ffmpeg zum Abbrechen gibt.
+PROBE_TIMEOUT = 60
+
+
+def _ffprobe(args: list[str]) -> str:
+    """Eine ffprobe-Abfrage. Gibt bei jedem Fehler den leeren String zurück.
+
+    Die Aufrufer haben alle einen brauchbaren Ersatzwert; ein hängendes oder
+    fehlendes ffprobe soll den Bau nicht mitreißen, sondern eine Stufe später
+    an der Laufzeitprüfung auffallen.
+    """
+    try:
+        ergebnis = subprocess.run(
+            [settings.ffprobe_bin, "-v", "error", *args],
+            capture_output=True,
+            text=True,
+            check=False,
+            stdin=subprocess.DEVNULL,
+            timeout=PROBE_TIMEOUT,
+        )
+    except subprocess.TimeoutExpired:
+        log.warning("ffprobe antwortet nicht: %s", " ".join(args[-1:]))
+        return ""
+    except FileNotFoundError:
+        return ""
+    return (ergebnis.stdout or "").strip()
+
+
 def _probe_duration(pfad: Path) -> float:
     """Spieldauer einer Datei in Sekunden."""
-    ergebnis = subprocess.run(
-        [
-            settings.ffprobe_bin,
-            "-v",
-            "error",
-            "-show_entries",
-            "format=duration",
-            "-of",
-            "csv=p=0",
-            str(pfad),
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-        stdin=subprocess.DEVNULL,
-    )
+    roh = _ffprobe(["-show_entries", "format=duration", "-of", "csv=p=0", str(pfad)])
     try:
-        return float((ergebnis.stdout or "0").strip())
+        return float(roh or "0")
     except ValueError:
         return 0.0
 
 
 def _probe_title(pfad: Path) -> str:
-    ergebnis = subprocess.run(
-        [
-            settings.ffprobe_bin,
-            "-v",
-            "error",
-            "-show_entries",
-            "format_tags=title",
-            "-of",
-            "csv=p=0",
-            str(pfad),
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-        stdin=subprocess.DEVNULL,
+    return _ffprobe(
+        ["-show_entries", "format_tags=title", "-of", "csv=p=0", str(pfad)]
     )
-    return (ergebnis.stdout or "").strip()
 
 
 def _probe_kbps(pfad: Path) -> int:
-    ergebnis = subprocess.run(
-        [
-            settings.ffprobe_bin,
-            "-v",
-            "error",
-            "-select_streams",
-            "a:0",
-            "-show_entries",
-            "stream=bit_rate",
-            "-of",
-            "csv=p=0",
-            str(pfad),
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-        stdin=subprocess.DEVNULL,
+    roh = _ffprobe(
+        ["-select_streams", "a:0", "-show_entries", "stream=bit_rate",
+         "-of", "csv=p=0", str(pfad)]
     )
-    roh = (ergebnis.stdout or "").strip()
     try:
         return int(roh) // 1000
     except ValueError:
@@ -693,10 +701,15 @@ def _bauen(
 
         befehl += ["-movflags", "+faststart", "-progress", "pipe:1", str(ziel)]
 
+        # Wer während des Vorbereitens abbricht, wird hier erhört -- ffmpeg
+        # erst zu starten, um ihn gleich wieder zu beenden, wäre unsinnig.
+        if job.abbruchgrund:
+            raise AudiobookError(job.abbruchgrund)
+
         job.zustand = "encodiert"
         job.meldung = "Wandle um …"
         log.info("Baue m4b: %s", ziel)
-        _encodieren(job, befehl)
+        _encodieren(job, befehl, arbeit)
 
         if not ziel.is_file():
             raise AudiobookError("ffmpeg lief durch, hat aber nichts geschrieben.")
@@ -733,39 +746,120 @@ def _bauen(
         shutil.rmtree(arbeit, ignore_errors=True)
 
 
-def _encodieren(job: M4bJob, befehl: list[str]) -> None:
+def _wache(job: M4bJob, prozess: Any) -> None:
+    """Beendet ffmpeg, wenn er stehenbleibt oder das Zeitlimit reißt.
+
+    Läuft neben dem Lesen der Fortschrittszeilen, weil das Lesen selbst
+    blockiert -- ein Zeitlimit *hinter* der Leseschleife kann nie greifen.
+    Genau so stand es hier, und damit war ``m4b_timeout`` toter Code.
+    """
+    beginn = time.monotonic()
+    while prozess.poll() is None:
+        if job.stiller_moment > settings.m4b_stillstand:
+            job.abbruchgrund = (
+                f"ffmpeg hat {int(job.stiller_moment) // 60} Minuten lang keinen "
+                "Fortschritt mehr gemeldet und wurde beendet."
+            )
+        elif time.monotonic() - beginn > settings.m4b_timeout:
+            job.abbruchgrund = (
+                f"Das Zeitlimit von {settings.m4b_timeout // 3600} Stunden für den "
+                "m4b-Bau ist abgelaufen."
+            )
+        else:
+            time.sleep(2)
+            continue
+        log.warning("Beende ffmpeg: %s", job.abbruchgrund)
+        _beenden(prozess)
+        return
+
+
+def _beenden(prozess: Any) -> None:
+    """SIGTERM, und wenn das nicht reicht, SIGKILL.
+
+    ffmpeg räumt bei SIGTERM seine Ausgabedatei ordentlich ab. Hängt er aber
+    im Kernel fest -- ein CD-Laufwerk, das nicht antwortet --, kommt er dort
+    nicht heraus, und dann muss es der härtere Weg sein.
+    """
+    try:
+        prozess.terminate()
+        prozess.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        prozess.kill()
+        try:
+            prozess.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            log.error("ffmpeg reagiert auch auf SIGKILL nicht.")
+    except Exception:  # noqa: BLE001 -- der Prozess war schon fort
+        pass
+
+
+def _encodieren(job: M4bJob, befehl: list[str], arbeit: Path) -> None:
     """Führt ffmpeg aus und verfolgt den Fortschritt.
 
     ``-progress`` liefert Schlüssel-Wert-Zeilen. Achtung bei ``out_time_ms``:
     der Schlüssel heißt zwar "ms", der Wert steht aber in **Mikrosekunden**
     (nachgemessen: 9000000 bei neun Sekunden Audio). Deshalb ``out_time_us``,
     das ist wenigstens ehrlich benannt.
+
+    stderr geht in eine Datei, nicht in eine Pipe. Eine ungelesene Pipe fasst
+    64 KiB, und ffmpeg schreibt dorthin unabhängig von ``-progress`` etwa
+    210 Byte je Sekunde Laufzeit -- nachgemessen. Nach gut fünf Minuten wäre
+    sie voll, ffmpeg blockierte beim Schreiben, mimport wartete auf stdout, und
+    beide stünden für immer. Nachgestellt und bestätigt.
     """
+    protokoll = arbeit / "ffmpeg-stderr.log"
     try:
-        prozess = subprocess.Popen(
-            befehl,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            stdin=subprocess.DEVNULL,
-        )
+        with protokoll.open("wb") as fehlerstrom:
+            prozess = subprocess.Popen(
+                befehl,
+                stdout=subprocess.PIPE,
+                stderr=fehlerstrom,
+                text=True,
+                stdin=subprocess.DEVNULL,
+            )
     except FileNotFoundError as exc:
         raise AudiobookError(f"{settings.ffmpeg_bin} wurde nicht gefunden.") from exc
 
-    assert prozess.stdout is not None
-    for zeile in prozess.stdout:
-        schluessel, _, wert = zeile.strip().partition("=")
-        if schluessel == "out_time_us" and wert.isdigit():
-            job.sekunden_fertig = int(wert) / 1_000_000
-            job.meldung = (
-                f"Wandle um … {_hms(job.sekunden_fertig)} von "
-                f"{_hms(job.sekunden_gesamt)}"
-            )
+    job.prozess = prozess
+    job.regung()
+    wache = threading.Thread(target=_wache, args=(job, prozess), daemon=True)
+    wache.start()
 
-    prozess.wait(timeout=settings.m4b_timeout)
+    try:
+        assert prozess.stdout is not None
+        for zeile in prozess.stdout:
+            schluessel, _, wert = zeile.strip().partition("=")
+            if schluessel == "out_time_us" and wert.isdigit():
+                job.regung()
+                job.sekunden_fertig = int(wert) / 1_000_000
+                job.meldung = (
+                    f"Wandle um … {_hms(job.sekunden_fertig)} von "
+                    f"{_hms(job.sekunden_gesamt)}"
+                )
+        prozess.wait()
+    finally:
+        job.prozess = None
+        wache.join(timeout=30)
+
     if prozess.returncode != 0:
-        rest = (prozess.stderr.read() if prozess.stderr else "") or ""
-        raise AudiobookError(f"ffmpeg endete mit {prozess.returncode}. {rest.strip()[-300:]}")
+        if job.abbruchgrund:
+            raise AudiobookError(
+                f"{job.abbruchgrund} Es wurde nichts gelöscht -- die Quelldateien "
+                "liegen unverändert im Buchordner."
+            )
+        rest = _letzte_zeilen(protokoll)
+        raise AudiobookError(f"ffmpeg endete mit {prozess.returncode}. {rest}")
+
+
+def _letzte_zeilen(protokoll: Path, zeichen: int = 300) -> str:
+    """Der Schluss des ffmpeg-Protokolls -- dort steht die eigentliche Ursache."""
+    try:
+        text = protokoll.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+    # ffmpeg trennt seine Statuszeilen mit \r; ohne Ersetzung stünde in der
+    # Oberfläche eine einzige unleserliche Zeile.
+    return text.replace("\r", "\n").strip()[-zeichen:]
 
 
 def _hms(sekunden: float) -> str:
@@ -898,5 +992,38 @@ def reset_m4b() -> None:
 
     with _m4b_lock:
         if _m4b_job is not None and _m4b_job.laeuft:
-            raise AudiobookError("Der laufende m4b-Bau lässt sich nicht verwerfen.")
+            raise AudiobookError(
+                "Der m4b-Bau läuft noch. Zum Verwerfen erst abbrechen."
+            )
         _m4b_job = None
+
+
+def abbrechen_m4b() -> str:
+    """Beendet einen laufenden m4b-Bau auf Wunsch des Nutzers.
+
+    Der Ausweg, den es vorher nicht gab: hing ffmpeg, blieb der Auftrag für
+    immer auf „läuft", das Buch war gesperrt, und nur ein Neustart des
+    Containers half. Gelöscht wird dabei nichts -- die Quelldateien werden erst
+    nach bestandener Laufzeitprüfung angefasst, und dorthin kommt ein
+    abgebrochener Bau nicht.
+    """
+    with _m4b_lock:
+        job = _m4b_job
+        if job is None or not job.laeuft:
+            raise AudiobookError("Es läuft gerade kein m4b-Bau.")
+        prozess = job.prozess
+        job.abbruchgrund = "Der m4b-Bau wurde von Hand abgebrochen."
+
+    if prozess is None:
+        # Noch beim Vorbereiten -- ffmpeg läuft nicht, es gibt nichts zu
+        # beenden. Der Zustand wird hier bewusst *nicht* gesetzt: das täte
+        # gleichzeitig der Bau-Thread, und wessen Wert am Ende stünde, wäre
+        # Zufall. Stattdessen liegt die Bitte vor, und der Thread liest sie,
+        # bevor er ffmpeg startet.
+        return (
+            "Der Abbruch ist vorgemerkt. Die Kapitel werden gerade gelesen; "
+            "sobald das fertig ist, endet der Auftrag."
+        )
+
+    _beenden(prozess)
+    return job.abbruchgrund

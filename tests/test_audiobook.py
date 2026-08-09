@@ -557,7 +557,12 @@ class TestGroesseUndDauer:
         assert audiobook.state(buch).size_label == "4 KB"
 
     def test_dauer_und_faktor(self):
-        job = audiobook.M4bJob(buch="/x", sekunden_gesamt=3600.0)
+        # Ein abgeschlossener Bau: fertig und gesamt fallen zusammen. Der Test
+        # setzte vorher nur ``sekunden_gesamt`` und hielt damit ausgerechnet
+        # die Rechnung fest, die während des Laufs falsch war.
+        job = audiobook.M4bJob(
+            buch="/x", sekunden_gesamt=3600.0, sekunden_fertig=3600.0
+        )
         job.gestartet = 0.0
         job.beendet = 450.0
         assert job.dauer_text == "7:30"

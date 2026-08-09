@@ -464,3 +464,13 @@ pre.output { max-height: 22rem; overflow-y: auto; }
     /* Sonst scrollt die Seite mit, während man eine Ecke zieht. */
     touch-action: none;
 }
+
+/* Von Hand taggen -- zugeklappt, weil der Match der Normalfall ist. */
+.manuell, .je-track { margin-top: 1rem; }
+.manuell > summary, .je-track > summary {
+    cursor: pointer;
+    font-size: 0.9rem;
+    color: var(--text-dim);
+}
+.je-track input[type="text"] { width: 100%; }
+.je-track { margin-bottom: 0.75rem; }

@@ -1128,3 +1128,66 @@ class TestCoverEntgegennehmen:
         html = client.get("/audiobook").text
         assert "coverAufnehmen(" in html
         assert "/cover/audiobook?buch=Autor/Buch" in html
+
+
+class TestManuellTaggen:
+    """Von Hand taggen, auch für Sampler."""
+
+    def _session_mit(self, namen):
+        from tests.flacfixture import write_flac
+
+        session = sessions.create_session()
+        for name in namen:
+            write_flac(session.directory / name, seconds=5)
+        return session
+
+    def test_formular_bietet_je_track_felder(self, client):
+        session = self._session_mit(["01.flac", "02.flac"])
+        html = client.get(f"/session/{session.session_id}").text
+
+        assert "von Hand taggen" in html
+        assert 'name="titel:01.flac"' in html
+        assert 'name="interpret:02.flac"' in html
+        assert 'name="compilation"' in html
+
+    def test_sampler_bekommt_je_track_einen_interpreten(self, client):
+        import mediafile
+
+        session = self._session_mit(["01.flac", "02.flac"])
+        client.post(
+            f"/manual/{session.session_id}",
+            data={
+                "albumartist": "Various Artists",
+                "album": "Sampler 99",
+                "compilation": "true",
+                "titel:01.flac": "Erstes",
+                "interpret:01.flac": "Miles Davis",
+                "titel:02.flac": "Zweites",
+                "interpret:02.flac": "Bill Evans feat. Scott LaFaro",
+            },
+        )
+
+        erste = mediafile.MediaFile(session.directory / "01.flac")
+        zweite = mediafile.MediaFile(session.directory / "02.flac")
+        assert erste.title == "Erstes" and erste.artist == "Miles Davis"
+        assert zweite.title == "Zweites"
+        # "feat." wird zu zwei Einträgen -- Navidrome liest genau das.
+        assert zweite.artists == ["Bill Evans", "Scott LaFaro"]
+        assert erste.albumartist == "Various Artists"
+        assert erste.comp is True
+
+    def test_genre_kommt_jetzt_an(self, client):
+        """Vorher verschwand es: beets 2.x kennt nur 'genres'."""
+        import mediafile
+
+        session = self._session_mit(["01.flac"])
+        client.post(f"/manual/{session.session_id}", data={"genre": "Krautrock"})
+
+        medien = mediafile.MediaFile(session.directory / "01.flac")
+        assert medien.genre == "Krautrock"
+        assert medien.genres == ["Krautrock"]
+
+    def test_ohne_eingabe_wird_nichts_geschrieben(self, client):
+        session = self._session_mit(["01.flac"])
+        response = client.post(f"/manual/{session.session_id}", data={})
+        assert "kein Feld" in response.text

@@ -88,6 +88,92 @@
             <span id="match-spinner" class="htmx-indicator spinner">
                 frage MusicBrainz …
             </span>
+            <button type="button" class="button danger"
+                    hx-delete="/session/{{ session_id }}"
+                    hx-target="#files"
+                    hx-swap="innerHTML"
+                    hx-confirm="Upload samt Dateien verwerfen?">
+                Verwerfen
+            </button>
+        </div>
+    </form>
+
+    {# Von Hand taggen. Zugeklappt, weil der Match der Normalfall ist -- aber
+       bei einem Sampler oder einer Aufnahme, die MusicBrainz nicht kennt, ist
+       das der einzige Weg. #}
+    <details class="manuell">
+        <summary>Stattdessen von Hand taggen</summary>
+        <form hx-post="/manual/{{ session_id }}"
+              hx-target="#result" hx-swap="innerHTML"
+              hx-on::after-request="document.getElementById(&#39;result-step&#39;).hidden = false">
+            <p class="hint">
+                Für Alben, die MusicBrainz nicht kennt. Leere Felder lassen die
+                vorhandenen Tags in Ruhe.
+            </p>
+            <div class="fields">
+                <label>Albumkünstler
+                    <input type="text" name="albumartist"
+                           placeholder="bei Samplern: Various Artists">
+                </label>
+                <label>Album
+                    <input type="text" name="album">
+                </label>
+                <label>Interpret <small>(für alle Tracks)</small>
+                    <input type="text" name="artist">
+                </label>
+                <label>Jahr
+                    <input type="text" name="year" placeholder="1999">
+                </label>
+                <label>Genre
+                    <input type="text" name="genre" placeholder="Jazz">
+                </label>
+            </div>
+            <label class="checkbox">
+                <input type="checkbox" name="compilation" value="true">
+                Sampler (Various Artists) – setzt das Compilation-Flag, damit
+                Navidrome und beets die Tracks als ein Album führen
+            </label>
+
+            {# Je Track: nötig für Sampler, wo jeder Titel einen anderen
+               Interpreten hat. Der Dateiname steht im Feldnamen, damit die
+               Zuordnung eindeutig bleibt. #}
+            <details class="je-track">
+                <summary>Titel und Interpret je Track ({{ infos | length }})</summary>
+                <table class="files">
+                    <thead>
+                        <tr><th>Datei</th><th>Titel</th><th>Interpret</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for info in infos %}
+                        <tr>
+                            <td class="name small">{{ info.display_name }}</td>
+                            <td><input type="text" name="titel:{{ info.display_name }}"></td>
+                            <td><input type="text" name="interpret:{{ info.display_name }}"></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                <p class="hint">
+                    Mehrere Interpreten mit <span class="mono">;</span> oder
+                    <span class="mono">feat.</span> trennen – daraus werden
+                    getrennte Einträge.
+                </p>
+            </details>
+
+            <div class="actions">
+                <button type="submit" class="button">Tags schreiben</button>
+            </div>
+        </form>
+    </details>
+
+    <form hidden>
+        <div class="fields">
+        </div>
+        <div class="actions">
+            <button type="submit" class="button primary">Matches suchen</button>
+            <span id="match-spinner" class="htmx-indicator spinner">
+                frage MusicBrainz …
+            </span>
             <button type="button" class="button"
                     onclick="coverAufnehmen('/cover/session/{{ session_id }}', 'files', 'Cover für diesen Upload')">
                 Cover fotografieren

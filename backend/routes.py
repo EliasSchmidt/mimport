@@ -771,7 +771,7 @@ def choose(
 
 
 @router.post("/manual/{session_id}", response_class=HTMLResponse)
-def manual(
+async def manual(
     request: Request,
     session_id: str,
     albumartist: str = Form(default=""),
@@ -779,22 +779,42 @@ def manual(
     artist: str = Form(default=""),
     year: str = Form(default=""),
     genre: str = Form(default=""),
+    compilation: bool = Form(default=False),
 ) -> HTMLResponse:
-    """Schreibt selbst eingetragene Tags, wenn kein Match passt."""
+    """Schreibt selbst eingetragene Tags, wenn kein Match passt.
+
+    Neben den albumweiten Feldern kommen Titel und Interpret je Datei an --
+    als ``titel:<Dateiname>`` und ``artist:<Dateiname>``. Eine Sampler-CD
+    braucht das: dort hat jeder Track einen anderen Interpreten, während der
+    Albumkünstler „Various Artists" bleibt und das Compilation-Flag die Tracks
+    zusammenhält.
+    """
     session = _session_or_404(session_id)
     paths = session.audio_paths
     if not paths:
         return _fragment(request, "_error.html", message="In dieser Sitzung liegen keine Dateien.")
+
+    formular = await request.form()
+    je_track: dict[str, dict[str, str]] = {}
+    for schluessel, wert in formular.items():
+        praefix, _, dateiname = str(schluessel).partition(":")
+        feld = {"titel": "title", "interpret": "artists"}.get(praefix)
+        if feld and dateiname and str(wert).strip():
+            je_track.setdefault(dateiname, {})[feld] = str(wert)
 
     write_result = tagging.apply_manual_tags(
         paths,
         {
             "albumartist": albumartist,
             "album": album,
-            "artist": artist,
+            "artists": artist,
             "year": year,
-            "genre": genre,
+            # In beets 2.x heißt das Feld "genres"; als "genre" gesetzt landete
+            # es früher nur als flexibles Attribut und nie in der Datei.
+            "genres": genre,
+            "comp": compilation,
         },
+        je_track=je_track,
     )
     if not write_result.written and not write_result.failed:
         return _fragment(

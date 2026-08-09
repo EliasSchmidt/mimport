@@ -304,3 +304,72 @@ class TestUebernehmenUndImport:
         )
         response = client.post(f"/import/{album_session.session_id}", data={})
         assert "Import fehlgeschlagen" in response.text
+
+
+class TestMehrwertigeTags:
+    """Was in die Dateien geschrieben wird, damit Navidrome es richtig liest.
+
+    In beets 2.x heißen die Felder ``genres``, ``artists``, ``albumartists``.
+    Ein einzelner String landet dort als flexibles Attribut und wird **nicht**
+    in die Datei geschrieben -- genau das passierte vorher mit dem
+    Genre-Formularfeld.
+    """
+
+    def test_genre_landet_wirklich_in_der_datei(self, tmp_path):
+        from tests.flacfixture import write_flac
+
+        import mediafile
+
+        from backend import tagging
+
+        pfad = write_flac(tmp_path / "t.flac", seconds=5)
+        tagging.apply_manual_tags([pfad], {"genres": "Jazz"})
+
+        medien = mediafile.MediaFile(pfad)
+        assert medien.genres == ["Jazz"]
+        # Das einwertige Feld muss auch stehen -- ältere Scanner lesen nur das.
+        assert medien.genre == "Jazz"
+
+    @pytest.mark.parametrize(
+        "eingabe,erwartet",
+        [
+            ("Bill Evans feat. Scott LaFaro", ["Bill Evans", "Scott LaFaro"]),
+            ("A ft. B", ["A", "B"]),
+            ("A / B", ["A", "B"]),
+            ("A; B", ["A", "B"]),
+            # Diese dürfen NICHT zerlegt werden.
+            ("AC/DC", ["AC/DC"]),
+            ("Simon & Garfunkel", ["Simon & Garfunkel"]),
+            ("Crosby, Stills & Nash", ["Crosby, Stills & Nash"]),
+        ],
+    )
+    def test_trennzeichen_wie_bei_navidrome(self, eingabe, erwartet):
+        from backend import tagging
+
+        assert tagging._werte(eingabe) == erwartet
+
+    def test_sampler_bekommt_je_track_einen_kuenstler(self, tmp_path):
+        """Der Fall Various Artists: Albumkünstler gleich, Interpret je Track."""
+        from tests.flacfixture import write_flac
+
+        import mediafile
+
+        from backend import tagging
+
+        dateien = [write_flac(tmp_path / f"{i:02d}.flac", seconds=5) for i in (1, 2)]
+        tagging.apply_manual_tags(
+            dateien,
+            {"albumartist": "Various Artists", "album": "Sampler", "comp": True},
+            je_track={
+                "01.flac": {"title": "Eins", "artists": "Miles Davis"},
+                "02.flac": {"title": "Zwei", "artists": "Bill Evans"},
+            },
+        )
+
+        erste, zweite = (mediafile.MediaFile(p) for p in dateien)
+        assert erste.artist == "Miles Davis"
+        assert zweite.artist == "Bill Evans"
+        # Zusammengehalten wird das Album über den Albumkünstler ...
+        assert erste.albumartist == zweite.albumartist == "Various Artists"
+        # ... und über das Compilation-Flag, das Navidrome dafür liest.
+        assert erste.comp is True and zweite.comp is True

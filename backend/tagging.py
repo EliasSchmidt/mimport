@@ -14,6 +14,7 @@ gerade bei unvollständigen Uploads wäre die Auswahl also wirkungslos.
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -65,35 +66,98 @@ def apply_album_match(match: Any, *, from_scratch: bool = False) -> TagWriteResu
     return result
 
 
-def apply_manual_tags(paths: list[Path], fields: dict[str, str]) -> TagWriteResult:
-    """Schreibt handgepflegte Tags auf mehrere Dateien.
+#: Felder, die beets mehrwertig führt. Ein einzelner String landet dort sonst
+#: als flexibles Attribut und **wird nicht in die Datei geschrieben** -- genau
+#: das passierte mit "genre", das in beets 2.x "genres" heißt.
+_MEHRWERTIG = {"genres": "genre", "artists": "artist", "albumartists": "albumartist"}
 
-    Gedacht für den Fall, dass es keinen brauchbaren Match gibt und der Nutzer
-    Künstler, Album und Jahr selbst setzt. Leere Werte werden übersprungen,
-    damit ein leeres Formularfeld nichts überschreibt.
+#: Womit mehrere Namen in einem Feld getrennt werden. Genau die Zeichenfolgen,
+#: die auch Navidrome kennt: " / ", " feat. ", " feat ", " ft. ", " ft ", "; ".
+#:
+#: Die Leerzeichen sind wesentlich, nicht Kosmetik. Ohne sie zerlegt der
+#: Ausdruck "AC/DC" in zwei Künstler -- nachgeprüft, zusammen mit
+#: "Simon & Garfunkel" und "Crosby, Stills & Nash", die ebenfalls
+#: zusammenbleiben müssen.
+_TRENNER = re.compile(r"\s+/\s+|\s+feat\b\.?\s+|\s+ft\b\.?\s+|;\s*", re.IGNORECASE)
+
+
+def _werte(value: str) -> list[str]:
+    """Zerlegt eine Eingabe wie ``A feat. B`` in einzelne Namen."""
+    return [teil.strip() for teil in _TRENNER.split(str(value)) if teil.strip()]
+
+
+def _setzen(item: Any, key: str, value: object) -> None:
+    """Setzt ein Feld so, dass es tatsächlich in der Datei landet."""
+    if key == "year":
+        try:
+            item.year = int(str(value).strip())
+        except ValueError:
+            pass
+        return
+    if key == "comp":
+        item.comp = bool(value)
+        return
+    if key in _MEHRWERTIG:
+        teile = _werte(value)
+        if not teile:
+            return
+        item[key] = teile
+        # Das einwertige Gegenstück mitschreiben: ältere Abspieler und Scanner
+        # lesen nur dieses.
+        item[_MEHRWERTIG[key]] = "; ".join(teile)
+        return
+    item[key] = str(value).strip()
+
+
+def apply_manual_tags(
+    paths: list[Path],
+    fields: dict[str, object],
+    *,
+    je_track: dict[str, dict[str, str]] | None = None,
+) -> TagWriteResult:
+    """Schreibt handgepflegte Tags.
+
+    ``fields`` gilt für alle Dateien -- Album, Albumkünstler, Jahr, Genre.
+    ``je_track`` trägt zusätzlich für einzelne Dateien Titel und Künstler ein,
+    und genau das braucht eine Sampler-CD: dort hat jeder Track einen anderen
+    Interpreten, während der Albumkünstler „Various Artists" bleibt.
+
+    Leere Werte werden übersprungen, damit ein leeres Formularfeld nichts
+    überschreibt.
     """
     beets_env.ensure_loaded()
     from beets.library import Item
 
     result = TagWriteResult()
-    usable = {key: value for key, value in fields.items() if str(value).strip()}
-    if not usable:
+    # Ein nicht gesetztes Häkchen ist keine Eingabe. Ohne die ausdrückliche
+    # Prüfung auf ``False`` zählte es als solche -- ``str(False)`` ist nicht
+    # leer -- und die Rückmeldung „kein Feld ausgefüllt" wäre nie erschienen.
+    usable = {
+        key: value
+        for key, value in fields.items()
+        if value is not False and (value is True or str(value).strip())
+    }
+    je_track = je_track or {}
+    if not usable and not je_track:
         return result
 
     for path in paths:
+        eigene = {
+            key: wert
+            for key, wert in (je_track.get(path.name) or {}).items()
+            if str(wert).strip()
+        }
+        if not usable and not eigene:
+            continue
         try:
             item = Item.from_path(str(path))
         except Exception as exc:
             result.failed.append((path.name, f"nicht lesbar: {exc}"))
             continue
-        for key, value in usable.items():
-            if key == "year":
-                try:
-                    item.year = int(str(value).strip())
-                except ValueError:
-                    continue
-            else:
-                item[key] = str(value).strip()
+
+        for key, value in {**usable, **eigene}.items():
+            _setzen(item, key, value)
+
         try:
             if item.try_write():
                 result.written.append(path.name)

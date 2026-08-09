@@ -127,7 +127,15 @@ class TestLookup:
 
     @pytest.mark.network
     def test_echte_abfrage(self):
-        """Gegen MusicBrainz selbst -- prüft die Antwortstruktur."""
-        treffer = discid.lookup(VEKTOR_ID)
+        """Gegen MusicBrainz selbst -- prüft die Antwortstruktur.
+
+        Ein Ausfall dort ist kein Fehler hier: MusicBrainz antwortet unter
+        Last mit 503, und daran ist an diesem Code nichts zu reparieren.
+        Übersprungen wird deshalb, statt die Suite rot zu färben.
+        """
+        try:
+            treffer = discid.lookup(VEKTOR_ID)
+        except discid.DiscIdError as exc:
+            pytest.skip(f"MusicBrainz nicht verfügbar: {exc}")
         assert treffer, "Der Testvektor ist eine real eingetragene CD"
         assert all(len(t.mbid) == 36 for t in treffer)

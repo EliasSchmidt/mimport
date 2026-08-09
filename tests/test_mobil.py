@@ -187,3 +187,93 @@ def test_eigener_albumkuenstler_bleibt_stehen(browser, server):
         assert seite.locator("[data-albumartist]").input_value() == "Deutsche Grammophon"
     finally:
         seite.close()
+
+
+# --------------------------------------------------- Benachrichtigungen ---
+#
+# Getestet wird die Verzweigung in notify.js, nicht das Erlaubnismodell von
+# Chromium. Der Umweg über gestubbte Werte ist hier der einzige gangbare:
+# headless Chromium meldet ``Notification.permission === "denied"``, auch nach
+# ``grant_permissions`` -- nachgemessen -- und der Testserver auf 127.0.0.1
+# gilt als sicherer Kontext, sodass der HTTPS-Hinweis sonst unerreichbar wäre.
+
+
+def _zustand_setzen(seite, *, sicher=True, erlaubnis="default", api=True):
+    teile = [
+        f"Object.defineProperty(window, 'isSecureContext', "
+        f"{{get: () => {str(sicher).lower()}}});"
+    ]
+    if api:
+        teile.append(
+            f"Object.defineProperty(Notification, 'permission', "
+            f"{{configurable: true, get: () => '{erlaubnis}'}});"
+        )
+    else:
+        teile.append("delete window.Notification;")
+    seite.add_init_script("\n".join(teile))
+
+
+def _kasten_text(browser, server, **zustand):
+    seite = browser.new_page(viewport={"width": 900, "height": 800})
+    try:
+        _zustand_setzen(seite, **zustand)
+        seite.goto(server + "/musik", wait_until="networkidle")
+        kasten = seite.locator("#benachrichtigung")
+        assert kasten.is_visible(), "Ein unsichtbarer Hinweis erklärt nichts"
+        return kasten.inner_text(), kasten.locator("button").count()
+    finally:
+        seite.close()
+
+
+def test_benachrichtigung_ist_ueberhaupt_auffindbar(browser, server):
+    """Ein Feature, das man nicht sieht, gibt es nicht.
+
+    Der Auslöser für den ganzen Kasten: „ich hab da jetzt noch nirgends was
+    gefunden wie funktioniert das aus clientsicht."
+    """
+    seite = browser.new_page(viewport={"width": 900, "height": 800})
+    try:
+        seite.goto(server + "/musik", wait_until="networkidle")
+        assert seite.locator("#benachrichtigung").is_visible()
+        # Auf beiden Hauptseiten, nicht nur auf einer.
+        seite.goto(server + "/hoerbuch", wait_until="networkidle")
+        assert seite.locator("#benachrichtigung").is_visible()
+    finally:
+        seite.close()
+
+
+def test_noch_nicht_gefragt_bietet_den_knopf(browser, server):
+    text, knoepfe = _kasten_text(browser, server, erlaubnis="default")
+    assert knoepfe == 1, "Ohne Knopf käme man nie zur Erlaubnis"
+    assert "Erlaubnis" in text
+    # Was auch ohne Erlaubnis passiert, muss dabeistehen.
+    assert "Tab-Titel" in text
+
+
+def test_erteilte_erlaubnis_wird_bestaetigt(browser, server):
+    text, knoepfe = _kasten_text(browser, server, erlaubnis="granted")
+    assert "Benachrichtigung an" in text
+    assert knoepfe == 0, "Nochmal fragen ginge ohnehin nicht"
+
+
+def test_abgelehnte_erlaubnis_nennt_den_ausweg(browser, server):
+    text, knoepfe = _kasten_text(browser, server, erlaubnis="denied")
+    assert "Browsereinstellungen" in text, text
+    assert "Tab-Titel" in text
+    # Ein Knopf wäre eine Lüge: nach einer Ablehnung fragt der Browser nicht
+    # noch einmal, das geht nur über die Einstellungen.
+    assert knoepfe == 0
+
+
+def test_ohne_https_wird_die_grenze_erklaert(browser, server):
+    """Der Regelfall auf dem Server: http://musicserver:8000."""
+    text, knoepfe = _kasten_text(browser, server, sicher=False)
+    assert "HTTPS" in text, text
+    assert "Tab-Titel" in text
+    assert knoepfe == 0
+
+
+def test_ohne_notifications_api_bleibt_der_rest(browser, server):
+    text, knoepfe = _kasten_text(browser, server, api=False)
+    assert "Tab-Titel" in text
+    assert knoepfe == 0

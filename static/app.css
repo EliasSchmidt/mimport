@@ -544,3 +544,21 @@ pre.output { max-height: 22rem; overflow-y: auto; }
 /* Abgeschaltetes Feld: sichtbar, aber erkennbar außer Betrieb. */
 .abgeschaltet { opacity: 0.5; }
 .abgeschaltet input:disabled { cursor: not-allowed; }
+
+/* Zustand der Benachrichtigungen -- dezent, aber auffindbar. */
+.benachrichtigung {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.6rem;
+    margin: 0 0 1rem;
+    padding: 0.6rem 0.9rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    color: var(--text-dim);
+    font-size: 0.85rem;
+}
+
+.benachrichtigung span { flex: 1 1 16rem; }
+.benachrichtigung strong { color: var(--text); }

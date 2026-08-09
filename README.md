@@ -466,6 +466,12 @@ einen *secure context*. Über `http://server:8001` gibt es sie **nicht** — dor
 bleiben Titel und Ton. Wer sie will, muss den Reverse-Proxy mit TLS betreiben;
 das ist derselbe Proxy, der ohnehin für die Authentifizierung zuständig ist.
 
+Damit man das überhaupt bemerkt, steht auf beiden Seiten ein Kasten, der den
+eigenen Stand nennt: noch nicht gefragt (mit Knopf), erlaubt, abgelehnt, oder
+gar nicht möglich mangels HTTPS. Ohne ihn war das Feature unauffindbar — es gab
+nichts zu klicken und nichts zu lesen, und die Erlaubnis wurde nur beiläufig
+beim ersten Klick auf einen Knopf angefragt.
+
 Erkannt wird der Übergang an unsichtbaren Zustandsmarkern, die jedes Fragment
 mitbringt (`data-auftrag`, `data-zustand`). Gemeldet wird nur der Wechsel von
 „läuft" auf einen Endzustand — sonst käme im Zweisekundentakt eine neue Meldung.

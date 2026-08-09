@@ -28,6 +28,10 @@
         {% include "_health.html" %}
     </div>
 
+    {# Wird von static/notify.js befüllt. Ohne diese Zeile wüsste niemand,
+       dass es Benachrichtigungen gibt -- das Feature war unsichtbar. #}
+    <div id="benachrichtigung" class="benachrichtigung" hidden></div>
+
     {% block inhalt %}{% endblock %}
 </main>
 

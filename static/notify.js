@@ -123,3 +123,54 @@ document.addEventListener("DOMContentLoaded", () => {
   titelOriginal = document.title;
   auftraegePruefen(document);
 });
+
+/* -------------------------------------------------- Sichtbarer Zustand ---
+ *
+ * Ein Feature, das man nicht findet, gibt es nicht. Deshalb zeigt die Seite,
+ * woran man ist: ob eine Systembenachrichtigung möglich ist, ob sie erlaubt
+ * wurde, und was stattdessen passiert. Titel und Ton laufen ohnehin -- die
+ * brauchen keine Erlaubnis.
+ */
+function zustandZeigen() {
+  const kasten = document.getElementById("benachrichtigung");
+  if (!kasten) return;
+
+  const sicher = window.isSecureContext;
+  const moeglich = "Notification" in window && sicher;
+  const stand = moeglich ? Notification.permission : null;
+
+  let text;
+  let knopf = "";
+
+  if (stand === "granted") {
+    text = "<strong>Benachrichtigung an.</strong> Wenn ein Rip oder ein " +
+           "m4b-Bau endet, meldet sich das System – dazu ein Ton und ein " +
+           "Haken im Tab-Titel.";
+  } else if (stand === "default") {
+    text = "Bei fertigem Rip oder m4b piept es und der Tab-Titel bekommt " +
+           "einen Haken. Für eine Systembenachrichtigung braucht es einmal " +
+           "deine Erlaubnis.";
+    knopf = '<button type="button" class="button">Benachrichtigungen erlauben</button>';
+  } else if (stand === "denied") {
+    text = "Systembenachrichtigungen sind für diese Seite abgelehnt – das " +
+           "lässt sich nur in den Browsereinstellungen zurücknehmen. Ton und " +
+           "Haken im Tab-Titel kommen trotzdem.";
+  } else if (!sicher) {
+    text = "Bei fertigem Rip oder m4b piept es und der Tab-Titel bekommt " +
+           "einen Haken. <strong>Systembenachrichtigungen gibt es nur über " +
+           "HTTPS</strong> – Browser lassen sie über eine unverschlüsselte " +
+           "Verbindung nicht zu.";
+  } else {
+    text = "Bei fertigem Rip oder m4b piept es und der Tab-Titel bekommt " +
+           "einen Haken.";
+  }
+
+  kasten.innerHTML = `<span>${text}</span>${knopf}`;
+  kasten.hidden = false;
+
+  kasten.querySelector("button")?.addEventListener("click", () => {
+    Notification.requestPermission().then(zustandZeigen).catch(() => {});
+  });
+}
+
+document.addEventListener("DOMContentLoaded", zustandZeigen);

@@ -1049,14 +1049,25 @@ class TestCoverNachtraeglich:
         )
         assert breite == "400", f"Das zweite Bild hat nicht gewonnen: {breite}"
 
-    def test_nichts_bleibt_neben_der_m4b_liegen(self, tmp_path, monkeypatch):
-        """Eine zweite Audiodatei im Ordner liest Audiobookshelf als zweites Buch."""
+    def test_das_staging_bleibt_leer(self, tmp_path, monkeypatch):
+        """Die halbfertige Kopie darf nicht im Buchordner entstehen.
+
+        Audiobookshelf liest jede Audiodatei im Buchordner als Track desselben
+        Buchs -- eine zweite m4b daneben, und sei es für Sekunden, kann bei
+        einem Scan als zweites Hörbuch landen. Gearbeitet wird deshalb im
+        Staging, und danach ist auch dort nichts mehr.
+        """
         monkeypatch.setattr(audiobook.settings, "audiobook_root", tmp_path)
         buch = self._buch(tmp_path)
+        # Das Bild liegt hier bewusst außerhalb des Buchordners. Über die
+        # Route landet es als cover.jpg *im* Buch -- gewollt, damit has_cover
+        # stimmt und Audiobookshelf auch ein Ordnerbild hat. Der Routentest
+        # deckt genau das ab; hier geht es allein um die Arbeitskopie.
         audiobook.cover_einbetten(buch, self._bild(tmp_path))
 
-        uebrig = sorted(p.name for p in buch.iterdir())
-        assert uebrig == ["Die Siedler von Catan.m4b"], uebrig
+        assert sorted(p.name for p in buch.iterdir()) == [
+            "Die Siedler von Catan.m4b"
+        ]
         staging = tmp_path / audiobook.STAGING_NAME
         assert not staging.is_dir() or not list(staging.iterdir())
 

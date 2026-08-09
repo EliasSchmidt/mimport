@@ -1083,6 +1083,72 @@ class TestCoverEntgegennehmen:
         assert "Cover übernommen" in response.text
         assert (buch / "cover.jpg").read_bytes() == self.JPEG
 
+    def test_cover_geht_auch_in_eine_fertige_m4b(self, client, bibliothek):
+        """Der ganze Weg, den kein Modultest abdeckt.
+
+        Er hängt an drei Dingen, die nur hier zusammenkommen: dem Rückgabewert
+        von cover.speichern, der Weiche auf „schon gebündelt" und der Sperre.
+        """
+        import shutil
+        import subprocess
+
+        if not shutil.which("ffmpeg") or not shutil.which("ffprobe"):
+            pytest.skip("ffmpeg fehlt")
+
+        from backend import audiobook
+
+        buch = bibliothek / "Autor" / "Buch"
+        buch.mkdir(parents=True)
+        subprocess.run(
+            ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi",
+             "-i", "sine=f=440:d=3", "-c:a", "aac",
+             str(audiobook.m4b_pfad(buch))],
+            check=True,
+        )
+        bild = (bibliothek / "vorlage.jpg")
+        subprocess.run(
+            ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi",
+             "-i", "color=c=green:s=300x300:d=1", "-frames:v", "1", str(bild)],
+            check=True,
+        )
+
+        response = client.post(
+            "/cover/audiobook?buch=Autor/Buch",
+            files={"bild": ("cover.jpg", bild.read_bytes(), "image/jpeg")},
+        )
+        assert response.status_code == 200
+        assert "in die m4b übernommen" in response.text, response.text[:400]
+
+        _, _, bilder = audiobook._probe_eckdaten(audiobook.m4b_pfad(buch))
+        assert bilder == 1, "Das Cover steckt nicht in der Datei"
+        # Und daneben liegt es weiterhin als Ordnerbild -- davon lebt die
+        # Beschriftung „Cover ersetzen", und Audiobookshelf nimmt es auch.
+        assert (buch / "cover.jpg").is_file()
+
+    def test_cover_wartet_auf_einen_laufenden_bau(self, client, bibliothek):
+        """Ein „Neu bauen" darf die Datei nicht unter den Händen wegziehen."""
+        from backend import audiobook
+
+        buch = bibliothek / "Autor" / "Buch"
+        buch.mkdir(parents=True)
+        audiobook.m4b_pfad(buch).write_bytes(b"nicht wirklich eine m4b")
+
+        job = audiobook.M4bJob(buch=str(buch))
+        job.zustand = "encodiert"
+        audiobook._m4b_job = job
+        try:
+            response = client.post(
+                "/cover/audiobook?buch=Autor/Buch",
+                files={"bild": ("cover.jpg", self.JPEG, "image/jpeg")},
+            )
+            assert "läuft gerade der m4b-Bau" in response.text
+            assert "geht nicht verloren" in response.text
+            # Das Bild ist trotzdem angekommen und muss nicht neu fotografiert
+            # werden.
+            assert (buch / "cover.jpg").read_bytes() == self.JPEG
+        finally:
+            audiobook._m4b_job = None
+
     def test_musik_cover_landet_in_der_session(self, client):
         session = sessions.create_session()
         (session.directory / "01.flac").write_bytes(b"fLaC\x00\x00\x00\x22")

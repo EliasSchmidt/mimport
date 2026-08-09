@@ -437,6 +437,12 @@ def _buch_belegt(buch: Path) -> str:
     Die Prüfung sitzt hier und nicht in den Modulen: nur diese Schicht kennt
     beide Aufträge, und ein Modul, das das andere importiert, wäre eine
     Abhängigkeit, die es sonst nicht braucht.
+
+    Bekannte Lücke: Ein laufendes Cover-Einbetten meldet sich hier nicht an --
+    es dauert Sekunden und hat keinen Auftrag, den man abfragen könnte. Zwei
+    gleichzeitige Einbettungen lesen beide dieselbe m4b, schreiben je eine
+    gültige Datei und die zweite gewinnt; verloren geht dabei nichts. Erst
+    wenn daraus ein längerer Vorgang würde, wäre ein eigener Auftrag fällig.
     """
     laufender_bau = audiobook.current_m4b()
     if (

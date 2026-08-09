@@ -90,7 +90,11 @@ def inspect_file(path: Path, display_name: str | None = None) -> AudioInfo:
         info.error = "Kein erkennbares Audioformat"
         return info
     except mediafile.UnreadableFileError as exc:
-        info.error = f"Datei nicht lesbar: {exc}"
+        # Nur den Grund zeigen, nicht den ganzen Serverpfad: mediafile stellt
+        # ihn der Meldung voran, und in der Dateiliste steht der Name ohnehin
+        # schon daneben. Auf einem Handy schiebt der Pfad alles Lesbare weg.
+        grund = str(exc).rsplit(": ", 1)[-1].strip() or "unbekannter Grund"
+        info.error = f"Datei nicht lesbar: {grund}"
         return info
     except Exception as exc:  # defekte Uploads sollen nicht die Seite killen
         info.error = f"Fehler beim Lesen: {exc}"

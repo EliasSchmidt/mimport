@@ -138,7 +138,7 @@
         Platz ab.
     </p>
     {% endif %}
-    <table class="files">
+    <table class="stapelbar files">
         <thead>
             <tr><th>Buch</th><th>Discs</th><th>Dateien</th><th>Größe</th><th></th></tr>
         </thead>
@@ -151,9 +151,9 @@
                     {%- elif b.has_m4b %} <span class="badge lossless">m4b</span>
                     {%- endif %}
                 </td>
-                <td class="mono small">{{ b.discs | length or "–" }}</td>
-                <td class="mono small">{{ b.file_count }}</td>
-                <td class="mono small">{{ b.size_label }}</td>
+                <td class="mono small" data-spalte="Discs">{{ b.discs | length or "–" }}</td>
+                <td class="mono small" data-spalte="Dateien">{{ b.file_count }}</td>
+                <td class="mono small" data-spalte="Größe">{{ b.size_label }}</td>
                 <td>
                     {# Fortsetzen ohne Neueingabe: der Buchpfad steht schon
                        fest, Autor und Titel müssen nicht erneut getippt und

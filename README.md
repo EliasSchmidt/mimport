@@ -637,6 +637,21 @@ Entscheidung eine ausgedehnte Pause liegen darf. Bricht der Browser mitten im
 Upload ab, wird die angefangene Session sofort verworfen; sonst würde ein
 geschlossener Tab genügen, um Reste anzuhäufen.
 
+## Auf dem Handy
+
+Ein guter Teil der Bedienung passiert vom Telefon aus — Cover fotografieren,
+nach einem Rip nachsehen. Geprüft wird gegen **360 Pixel**, das schmalste,
+womit realistisch zu rechnen ist, und das Kriterium ist objektiv: Läuft der
+Inhalt breiter als das Fenster, muss die Seite seitlich gescrollt werden.
+
+Die Tabellen sind dort das Problem — fünf Spalten aus Namen, Zahlen und Knöpfen
+passen nicht nebeneinander. Unterhalb von 40 rem werden sie deshalb zu Karten:
+jede Zeile ein Block, die Spaltenüberschrift wandert vor den Wert (`Discs: 1`).
+Ohne das quetschte sich ein Dateiname in 60 Pixel und brach mitten im Wort um.
+
+`tests/test_mobil.py` misst das mit einem echten Browser und schlägt fehl,
+sobald etwas übersteht. Ohne Playwright wird der Test übersprungen.
+
 ## Tests
 
 ```bash

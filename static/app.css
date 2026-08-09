@@ -474,3 +474,69 @@ pre.output { max-height: 22rem; overflow-y: auto; }
 }
 .je-track input[type="text"] { width: 100%; }
 .je-track { margin-bottom: 0.75rem; }
+
+/* --- Schmale Bildschirme ---------------------------------------------- */
+/*
+ * Bedient wird das Ding zu einem guten Teil vom Handy aus -- Cover
+ * fotografieren, nach dem Rip nachsehen. Gemessen wird gegen 360 px, das
+ * schmalste, womit realistisch zu rechnen ist.
+ *
+ * Der Kern des Problems sind die Tabellen: fünf Spalten mit Namen, Zahlen und
+ * Knöpfen passen dort nicht nebeneinander. Sie werden deshalb zu Karten --
+ * jede Zeile ein Block, die Spaltenüberschrift wandert vor den Wert.
+ */
+@media (max-width: 40rem) {
+    body { padding: 0 0.75rem 3rem; }
+    .step { padding: 1rem 0.9rem 1.2rem; }
+    .page-head { padding: 1.5rem 0 0.5rem; }
+    .page-head h1 { font-size: 1.5rem; }
+
+    /* Lange Pfade und Dateinamen haben keine Trennstellen -- ohne das
+       schieben sie die ganze Seite auf. */
+    .mono, .modus-ziel, td.name, .banner { overflow-wrap: anywhere; }
+
+    /* Knöpfe nebeneinander sprengen die Breite; untereinander ist auf dem
+       Handy ohnehin leichter zu treffen. */
+    .disc-source .files td:last-child,
+    .open-sessions .files td:last-child { white-space: normal; }
+    .actions { gap: 0.5rem; }
+    .actions .button, .actions form { flex: 1 1 auto; }
+
+    .stapelbar thead { display: none; }
+    .stapelbar, .stapelbar tbody, .stapelbar tr, .stapelbar td { display: block; }
+
+    .stapelbar tr {
+        padding: 0.6rem 0;
+        border-bottom: 1px solid var(--border);
+    }
+
+    .stapelbar td { border: none; padding: 0.15rem 0; }
+
+    /* Die Überschrift der Spalte vor den Wert setzen -- ohne sie wäre eine
+       nackte Zahl nicht zu deuten. */
+    .stapelbar td[data-spalte]::before {
+        content: attr(data-spalte) ": ";
+        color: var(--text-dim);
+        font-size: 0.8rem;
+    }
+
+    /* Die Zeile mit den Knöpfen bekommt etwas Luft nach oben. */
+    .stapelbar td:last-child {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.4rem;
+        margin-top: 0.4rem;
+        text-align: left;
+    }
+
+    /* Die Gegenüberstellung beim Match: Dateiname über die volle Breite,
+       darunter die Werte nebeneinander. */
+    .pairings table { font-size: 0.82rem; }
+    .pairings td, .pairings th { padding: 0.3rem 0.25rem; }
+
+    /* Beim Tagging von Hand braucht jedes Eingabefeld die volle Breite. */
+    .je-track thead { display: none; }
+    .je-track tbody, .je-track tr, .je-track td { display: block; }
+    .je-track tr { padding: 0.5rem 0; border-bottom: 1px solid var(--border); }
+    .je-track td { border: none; padding: 0.15rem 0; }
+}

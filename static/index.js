@@ -149,8 +149,8 @@ function render(results) {
     .map(
       (r) => `
       <tr>
-        <td class="name">${escapeHtml(r.name)}</td>
-        <td class="mono small">${humanBytes(r.size)}</td>
+        <td class="name" data-spalte="Datei">${escapeHtml(r.name)}</td>
+        <td class="mono small" data-spalte="Größe">${humanBytes(r.size)}</td>
         <td><span class="badge ${r.quality}">${LABEL[r.quality]}</span></td>
       </tr>`
     )
@@ -158,7 +158,7 @@ function render(results) {
 
   preflight.innerHTML = `
     ${banner}
-    <table class="files">
+    <table class="stapelbar files">
       <thead><tr><th>Datei</th><th>Größe</th><th>Vorprüfung</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>

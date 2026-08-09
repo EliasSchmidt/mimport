@@ -34,7 +34,7 @@
     </div>
     {% endif %}
 
-    <table class="files">
+    <table class="stapelbar files">
         <thead>
             <tr>
                 <th>Datei</th>
@@ -45,8 +45,8 @@
         <tbody>
             {% for info in infos %}
             <tr>
-                <td class="name">{{ info.display_name }}</td>
-                <td class="mono">{{ info.summary }}</td>
+                <td class="name" data-spalte="Datei">{{ info.display_name }}</td>
+                <td class="mono" data-spalte="Format">{{ info.summary }}</td>
                 <td>
                     <span class="badge {{ info.quality }}">
                         {%- if info.quality == "lossless" %}verlustfrei

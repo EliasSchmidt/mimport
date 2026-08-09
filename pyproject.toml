@@ -21,6 +21,9 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pytest>=9.1.1",
+    # Für die Prüfung, ob die Oberfläche auf ein schmales Handy passt. Ohne
+    # Playwright wird tests/test_mobil.py übersprungen.
+    "playwright>=1.49",
 ]
 
 [tool.fastapi]

@@ -28,7 +28,7 @@
         Ein Ordner ist ein Album – für mehrere nacheinander vorgehen.
     </p>
 
-    <table class="files">
+    <table class="stapelbar files">
         <thead>
             <tr>
                 <th>Ordner</th>
@@ -40,9 +40,9 @@
         <tbody>
             {% for album in albums %}
             <tr>
-                <td class="name">{{ album.display }}</td>
-                <td class="mono small">{{ album.track_count }}</td>
-                <td class="mono small">{{ album.size_label }}</td>
+                <td class="name" data-spalte="Ordner">{{ album.display }}</td>
+                <td class="mono small" data-spalte="Tracks">{{ album.track_count }}</td>
+                <td class="mono small" data-spalte="Größe">{{ album.size_label }}</td>
                 <td>
                     <form hx-post="/disc"
                           hx-target="#files"

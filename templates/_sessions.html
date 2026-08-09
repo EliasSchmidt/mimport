@@ -4,7 +4,7 @@
 {% if offen %}
 <div class="open-sessions">
     <h3>Unterbrochene Sitzungen</h3>
-    <table class="files">
+    <table class="stapelbar files">
         <thead>
             <tr>
                 <th>Auswahl</th>
@@ -17,10 +17,10 @@
         <tbody>
             {% for eintrag in offen %}
             <tr>
-                <td class="name">{{ eintrag.label }}</td>
-                <td class="mono small">{{ eintrag.file_count }}</td>
-                <td class="mono small">{{ eintrag.size_label }}</td>
-                <td class="mono small">{{ eintrag.age_label }}</td>
+                <td class="name" data-spalte="Auswahl">{{ eintrag.label }}</td>
+                <td class="mono small" data-spalte="Dateien">{{ eintrag.file_count }}</td>
+                <td class="mono small" data-spalte="Größe">{{ eintrag.size_label }}</td>
+                <td class="mono small" data-spalte="Zuletzt">{{ eintrag.age_label }}</td>
                 <td>
                     <button type="button" class="button primary"
                             hx-get="/session/{{ eintrag.session_id }}"

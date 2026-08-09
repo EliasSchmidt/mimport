@@ -505,22 +505,32 @@ nach stetiger Verlangsamung aus. Genau so stand es hier, und genau so wurde es
 gemeldet.
 
 **Gemessen** auf dem Zielrechner, an *Die Siedler von Catan* (7:21:00): rund
-**46× Echtzeit**, macht knapp zehn Minuten für das ganze Buch. Damit lässt sich
-`MIMPORT_M4B_TIMEOUT` endlich begründen statt raten — sechs Stunden entsprächen
-einem Hörbuch von 276 Stunden Länge. Ein sehr langes Buch von 30 Stunden ist
-nach etwa 40 Minuten durch.
+**46× Echtzeit**, macht knapp zehn Minuten für das ganze Buch. Ein sehr langes
+Buch von 30 Stunden ist damit nach etwa 40 Minuten durch.
+
+Beide Zeitschranken stehen seither auf begründeten Werten statt auf geratenen:
+
+| Wert | vorher | jetzt | warum |
+|---|---|---|---|
+| `MIMPORT_M4B_TIMEOUT` | 6 h | **2 h** | 6 h entsprächen einem Hörbuch von 276 Stunden. 2 h lassen selbst bei halber Geschwindigkeit — etwa weil parallel gerippt wird — reichlich Luft. |
+| `MIMPORT_M4B_STILLSTAND` | 15 min | **5 min** | 15 Minuten sind länger, als ein kompletter Bau dauert; die Überwachung war damit praktisch wirkungslos. |
+
+Fünf Minuten sind auch nach unten sicher: Die einzige Phase, in der ffmpeg
+legitim schweigt, ist das Umschreiben durch `-movflags +faststart` nach der
+letzten Fortschrittsmeldung. Nachgemessen sind das bei 111 MB null Sekunden und
+selbst auf einer alten Platte deutlich unter einer Minute.
 
 ### Wenn ffmpeg hängen bleibt
 
 Drei Wege aus dem Stillstand, in dieser Reihenfolge:
 
 1. **Die Stillstandsüberwachung.** Meldet ffmpeg `MIMPORT_M4B_STILLSTAND`
-   Sekunden lang keinen Fortschritt (Vorgabe: 15 Minuten), wird er beendet und
+   Sekunden lang keinen Fortschritt (Vorgabe: 5 Minuten), wird er beendet und
    der Auftrag als fehlgeschlagen markiert. Das ist das schärfere Kriterium als
    eine Wanduhr: ein ehrlicher Encode läuft auf dem alten Laptop stundenlang,
    meldet dabei aber ständig Fortschritt.
-2. **Das Zeitlimit** `MIMPORT_M4B_TIMEOUT` als zweite Bremse, falls ffmpeg zwar
-   Fortschritt meldet, aber nie ankommt.
+2. **Das Zeitlimit** `MIMPORT_M4B_TIMEOUT` als zweite Bremse (Vorgabe: 2
+   Stunden), falls ffmpeg zwar Fortschritt meldet, aber nie ankommt.
 3. **Der Knopf „Bau abbrechen"** neben dem Fortschrittsbalken, für alles andere.
    Er verschwindet, sobald ffmpeg durch ist und nur noch die Laufzeit geprüft
    und die Datei verschoben wird — ab da verhindert ein Abbruch nichts mehr,
@@ -623,8 +633,8 @@ Probelauf funktioniert weiterhin.
 | `MIMPORT_M4B_BITRATE` | `64k` | Zielbitrate der m4b |
 | `MIMPORT_M4B_MONO` | `1` | Auf einen Kanal mischen |
 | `MIMPORT_M4B_MIN_KBPS` | `96` | Darunter gilt Umwandeln als nicht lohnend |
-| `MIMPORT_M4B_TIMEOUT` | `21600` | Zeitlimit für den m4b-Bau (s) |
-| `MIMPORT_M4B_STILLSTAND` | `900` | So lange darf ffmpeg schweigen, dann gilt er als hängend (s) |
+| `MIMPORT_M4B_TIMEOUT` | `7200` | Zeitlimit für den m4b-Bau (s) |
+| `MIMPORT_M4B_STILLSTAND` | `300` | So lange darf ffmpeg schweigen, dann gilt er als hängend (s) |
 | `MIMPORT_BEET_BIN` | `beet` | Pfad zum beets-Executable |
 | `MIMPORT_MOVE` | `1` | Dateien verschieben (`0` = kopieren) |
 | `MIMPORT_MAX_UPLOAD_BYTES` | 4 GB | Obergrenze pro Upload |

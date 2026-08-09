@@ -162,19 +162,31 @@ class Settings:
         default_factory=lambda: os.environ.get("MIMPORT_FFPROBE", "ffprobe")
     )
 
-    #: Zeitlimit für den m4b-Bau. Ein langes Hörbuch auf schwacher CPU braucht
-    #: Stunden.
+    #: Zeitlimit für den m4b-Bau.
+    #:
+    #: Zwei Stunden, und das ist bereits reichlich. Auf dem Zielrechner gemessen:
+    #: **46× Echtzeit** (7:21:00 Hörbuch in knapp zehn Minuten). Ein sehr langes
+    #: Buch von 30 Stunden ist damit nach etwa 40 Minuten durch -- selbst wenn
+    #: parallel gerippt wird und sich das halbiert, bleibt Luft. Die vorherigen
+    #: sechs Stunden waren geraten und entsprachen einem Hörbuch von 276 Stunden.
     m4b_timeout: int = field(
-        default_factory=lambda: _env_int("MIMPORT_M4B_TIMEOUT", 6 * 3600)
+        default_factory=lambda: _env_int("MIMPORT_M4B_TIMEOUT", 2 * 3600)
     )
 
     #: Wie lange ffmpeg schweigen darf, bevor er als hängend gilt. Das ist das
-    #: schärfere Kriterium: ein ehrlicher Encode auf dem alten Laptop läuft
-    #: stundenlang, meldet dabei aber im Sekundentakt Fortschritt. Ein hängender
-    #: meldet gar nichts mehr -- und darauf lässt sich viel früher reagieren als
-    #: auf eine Wanduhr, die für den Normalfall großzügig stehen muss.
+    #: schärfere Kriterium: ein ehrlicher Encode meldet im Sekundentakt
+    #: Fortschritt, ein hängender gar nichts mehr -- darauf lässt sich viel
+    #: früher reagieren als auf eine Wanduhr, die für den Normalfall großzügig
+    #: stehen muss.
+    #:
+    #: Fünf Minuten. Vorher standen hier fünfzehn -- länger, als ein kompletter
+    #: Bau überhaupt dauert, womit die Überwachung praktisch wirkungslos war.
+    #: Die einzige Phase, in der ffmpeg legitim schweigt, ist das Umschreiben
+    #: durch ``-movflags +faststart`` nach der letzten Fortschrittsmeldung;
+    #: nachgemessen sind das bei 111 MB null Sekunden und selbst auf einer alten
+    #: Platte deutlich unter einer Minute.
     m4b_stillstand: int = field(
-        default_factory=lambda: _env_int("MIMPORT_M4B_STILLSTAND", 15 * 60)
+        default_factory=lambda: _env_int("MIMPORT_M4B_STILLSTAND", 5 * 60)
     )
 
     #: Das CD-Laufwerk für Audio-CDs. Anders als bei der Daten-CD hilft kein

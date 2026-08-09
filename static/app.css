@@ -540,3 +540,7 @@ pre.output { max-height: 22rem; overflow-y: auto; }
     .je-track tr { padding: 0.5rem 0; border-bottom: 1px solid var(--border); }
     .je-track td { border: none; padding: 0.15rem 0; }
 }
+
+/* Abgeschaltetes Feld: sichtbar, aber erkennbar außer Betrieb. */
+.abgeschaltet { opacity: 0.5; }
+.abgeschaltet input:disabled { cursor: not-allowed; }

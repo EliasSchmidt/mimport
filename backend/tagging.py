@@ -81,6 +81,21 @@ _MEHRWERTIG = {"genres": "genre", "artists": "artist", "albumartists": "albumart
 _TRENNER = re.compile(r"\s+/\s+|\s+feat\b\.?\s+|\s+ft\b\.?\s+|;\s*", re.IGNORECASE)
 
 
+def sampler_name() -> str:
+    """Wie ein Sampler-Albumkünstler heißt.
+
+    Aus der beets-Konfiguration (``va_name``), nicht fest verdrahtet -- wer
+    dort etwas anderes einstellt, soll es auch in den Dateien wiederfinden.
+    """
+    beets_env.ensure_loaded()
+    from beets import config
+
+    try:
+        return str(config["va_name"].get()) or "Various Artists"
+    except Exception:
+        return "Various Artists"
+
+
 def _werte(value: str) -> list[str]:
     """Zerlegt eine Eingabe wie ``A feat. B`` in einzelne Namen."""
     return [teil.strip() for teil in _TRENNER.split(str(value)) if teil.strip()]
@@ -127,6 +142,16 @@ def apply_manual_tags(
     """
     beets_env.ensure_loaded()
     from beets.library import Item
+
+    fields = dict(fields)
+    # Ein Sampler ohne Albumkünstler hätte in der Datei keinen -- und genau die
+    # liest Audiobookshelf, Navidrome oder sonst ein Abspieler. beets trägt
+    # „Various Artists" zwar in seine Library ein, schreibt es aber nicht in
+    # die Datei zurück; nachgemessen nach einem Import. Ohne den Eintrag
+    # gruppiert Navidrome die Stücke nicht zu einem Album, weil dort je Track
+    # ein anderer Interpret steht.
+    if fields.get("comp") is True and not str(fields.get("albumartist", "")).strip():
+        fields["albumartist"] = sampler_name()
 
     result = TagWriteResult()
     # Ein nicht gesetztes Häkchen ist keine Eingabe. Ohne die ausdrückliche

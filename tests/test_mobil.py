@@ -127,3 +127,63 @@ def test_hoerbuch_bibliothek_passt(browser, server):
         assert ueberlauf(seite) <= 0
     finally:
         seite.close()
+
+
+def test_samplerhaken_stellt_die_felder_ein(browser, server):
+    """Ein Sampler hat keinen einheitlichen Interpreten, sondern einen
+    Albumkünstler als Sammelbegriff. Das Häkchen soll das einstellen, nicht
+    nur behaupten."""
+    seite = browser.new_page(viewport={"width": 900, "height": 800})
+    try:
+        seite.goto(server + "/musik", wait_until="networkidle")
+        seite.set_input_files(
+            "#upload-files",
+            [{"name": "01 Stück.flac", "mimeType": "audio/flac",
+              "buffer": b"fLaC\x00\x00\x00\x22" + b"\x00" * 34}],
+        )
+        seite.click("#upload-submit")
+        seite.wait_for_selector("#files-inner", timeout=20000)
+        seite.click("details.manuell > summary")
+
+        albumartist = seite.locator("[data-albumartist]")
+        interpret = seite.locator("[data-alle-interpreten] input")
+        hinweis = seite.locator("[data-sampler-hinweis]")
+
+        assert albumartist.input_value() == ""
+        assert interpret.is_enabled()
+        assert hinweis.is_hidden()
+
+        seite.check("[data-sampler]")
+        assert albumartist.input_value() == "Various Artists"
+        assert interpret.is_disabled(), "ein gemeinsamer Interpret ergibt hier keinen Sinn"
+        assert hinweis.is_visible()
+
+        # Zurücknehmen räumt auf, was wir gesetzt haben.
+        seite.uncheck("[data-sampler]")
+        assert albumartist.input_value() == ""
+        assert interpret.is_enabled()
+    finally:
+        seite.close()
+
+
+def test_eigener_albumkuenstler_bleibt_stehen(browser, server):
+    """Wer ein Label einträgt, will es behalten -- auch beim Umschalten."""
+    seite = browser.new_page(viewport={"width": 900, "height": 800})
+    try:
+        seite.goto(server + "/musik", wait_until="networkidle")
+        seite.set_input_files(
+            "#upload-files",
+            [{"name": "01 Stück.flac", "mimeType": "audio/flac",
+              "buffer": b"fLaC\x00\x00\x00\x22" + b"\x00" * 34}],
+        )
+        seite.click("#upload-submit")
+        seite.wait_for_selector("#files-inner", timeout=20000)
+        seite.click("details.manuell > summary")
+
+        seite.fill("[data-albumartist]", "Deutsche Grammophon")
+        seite.check("[data-sampler]")
+        assert seite.locator("[data-albumartist]").input_value() == "Deutsche Grammophon"
+        seite.uncheck("[data-sampler]")
+        assert seite.locator("[data-albumartist]").input_value() == "Deutsche Grammophon"
+    finally:
+        seite.close()

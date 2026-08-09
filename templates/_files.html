@@ -121,13 +121,13 @@
             </p>
             <div class="fields">
                 <label>Albumkünstler
-                    <input type="text" name="albumartist"
-                           placeholder="bei Samplern: Various Artists">
+                    <input type="text" name="albumartist" data-albumartist
+                           placeholder="z. B. The Beatles">
                 </label>
                 <label>Album
                     <input type="text" name="album">
                 </label>
-                <label>Interpret <small>(für alle Tracks)</small>
+                <label data-alle-interpreten>Interpret <small>(für alle Tracks)</small>
                     <input type="text" name="artist">
                 </label>
                 <label>Jahr
@@ -138,10 +138,17 @@
                 </label>
             </div>
             <label class="checkbox">
-                <input type="checkbox" name="compilation" value="true">
+                <input type="checkbox" name="compilation" value="true" data-sampler>
                 Sampler (Various Artists) – setzt das Compilation-Flag, damit
                 Navidrome und beets die Tracks als ein Album führen
             </label>
+            <p class="hint" data-sampler-hinweis hidden>
+                Der Albumkünstler steht jetzt auf <strong>Various Artists</strong>
+                – so gruppiert Navidrome die Stücke zu einem Album, obwohl jeder
+                Track einen anderen Interpreten hat. Ein eigener Name ist
+                möglich, etwa ein Label. Das Feld „Interpret für alle Tracks"
+                ist deshalb aus; tragt die Namen unten je Track ein.
+            </p>
 
             {# Je Track: nötig für Sampler, wo jeder Titel einen anderen
                Interpreten hat. Der Dateiname steht im Feldnamen, damit die

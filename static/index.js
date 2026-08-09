@@ -231,3 +231,53 @@ document.body.addEventListener("htmx:afterSwap", (event) => {
     step.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 });
+
+/* --------------------------------------------------- Sampler-Häkchen -----
+ *
+ * Ein Sampler hat keinen einheitlichen Interpreten -- jeder Track hat seinen
+ * eigenen. Der Albumkünstler ist dafür der Platzhalter, über den Navidrome und
+ * beets die Stücke zu einem Album zusammenfassen. Das Häkchen stellt beides
+ * ein, statt es nur zu erklären: Albumkünstler vorbelegen, das Feld für einen
+ * gemeinsamen Interpreten abschalten.
+ *
+ * Der Server macht dasselbe noch einmal -- wer das Häkchen ohne Albumkünstler
+ * abschickt, bekommt ihn trotzdem. Hier geht es darum, dass man es sieht.
+ */
+const SAMPLER_NAME = "Various Artists";
+
+function samplerUmschalten(haken) {
+  const formular = haken.closest("form");
+  if (!formular) return;
+  const albumartist = formular.querySelector("[data-albumartist]");
+  const alleInterpreten = formular.querySelector("[data-alle-interpreten]");
+  const hinweis = formular.querySelector("[data-sampler-hinweis]");
+  const feld = alleInterpreten?.querySelector("input");
+
+  if (haken.checked) {
+    if (albumartist && !albumartist.value.trim()) {
+      albumartist.value = SAMPLER_NAME;
+      albumartist.dataset.vonUns = "ja";
+    }
+    if (feld) {
+      feld.value = "";
+      feld.disabled = true;
+    }
+    alleInterpreten?.classList.add("abgeschaltet");
+    if (hinweis) hinweis.hidden = false;
+  } else {
+    // Nur zurücknehmen, was wir selbst gesetzt haben -- eine eigene Eingabe
+    // bleibt stehen.
+    if (albumartist?.dataset.vonUns === "ja") {
+      albumartist.value = "";
+      delete albumartist.dataset.vonUns;
+    }
+    if (feld) feld.disabled = false;
+    alleInterpreten?.classList.remove("abgeschaltet");
+    if (hinweis) hinweis.hidden = true;
+  }
+}
+
+// Die Formulare kommen per htmx nach, deshalb am Dokument lauschen.
+document.body.addEventListener("change", (event) => {
+  if (event.target.matches("[data-sampler]")) samplerUmschalten(event.target);
+});

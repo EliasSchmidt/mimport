@@ -419,3 +419,65 @@ class TestTracknummernBeimHandtaggen:
         tagging.apply_manual_tags(dateien, {"album": "Sampler"})
 
         assert [mediafile.MediaFile(p).track for p in dateien] == [7, 4]
+
+
+class TestSamplerAlbumkuenstler:
+    """Ein Sampler braucht einen Albumkünstler in der **Datei**.
+
+    beets trägt „Various Artists" nur in seine Library ein und schreibt es
+    nicht zurück -- nachgemessen nach einem echten Import. Navidrome liest
+    aber die Datei; ohne Eintrag gruppiert es die Stücke nicht zu einem Album,
+    weil dort je Track ein anderer Interpret steht.
+    """
+
+    def test_sampler_ohne_angabe_bekommt_various_artists(self, tmp_path):
+        import mediafile
+
+        from tests.flacfixture import write_flac
+
+        from backend import tagging
+
+        dateien = [write_flac(tmp_path / f"{i:02d}.flac", seconds=60) for i in (1, 2)]
+        tagging.apply_manual_tags(
+            dateien,
+            {"comp": True, "album": "Sampler"},
+            je_track={"01.flac": {"artists": "Haydn"}, "02.flac": {"artists": "Bach"}},
+        )
+
+        for pfad in dateien:
+            medien = mediafile.MediaFile(pfad)
+            assert medien.albumartist == "Various Artists"
+            assert medien.comp is True
+        # Die Interpreten bleiben je Track verschieden -- darum geht es ja.
+        assert mediafile.MediaFile(dateien[0]).artist == "Haydn"
+        assert mediafile.MediaFile(dateien[1]).artist == "Bach"
+
+    def test_eigene_angabe_wird_nicht_ueberschrieben(self, tmp_path):
+        import mediafile
+
+        from tests.flacfixture import write_flac
+
+        from backend import tagging
+
+        pfad = write_flac(tmp_path / "01.flac", seconds=60)
+        tagging.apply_manual_tags(
+            [pfad], {"comp": True, "albumartist": "Deutsche Grammophon"}
+        )
+        assert mediafile.MediaFile(pfad).albumartist == "Deutsche Grammophon"
+
+    def test_ohne_sampler_kein_eingriff(self, tmp_path):
+        import mediafile
+
+        from tests.flacfixture import write_flac
+
+        from backend import tagging
+
+        pfad = write_flac(tmp_path / "01.flac", seconds=60)
+        tagging.apply_manual_tags([pfad], {"album": "Ein Album"})
+        assert mediafile.MediaFile(pfad).albumartist in ("", None)
+
+    def test_name_kommt_aus_der_beets_konfiguration(self):
+        from backend import tagging
+
+        # Nicht fest verdrahtet: wer va_name ändert, soll es wiederfinden.
+        assert tagging.sampler_name() == "Various Artists"

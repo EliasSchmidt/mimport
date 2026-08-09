@@ -685,10 +685,31 @@ async def cover_audiobook(
     """
     try:
         pfad = audiobook.resolve_book(buch)
-        cover.speichern(pfad, await bild.read())
+        bild_pfad = cover.speichern(pfad, await bild.read())
     except (audiobook.AudiobookError, cover.CoverError) as exc:
         return _audiobook_fragment(request, fehler=str(exc))
-    return _audiobook_fragment(request, meldung="Cover übernommen.")
+
+    # Vor dem Bündeln reicht die Bilddatei im Ordner -- der Encode nimmt sie
+    # mit. Ist die m4b schon gebaut, sind die Quellen gelöscht und die Datei
+    # ist alles, was es noch gibt: dann muss das Bild hinein.
+    if not audiobook.m4b_pfad(pfad).is_file():
+        return _audiobook_fragment(request, meldung="Cover übernommen.")
+
+    # Dieselbe Sperre wie beim Rippen und Bündeln. Ohne sie könnte ein „Neu
+    # bauen" dieselbe Datei unter den Händen wegziehen -- und ein doppelter
+    # Klick zwei Läufe auf derselben m4b starten.
+    if belegt := _buch_belegt(pfad):
+        return _audiobook_fragment(
+            request,
+            fehler=f"{belegt} Das Bild liegt im Buchordner und geht nicht "
+            "verloren; bitte danach noch einmal übernehmen.",
+        )
+
+    try:
+        meldung = audiobook.cover_einbetten(pfad, bild_pfad)
+    except audiobook.AudiobookError as exc:
+        return _audiobook_fragment(request, fehler=str(exc))
+    return _audiobook_fragment(request, meldung=meldung)
 
 
 @router.post("/cover/session/{session_id}", response_class=HTMLResponse)

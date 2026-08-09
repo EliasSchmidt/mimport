@@ -944,6 +944,147 @@ def _quellen_loeschen(job: M4bJob, quellen: list[Path], ziel: Path) -> None:
     job.meldung += f" -- {job.geloescht} Quelldateien gelöscht."
 
 
+#: Zeitlimit fürs Einbetten eines Covers. Das ist reines Umkopieren ohne
+#: Neuencode -- gemessen 230 MB/s, eine m4b von 212 MB also in etwa einer
+#: Sekunde. Auf einer alten Platte und neben einem laufenden Rip dauert es
+#: länger, aber nicht Minuten. Fünf sind großzügig und verhindern trotzdem,
+#: dass ein hängendes ffmpeg diesmal an der einzigen Kopie des fertigen Buchs
+#: sitzt.
+COVER_EINBETTEN_TIMEOUT = 300
+
+
+def m4b_pfad(buch: Path) -> Path:
+    """Wo die fertige m4b eines Buchs liegt."""
+    return buch / f"{buch.name}.m4b"
+
+
+def _probe_eckdaten(datei: Path) -> tuple[float, int, int]:
+    """Spieldauer, Anzahl Kapitel und Anzahl eingebetteter Bilder."""
+    roh = _ffprobe(
+        ["-print_format", "json", "-show_format", "-show_streams",
+         "-show_chapters", str(datei)]
+    )
+    try:
+        daten = json.loads(roh or "{}")
+    except ValueError:
+        return 0.0, 0, 0
+    try:
+        dauer = float(daten.get("format", {}).get("duration", 0.0))
+    except (TypeError, ValueError):
+        dauer = 0.0
+    bilder = sum(
+        1
+        for s in daten.get("streams", [])
+        if s.get("codec_type") == "video"
+        and s.get("disposition", {}).get("attached_pic")
+    )
+    return dauer, len(daten.get("chapters", [])), bilder
+
+
+def cover_einbetten(buch: Path, bild: Path) -> str:
+    """Setzt das Cover einer **fertigen** m4b nachträglich.
+
+    Vor dem Bündeln genügt eine Bilddatei im Buchordner -- der Encode nimmt sie
+    mit. Danach sind die Quelldateien gelöscht und die m4b ist alles, was es
+    noch gibt; das Bild muss also in die Datei selbst.
+
+    Kein Neuencode: ffmpeg schreibt nur den Container neu (``-c copy``).
+    Nachgemessen bleiben dabei Spieldauer, Kapitel und Tags unverändert, und
+    ein schon vorhandenes Cover wird ersetzt statt gestapelt -- deshalb wird
+    hier auf Gleichheit geprüft und nicht auf eine Toleranz.
+
+    Gearbeitet wird im Staging, nicht neben der m4b. Eine zweite Datei im
+    Buchordner, und sei es für zehn Sekunden, liest Audiobookshelf bei einem
+    Scan als zweites Hörbuch ein -- dieselbe Falle, wegen der die Quelldateien
+    nach dem Bündeln verschwinden.
+    """
+    ziel = m4b_pfad(buch)
+    if not ziel.is_file():
+        raise AudiobookError("Für dieses Buch gibt es noch keine m4b.")
+    if not bild.is_file():
+        raise AudiobookError("Das Coverbild ist nicht auffindbar.")
+
+    vorher_dauer, vorher_kapitel, _ = _probe_eckdaten(ziel)
+    if vorher_dauer <= 0:
+        raise AudiobookError(
+            "Die vorhandene m4b ließ sich nicht lesen. Es wurde nichts verändert."
+        )
+
+    arbeit = neuer_arbeitsordner("cover")
+    neu = arbeit / ziel.name
+    try:
+        befehl = [
+            settings.ffmpeg_bin, "-hide_banner", "-nostdin", "-y",
+            "-i", str(ziel),
+            "-i", str(bild),
+            # Nur die Tonspur des Originals: ein bereits eingebettetes Cover
+            # bleibt damit außen vor, statt sich mit dem neuen zu stapeln.
+            "-map", "0:a", "-map", "1:v",
+            # Beides ausdrücklich, obwohl ffmpeg Metadaten und Kapitel beim
+            # Remuxen ohnehin vom ersten Input übernimmt -- nachgeprüft, ohne
+            # die Angaben bleiben sie erhalten. Sie stehen hier als Absicherung
+            # gegen eine spätere ffmpeg-Version, die das anders handhabt: die
+            # Kapitel sind das Wertvollste an einer m4b.
+            "-map_metadata", "0", "-map_chapters", "0",
+            "-c", "copy", "-disposition:v:0", "attached_pic",
+            "-movflags", "+faststart", str(neu),
+        ]
+        try:
+            ergebnis = subprocess.run(
+                befehl,
+                capture_output=True,
+                text=True,
+                stdin=subprocess.DEVNULL,
+                timeout=COVER_EINBETTEN_TIMEOUT,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise AudiobookError(
+                "ffmpeg hat das Cover nicht in der vorgesehenen Zeit einbetten "
+                "können und wurde beendet. Die m4b ist unverändert."
+            ) from exc
+        except FileNotFoundError as exc:
+            raise AudiobookError(
+                f"{settings.ffmpeg_bin} wurde nicht gefunden."
+            ) from exc
+
+        if ergebnis.returncode != 0:
+            rest = (ergebnis.stderr or "").strip()[-300:]
+            raise AudiobookError(
+                f"ffmpeg endete mit {ergebnis.returncode}. Die m4b ist "
+                f"unverändert. {rest}"
+            )
+
+        dauer, kapitel, bilder = _probe_eckdaten(neu)
+        # Umkopieren ohne Neuencode ändert an diesen drei Zahlen nichts --
+        # nachgemessen. Weicht doch etwas ab, bleibt das Original stehen: es
+        # ist die einzige Kopie des Buchs.
+        if abs(int(dauer * 1000) - int(vorher_dauer * 1000)) > TOLERANZ_MS:
+            raise AudiobookError(
+                f"Die Spieldauer hätte sich geändert ({_hms(vorher_dauer)} → "
+                f"{_hms(dauer)}). Die m4b ist unverändert geblieben."
+            )
+        if kapitel != vorher_kapitel:
+            raise AudiobookError(
+                f"Die Kapitel hätten sich geändert ({vorher_kapitel} → "
+                f"{kapitel}). Die m4b ist unverändert geblieben."
+            )
+        if bilder != 1:
+            raise AudiobookError(
+                f"Statt eines Covers wären {bilder} Bilder in der Datei. Die "
+                "m4b ist unverändert geblieben."
+            )
+
+        fertigstellen(neu, ziel)
+    finally:
+        shutil.rmtree(arbeit, ignore_errors=True)
+
+    log.info("Cover in %s eingebettet", ziel)
+    return (
+        f"Cover in die m4b übernommen – {kapitel} Kapitel und "
+        f"{_hms(dauer)} Spielzeit unverändert."
+    )
+
+
 def build(
     buch: Path,
     *,

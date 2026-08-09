@@ -190,14 +190,14 @@
                     </form>
                     {% endif %}
 
-                    {# Cover abfotografieren. Vor dem Bündeln, denn danach ist
-                       es in der m4b eingebettet. #}
-                    {% if not b.has_m4b %}
+                    {# Cover abfotografieren -- vor **und** nach dem Bündeln.
+                       Solange es Quelldateien gibt, genügt das Bild im Ordner:
+                       der Encode nimmt es mit. Ist die m4b fertig, wird es
+                       nachträglich hineinkopiert, ohne neu zu encodieren. #}
                     <button type="button" class="button"
                             onclick="coverAufnehmen('/cover/audiobook?buch={{ b.relative | urlencode }}', 'audiobook', '{{ b.titel }}')">
                         {{ "Cover ersetzen" if b.has_cover else "Cover" }}
                     </button>
-                    {% endif %}
 
                     {% if b.unstimmig %}
                     {# Nach einem abgebrochenen Bündeln. Nicht stillschweigend

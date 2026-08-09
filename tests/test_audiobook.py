@@ -967,3 +967,194 @@ class TestFaktor:
 
     def test_ohne_fortschritt_kein_faktor(self):
         assert self._stand(0, 3600, 10).faktor_text == ""
+
+
+@braucht_ffmpeg
+class TestCoverNachtraeglich:
+    """Cover setzen, wenn die m4b schon fertig ist.
+
+    Vorher gab es den Knopf nur, solange noch Quelldateien lagen -- danach war
+    das Cover nicht mehr zu ändern, obwohl gerade dann nichts anderes mehr da
+    ist als die m4b.
+    """
+
+    def _buch(self, tmp_path, kapitel=2):
+        buch = tmp_path / "Rebecca Gablé" / "Die Siedler von Catan"
+        buch.mkdir(parents=True)
+        meta = tmp_path / "meta.txt"
+        zeilen = [";FFMETADATA1", "title=Die Siedler von Catan",
+                  "artist=Rebecca Gablé"]
+        for i in range(kapitel):
+            zeilen += ["[CHAPTER]", "TIMEBASE=1/1000",
+                       f"START={i * 5000}", f"END={(i + 1) * 5000}",
+                       f"title=Kapitel {i + 1}"]
+        meta.write_text("\n".join(zeilen) + "\n", encoding="utf-8")
+        subprocess.run(
+            ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+             "-f", "lavfi", "-i", f"sine=f=440:d={kapitel * 5}",
+             "-i", str(meta), "-map", "0:a", "-map_metadata", "1",
+             "-map_chapters", "1", "-c:a", "aac", "-movflags", "+faststart",
+             str(audiobook.m4b_pfad(buch))],
+            check=True,
+        )
+        return buch
+
+    def _bild(self, ordner, farbe="blue", groesse="600x600"):
+        pfad = ordner / f"cover-{farbe}.jpg"
+        subprocess.run(
+            ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi",
+             "-i", f"color=c={farbe}:s={groesse}:d=1", "-frames:v", "1", str(pfad)],
+            check=True,
+        )
+        return pfad
+
+    def test_kapitel_und_dauer_bleiben(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(audiobook.settings, "audiobook_root", tmp_path)
+        buch = self._buch(tmp_path, kapitel=3)
+        m4b = audiobook.m4b_pfad(buch)
+        vorher = audiobook._probe_eckdaten(m4b)
+        assert vorher[1] == 3 and vorher[2] == 0
+
+        meldung = audiobook.cover_einbetten(buch, self._bild(tmp_path))
+
+        dauer, kapitel, bilder = audiobook._probe_eckdaten(m4b)
+        assert kapitel == 3, "Die Kapitel sind das Wertvollste an einer m4b"
+        assert abs(dauer - vorher[0]) < 0.05
+        assert bilder == 1
+        assert "3 Kapitel" in meldung
+
+    def test_titel_und_autor_ueberleben(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(audiobook.settings, "audiobook_root", tmp_path)
+        buch = self._buch(tmp_path)
+        audiobook.cover_einbetten(buch, self._bild(tmp_path))
+        tags = audiobook._ffprobe(
+            ["-show_entries", "format_tags=title,artist", "-of", "default=nw=1",
+             str(audiobook.m4b_pfad(buch))]
+        )
+        assert "Die Siedler von Catan" in tags
+        assert "Rebecca Gablé" in tags
+
+    def test_ersetzen_stapelt_nicht(self, tmp_path, monkeypatch):
+        """Zweimal fotografieren darf nicht zwei Bilder in der Datei ergeben."""
+        monkeypatch.setattr(audiobook.settings, "audiobook_root", tmp_path)
+        buch = self._buch(tmp_path)
+        audiobook.cover_einbetten(buch, self._bild(tmp_path, "blue", "600x600"))
+        audiobook.cover_einbetten(buch, self._bild(tmp_path, "red", "400x400"))
+
+        _, _, bilder = audiobook._probe_eckdaten(audiobook.m4b_pfad(buch))
+        assert bilder == 1
+        breite = audiobook._ffprobe(
+            ["-select_streams", "v:0", "-show_entries", "stream=width",
+             "-of", "csv=p=0", str(audiobook.m4b_pfad(buch))]
+        )
+        assert breite == "400", f"Das zweite Bild hat nicht gewonnen: {breite}"
+
+    def test_nichts_bleibt_neben_der_m4b_liegen(self, tmp_path, monkeypatch):
+        """Eine zweite Audiodatei im Ordner liest Audiobookshelf als zweites Buch."""
+        monkeypatch.setattr(audiobook.settings, "audiobook_root", tmp_path)
+        buch = self._buch(tmp_path)
+        audiobook.cover_einbetten(buch, self._bild(tmp_path))
+
+        uebrig = sorted(p.name for p in buch.iterdir())
+        assert uebrig == ["Die Siedler von Catan.m4b"], uebrig
+        staging = tmp_path / audiobook.STAGING_NAME
+        assert not staging.is_dir() or not list(staging.iterdir())
+
+    def test_ohne_m4b_wird_abgelehnt(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(audiobook.settings, "audiobook_root", tmp_path)
+        buch = tmp_path / "A" / "B"
+        buch.mkdir(parents=True)
+        with pytest.raises(audiobook.AudiobookError, match="noch keine m4b"):
+            audiobook.cover_einbetten(buch, self._bild(tmp_path))
+
+    def test_kaputtes_bild_laesst_die_m4b_unversehrt(self, tmp_path, monkeypatch):
+        """Der Kern: die m4b ist die einzige Kopie des Buchs."""
+        monkeypatch.setattr(audiobook.settings, "audiobook_root", tmp_path)
+        buch = self._buch(tmp_path)
+        m4b = audiobook.m4b_pfad(buch)
+        vorher = m4b.read_bytes()
+
+        kaputt = tmp_path / "kaputt.jpg"
+        kaputt.write_bytes(b"\xff\xd8\xff\xe0 das ist kein Bild")
+        with pytest.raises(audiobook.AudiobookError):
+            audiobook.cover_einbetten(buch, kaputt)
+
+        assert m4b.read_bytes() == vorher, "Die m4b wurde angetastet"
+        assert audiobook._probe_eckdaten(m4b)[1] == 2
+
+    def test_zeitlimit_laesst_die_m4b_unversehrt(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(audiobook.settings, "audiobook_root", tmp_path)
+        buch = self._buch(tmp_path)
+        m4b = audiobook.m4b_pfad(buch)
+        vorher = m4b.read_bytes()
+        # Das Bild vor dem Patch erzeugen -- es entsteht selbst über
+        # subprocess.run und wäre sonst der erste Aufruf, den es abfängt.
+        bild = self._bild(tmp_path)
+
+        echt = audiobook.subprocess.run
+
+        def langsam(befehl, *args, **kwargs):
+            # Nur ffmpeg aufhalten: die ffprobe-Vorabprüfung muss echt laufen,
+            # sonst scheitert es an ihr statt am Zeitlimit.
+            if audiobook.settings.ffprobe_bin in befehl[0]:
+                return echt(befehl, *args, **kwargs)
+            assert kwargs.get("timeout"), "ohne Zeitlimit hinge es an der m4b"
+            raise audiobook.subprocess.TimeoutExpired(cmd="ffmpeg", timeout=1)
+
+        monkeypatch.setattr(audiobook.subprocess, "run", langsam)
+        with pytest.raises(audiobook.AudiobookError, match="vorgesehenen Zeit"):
+            audiobook.cover_einbetten(buch, bild)
+        monkeypatch.undo()
+
+        assert m4b.read_bytes() == vorher
+
+
+    def test_abweichende_kapitel_verhindern_das_ersetzen(self, tmp_path, monkeypatch):
+        """Das Sicherheitsnetz vor dem Überschreiben der einzigen Kopie.
+
+        Im Normalbetrieb schlägt es nie zu -- Remuxen ändert an Dauer, Kapiteln
+        und Coverzahl nichts, nachgemessen. Genau deshalb braucht es einen
+        eigenen Test: ohne ihn wäre die Prüfung unbelegt, und ein Wegfall
+        fiele erst auf, wenn ein Hörbuch dabei kaputtginge.
+        """
+        monkeypatch.setattr(audiobook.settings, "audiobook_root", tmp_path)
+        buch = self._buch(tmp_path, kapitel=3)
+        m4b = audiobook.m4b_pfad(buch)
+        vorher = m4b.read_bytes()
+        bild = self._bild(tmp_path)
+
+        echt = audiobook._probe_eckdaten
+
+        def verliert_kapitel(datei):
+            dauer, kapitel, bilder = echt(datei)
+            # Die frisch geschriebene Datei im Staging meldet weniger Kapitel.
+            if audiobook.STAGING_NAME in str(datei):
+                return dauer, kapitel - 1, bilder
+            return dauer, kapitel, bilder
+
+        monkeypatch.setattr(audiobook, "_probe_eckdaten", verliert_kapitel)
+        with pytest.raises(audiobook.AudiobookError, match="Kapitel hätten sich"):
+            audiobook.cover_einbetten(buch, bild)
+
+        assert m4b.read_bytes() == vorher, "Die m4b wurde trotzdem ersetzt"
+
+    def test_abweichende_dauer_verhindert_das_ersetzen(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(audiobook.settings, "audiobook_root", tmp_path)
+        buch = self._buch(tmp_path)
+        m4b = audiobook.m4b_pfad(buch)
+        vorher = m4b.read_bytes()
+        bild = self._bild(tmp_path)
+
+        echt = audiobook._probe_eckdaten
+
+        def verliert_zeit(datei):
+            dauer, kapitel, bilder = echt(datei)
+            if audiobook.STAGING_NAME in str(datei):
+                return dauer - 30, kapitel, bilder
+            return dauer, kapitel, bilder
+
+        monkeypatch.setattr(audiobook, "_probe_eckdaten", verliert_zeit)
+        with pytest.raises(audiobook.AudiobookError, match="Spieldauer hätte sich"):
+            audiobook.cover_einbetten(buch, bild)
+
+        assert m4b.read_bytes() == vorher

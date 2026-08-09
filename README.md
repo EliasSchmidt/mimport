@@ -197,6 +197,33 @@ Wohin es kommt, war an beiden Wegen schon vorbereitet:
 
 Deshalb heißt die Datei in beiden Fällen genau so.
 
+### Auch nachträglich, wenn die m4b schon steht
+
+Solange Quelldateien im Buchordner liegen, genügt das Bild daneben — der Encode
+nimmt es mit. Ist das Buch dagegen fertig gebündelt, sind die Quellen gelöscht
+und die m4b ist alles, was es noch gibt. Das Cover wird dann **nachträglich in
+die Datei kopiert**, ohne neu zu encodieren (`-c copy`): gemessen 230 MB/s, eine
+m4b von 212 MB also in etwa einer Sekunde.
+
+Der Knopf steht deshalb bei jedem Buch, egal in welchem Zustand.
+
+Was dabei zu verlieren wäre, ist das ganze Hörbuch — es gibt keine zweite Kopie.
+Also derselbe Weg wie beim Bündeln, nur kürzer:
+
+1. Gearbeitet wird **im Staging**, nicht neben der m4b. Eine zweite Datei im
+   Buchordner, und sei es für Sekunden, liest Audiobookshelf bei einem Scan als
+   zweites Hörbuch ein.
+2. Die neue Datei wird **geprüft, bevor sie die alte ersetzt**: gleiche
+   Spieldauer, gleiche Kapitelzahl, genau ein eingebettetes Bild. Weicht etwas
+   ab, bleibt das Original stehen.
+3. Dieselbe Sperre wie beim Rippen und Bündeln — ein „Neu bauen" darf die Datei
+   nicht unter den Händen wegziehen.
+4. Zeitlimit auf dem ffmpeg-Aufruf, damit nicht ausgerechnet hier ein hängender
+   Prozess an der einzigen Kopie sitzt.
+
+Nachgemessen: Kapitel, Titel und Autor überstehen das Umkopieren unverändert,
+und ein bereits vorhandenes Cover wird ersetzt statt gestapelt.
+
 ### Wie die Ecken gefunden werden
 
 Der Trick eines Dokumentenscanners, ohne Bibliothek: Bei einem Viereck sind die

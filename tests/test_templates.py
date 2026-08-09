@@ -373,3 +373,49 @@ class TestMehrwertigeTags:
         assert erste.albumartist == zweite.albumartist == "Various Artists"
         # ... und über das Compilation-Flag, das Navidrome dafür liest.
         assert erste.comp is True and zweite.comp is True
+
+
+class TestTracknummernBeimHandtaggen:
+    """Ohne Nummer benennt beets jede Datei zu „00 <Titel>"."""
+
+    def _dateien(self, tmp_path, anzahl=3):
+        from tests.flacfixture import write_flac
+
+        return [
+            write_flac(tmp_path / f"{i:02d} Track {i}.flac", seconds=60 + i)
+            for i in range(1, anzahl + 1)
+        ]
+
+    def test_nummer_kommt_aus_der_reihenfolge(self, tmp_path):
+        import mediafile
+
+        from backend import tagging
+
+        dateien = self._dateien(tmp_path)
+        tagging.apply_manual_tags(
+            dateien,
+            {"album": "Sampler"},
+            je_track={p.name: {"title": f"Stück {i}"} for i, p in enumerate(dateien, 1)},
+        )
+
+        nummern = [mediafile.MediaFile(p).track for p in dateien]
+        assert nummern == [1, 2, 3]
+        # Und die Gesamtzahl, damit Abspieler das Album vollständig sehen.
+        assert all(mediafile.MediaFile(p).tracktotal == 3 for p in dateien)
+
+    def test_vorhandene_nummer_bleibt(self, tmp_path):
+        """Ein Rip setzt sie schon -- die darf nicht überschrieben werden."""
+        import mediafile
+
+        from backend import tagging
+
+        dateien = self._dateien(tmp_path, 2)
+        # Umgekehrt nummeriert: so ließe sich ein Versehen erkennen.
+        for nummer, pfad in zip((7, 4), dateien):
+            medien = mediafile.MediaFile(pfad)
+            medien.track = nummer
+            medien.save()
+
+        tagging.apply_manual_tags(dateien, {"album": "Sampler"})
+
+        assert [mediafile.MediaFile(p).track for p in dateien] == [7, 4]

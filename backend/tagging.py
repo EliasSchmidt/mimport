@@ -141,7 +141,7 @@ def apply_manual_tags(
     if not usable and not je_track:
         return result
 
-    for path in paths:
+    for nummer, path in enumerate(paths, start=1):
         eigene = {
             key: wert
             for key, wert in (je_track.get(path.name) or {}).items()
@@ -157,6 +157,16 @@ def apply_manual_tags(
 
         for key, value in {**usable, **eigene}.items():
             _setzen(item, key, value)
+
+        # Ohne Tracknummer benennt beets jede Datei zu "00 <Titel>" -- bei
+        # einem Sampler mit vierzehn Stücken vierzehnmal dieselbe Null, und
+        # die Reihenfolge im Album ist dahin. Die Position in der sortierten
+        # Liste ist die beste verfügbare Auskunft; eine vorhandene Nummer
+        # (etwa vom Rip) bleibt unangetastet.
+        if not item.track:
+            item.track = nummer
+        if not item.tracktotal:
+            item.tracktotal = len(paths)
 
         try:
             if item.try_write():

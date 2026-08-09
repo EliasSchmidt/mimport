@@ -906,3 +906,59 @@ class TestAbbruchNachDemEncode:
                 audiobook.abbrechen_m4b()
         finally:
             audiobook._m4b_job = None
+
+
+class TestFaktor:
+    """Gegen echte Zahlen vom Server, nicht gegen ausgedachte.
+
+    Gemeldeter Zwischenstand: „Wandle um … 2:23:59 von 7:21:00", 33 %, läuft
+    seit 3:07, angezeigt „141.0× Echtzeit" -- und die Beobachtung, dass der
+    Faktor immer kleiner wird, je weiter der Bau kommt.
+    """
+
+    def _stand(self, fertig: float, gesamt: float, dauer: float):
+        job = audiobook.M4bJob(buch="/x/Autor/Titel")
+        job.sekunden_fertig = fertig
+        job.sekunden_gesamt = gesamt
+        job.gestartet = 0.0
+        job.beendet = dauer
+        return job
+
+    def test_gemeldeter_zwischenstand(self):
+        job = self._stand(2 * 3600 + 23 * 60 + 59, 7 * 3600 + 21 * 60, 3 * 60 + 7)
+        assert job.prozent == 33  # wie angezeigt -- der Teil stimmte
+        assert 46.0 < job.faktor < 46.5, job.faktor_text
+        # Der alte Wert zum Vergleich: 26460 / 187 = 141,5.
+        assert abs(job.sekunden_gesamt / job.dauer - 141.5) < 0.5
+
+    def test_gleichmaessige_geschwindigkeit_bleibt_gleichmaessig(self):
+        """Der Kern der Fehlmeldung: „wird langsamer, je weiter er kommt."
+
+        Hier encodiert die Maschine mit exakt konstanten 46×. Der alte Wert
+        fällt dabei trotzdem auf ein Sechstel -- ohne dass irgendetwas langsamer
+        geworden wäre.
+        """
+        gesamt = 7 * 3600 + 21 * 60
+        neu, alt = [], []
+        for anteil in (0.05, 0.1, 0.2, 0.33, 0.6, 1.0):
+            fertig = gesamt * anteil
+            job = self._stand(fertig, gesamt, fertig / 46.0)
+            neu.append(round(job.faktor, 1))
+            alt.append(round(gesamt / job.dauer, 1))
+
+        assert neu == [46.0] * 6, neu
+        assert alt[0] / alt[-1] > 15, alt
+        assert alt == sorted(alt, reverse=True), alt
+
+    def test_restzeit_statt_kopfrechnen(self):
+        job = self._stand(2 * 3600 + 23 * 60 + 59, 7 * 3600 + 21 * 60, 3 * 60 + 7)
+        # Offen sind 4:57:01, bei 46,2× also gut sechs Minuten.
+        assert job.rest_text.startswith("6:"), job.rest_text
+
+    def test_am_ziel_keine_restzeit(self):
+        job = self._stand(3600, 3600, 60)
+        assert job.rest_text == ""
+        assert job.faktor_text == "60.0× Echtzeit"
+
+    def test_ohne_fortschritt_kein_faktor(self):
+        assert self._stand(0, 3600, 10).faktor_text == ""

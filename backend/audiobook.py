@@ -412,15 +412,46 @@ class M4bJob:
         return f"{minuten}:{sekunden:02d}"
 
     @property
-    def faktor_text(self) -> str:
-        """Wie viel schneller als Echtzeit encodiert wurde.
+    def faktor(self) -> float:
+        """Wie viel schneller als Echtzeit encodiert wird.
 
-        Der Wert, mit dem man das Zeitlimit für längere Bücher abschätzen kann:
-        bei Faktor 8 braucht ein 15-Stunden-Hörbuch knapp zwei Stunden.
+        Maßgeblich ist, was **bisher** fertig ist, nicht die Gesamtlänge des
+        Buchs. Mit der Gesamtlänge im Zähler und der wachsenden Laufzeit im
+        Nenner fällt der Wert wie 1/t -- auch bei völlig gleichmäßiger
+        Geschwindigkeit sähe das nach stetiger Verlangsamung aus, und genau so
+        wurde es gemeldet. Bei 2:23:59 von 7:21:00 nach 3:07 Laufzeit standen
+        dort 141× statt der tatsächlichen 46×; erst am Ziel fielen beide
+        Rechnungen zusammen.
         """
-        if self.dauer <= 0 or self.sekunden_gesamt <= 0:
+        if self.dauer <= 0 or self.sekunden_fertig <= 0:
+            return 0.0
+        return self.sekunden_fertig / self.dauer
+
+    @property
+    def faktor_text(self) -> str:
+        """Der Wert, mit dem sich das Zeitlimit für längere Bücher abschätzen
+        lässt: bei Faktor 46 braucht ein 15-Stunden-Hörbuch knapp 20 Minuten.
+        """
+        return f"{self.faktor:.1f}× Echtzeit" if self.faktor > 0 else ""
+
+    @property
+    def rest_text(self) -> str:
+        """Was aus dem Faktor folgt: die geschätzte Restzeit.
+
+        Die eigentlich interessante Zahl -- „46× Echtzeit" muss man erst in
+        Kopfrechnen übersetzen, „noch etwa 6:19" nicht.
+        """
+        if self.faktor <= 0 or self.sekunden_gesamt <= 0:
             return ""
-        return f"{self.sekunden_gesamt / self.dauer:.1f}× Echtzeit"
+        offen = self.sekunden_gesamt - self.sekunden_fertig
+        if offen <= 0:
+            return ""
+        sekunden = int(offen / self.faktor)
+        stunden, rest = divmod(sekunden, 3600)
+        minuten, sek = divmod(rest, 60)
+        if stunden:
+            return f"{stunden}:{minuten:02d}:{sek:02d}"
+        return f"{minuten}:{sek:02d}"
 
 
 _m4b_job: M4bJob | None = None

@@ -62,7 +62,8 @@
             <p class="hint mono">{{ m4b.buch_anzeige }}</p>
             <p>
                 {{ m4b.prozent }} % – läuft seit {{ m4b.dauer_text }}
-                {%- if m4b.faktor_text %}, {{ m4b.faktor_text }}{% endif %}
+                {%- if m4b.rest_text %}, noch etwa {{ m4b.rest_text }}{% endif %}
+                {%- if m4b.faktor_text %} ({{ m4b.faktor_text }}){% endif %}
             </p>
             <div class="progress"><div class="progress-bar"
                  style="width: {{ m4b.prozent }}%"></div></div>

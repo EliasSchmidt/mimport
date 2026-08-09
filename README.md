@@ -493,13 +493,22 @@ länger dauert als sonst oder cdparanoia oft „liest langsamer" meldet, lohnt e
 sich, nacheinander zu arbeiten.
 
 **Beide Vorgänge zeigen ihre Dauer an** — der Rip „läuft seit 4:32" und am Ende
-„9 Tracks gelesen in 23:41", der m4b-Bau zusätzlich seinen Faktor gegenüber
-Echtzeit („8,4× Echtzeit"). Das ist nicht Kosmetik: `MIMPORT_M4B_TIMEOUT` steht
-auf sechs Stunden, und ob das für ein fünfzehnstündiges Hörbuch reicht, lässt
-sich nur mit einem gemessenen Faktor beantworten. Bei Faktor 8 braucht so ein
-Buch knapp zwei Stunden, bei Faktor 1,5 über zehn. Der Fortschritt kommt als
-Zeitstempel („4:32 von 11:04"), nicht als Kapitelzählung — ffmpeg encodiert am
-Stück.
+„9 Tracks gelesen in 23:41", der m4b-Bau zusätzlich die geschätzte Restzeit und
+seinen Faktor gegenüber Echtzeit („noch etwa 6:19 (46.2× Echtzeit)"). Der
+Fortschritt kommt als Zeitstempel („4:32 von 11:04"), nicht als Kapitelzählung —
+ffmpeg encodiert am Stück.
+
+Der Faktor bezieht sich auf das **bisher Fertige**, nicht auf die Gesamtlänge
+des Buchs. Mit der Gesamtlänge im Zähler und der wachsenden Laufzeit im Nenner
+fällt der Wert wie 1/t: Selbst bei völlig gleichmäßiger Geschwindigkeit sähe das
+nach stetiger Verlangsamung aus. Genau so stand es hier, und genau so wurde es
+gemeldet.
+
+**Gemessen** auf dem Zielrechner, an *Die Siedler von Catan* (7:21:00): rund
+**46× Echtzeit**, macht knapp zehn Minuten für das ganze Buch. Damit lässt sich
+`MIMPORT_M4B_TIMEOUT` endlich begründen statt raten — sechs Stunden entsprächen
+einem Hörbuch von 276 Stunden Länge. Ein sehr langes Buch von 30 Stunden ist
+nach etwa 40 Minuten durch.
 
 ### Wenn ffmpeg hängen bleibt
 

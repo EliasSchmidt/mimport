@@ -465,6 +465,20 @@ pre.output { max-height: 22rem; overflow-y: auto; }
     touch-action: none;
 }
 
+.lupe-canvas {
+    position: fixed;
+    z-index: 1000;
+    width: 150px;
+    height: 150px;
+
+    pointer-events: none; /* Wichtig: blockiert Maus/Touch nicht */
+    display: none;
+
+    border: 2px solid #7fb08d;
+    border-radius: 50%;
+    background: #fff;
+}
+
 /* Von Hand taggen -- zugeklappt, weil der Match der Normalfall ist. */
 .manuell, .je-track { margin-top: 1rem; }
 .manuell > summary, .je-track > summary {

@@ -201,6 +201,7 @@ const skala = () => {
   return canvas.width / canvas.getBoundingClientRect().width;
 };
 
+
 function zeichnen() {
   const { canvas, foto, ecken } = zustand;
   const ctx = canvas.getContext("2d");
@@ -224,6 +225,44 @@ function zeichnen() {
     ctx.strokeStyle = "#10130f";
     ctx.stroke();
   });
+}
+
+function lupeZeichnen() {
+  if (zustand?.greift === null || zustand?.greift === undefined) return;
+
+  const { canvas, foto, ecken, greift, lupe } = zustand;
+  const [x, y] = ecken[greift];
+
+  const ctx = lupe.getContext("2d");
+
+  const zoom = 3;             // Vergrößerungsfaktor
+  const ausschnitt = 100;     // Größe des Original-Ausschnitts in Bildpixeln
+  const halb = ausschnitt / 2;
+  //lupe.position(x + 10, y + 10);
+  ctx.clearRect(0, 0, lupe.width, lupe.height);
+
+  // Rund um den aktuellen Punkt aus dem Originalbild ausschneiden
+  ctx.drawImage(
+    foto,
+    x - halb, y - halb,
+    ausschnitt, ausschnitt,
+    0, 0,
+    lupe.width, lupe.height
+  );
+
+  // Fadenkreuz in der Mitte
+  const mitteX = lupe.width / 2;
+  const mitteY = lupe.height / 2;
+
+  ctx.strokeStyle = "#7fb08d";
+  ctx.lineWidth = 2;
+
+  ctx.beginPath();
+  ctx.moveTo(mitteX, 0);
+  ctx.lineTo(mitteX, lupe.height);
+  ctx.moveTo(0, mitteY);
+  ctx.lineTo(lupe.width, mitteY);
+  ctx.stroke();
 }
 
 function naechsteEcke(x, y) {
@@ -250,8 +289,16 @@ function punktAus(event) {
 function ziehenStart(event) {
   const [x, y] = punktAus(event);
   zustand.greift = naechsteEcke(x, y);
-  if (zustand.greift !== null) event.preventDefault();
+
+  if (zustand.greift !== null) {
+    event.preventDefault();
+
+    zustand.lupe.style.display = "block";
+    lupePositionieren(event);
+    lupeZeichnen();
+  }
 }
+
 
 function ziehen(event) {
   if (zustand?.greift === null || zustand?.greift === undefined) return;
@@ -263,11 +310,48 @@ function ziehen(event) {
     Math.min(Math.max(y, 0), canvas.height),
   ];
   zeichnen();
+  lupeZeichnen();
+  lupePositionieren(event);
 }
 
 const ziehenEnde = () => {
-  if (zustand) zustand.greift = null;
+  if (!zustand) return;
+
+  zustand.greift = null;
+
+  const ctx = zustand.lupe.getContext("2d");
+  ctx.clearRect(0, 0, zustand.lupe.width, zustand.lupe.height);
+
+  zustand.lupe.style.display = "none";
 };
+
+
+function lupePositionieren(event) {
+  const quelle = event.touches?.[0] ?? event;
+  const lupe = zustand.lupe;
+
+  const abstand = 20;
+  const breite = lupe.offsetWidth;
+  const hoehe = lupe.offsetHeight;
+
+  let x = quelle.clientX + abstand;
+  let y = quelle.clientY + abstand;
+
+  // Falls rechts kein Platz ist: links vom Finger/Mauszeiger.
+  if (x + breite > window.innerWidth) {
+    x = quelle.clientX - breite - abstand;
+  }
+
+  // Falls unten kein Platz ist: oberhalb des Fingers/Mauszeigers.
+  if (y + hoehe > window.innerHeight) {
+    y = quelle.clientY - hoehe - abstand;
+  }
+
+  lupe.style.left = `${x}px`;
+  lupe.style.top = `${y}px`;
+}
+
+
 
 /** Lädt das Foto, verkleinert es und schlägt Ecken vor. */
 async function fotoLaden(datei) {
@@ -283,6 +367,7 @@ async function fotoLaden(datei) {
   // und darauf pixelweise zu rechnen dauert auf einem Handy spürbar.
   const faktor = Math.min(1, 1600 / Math.max(bild.width, bild.height));
   const canvas = document.getElementById("cover-canvas");
+  const lupe = document.getElementById("lupe-canvas");
   canvas.width = Math.round(bild.width * faktor);
   canvas.height = Math.round(bild.height * faktor);
   canvas.getContext("2d").drawImage(bild, 0, 0, canvas.width, canvas.height);
@@ -303,7 +388,7 @@ async function fotoLaden(datei) {
     y / kf,
   ]);
 
-  zustand = { canvas, foto: canvas.cloneNode(false), ecken, greift: null };
+  zustand = { canvas, foto: canvas.cloneNode(false), ecken, greift: null, lupe };
   zustand.foto.width = canvas.width;
   zustand.foto.height = canvas.height;
   zustand.foto.getContext("2d").drawImage(canvas, 0, 0);

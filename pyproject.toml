@@ -16,6 +16,8 @@ dependencies = [
     # Für die DiscID-Abfrage bei MusicBrainz. Kommt ohnehin mit beets, wird
     # hier aber direkt benutzt und deshalb auch direkt genannt.
     "requests>=2.32",
+    # OCR für Backcover-Text; verwendet serverseitig das kleine Mobile-Modell.
+    "paddleocr>=2.8.1",
 ]
 
 [dependency-groups]

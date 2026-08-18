@@ -1,30 +1,51 @@
-{# Handarbeit für den Fall, dass kein Vorschlag passt. Leere Felder werden
-   übersprungen, überschreiben also nichts. #}
+{# Handarbeit für den Fall, dass kein Vorschlag passt.
+   OCR ist nur Vorbelegung: der Nutzer korrigiert anschließend in der Tabelle. #}
 <details class="manual">
-    <summary>Tags selbst setzen</summary>
+    <summary>Tags selbst setzen (von Hand taggen)</summary>
     <form hx-post="/manual/{{ session_id }}"
           hx-target="#result"
           hx-swap="innerHTML"
-          hx-indicator="#manual-spinner">
+          hx-indicator="#manual-spinner-{{ session_id }}"
+          hx-on::after-request="document.getElementById(&#39;result-step&#39;).hidden = false">
         <p class="hint">
-            Nur ausgefüllte Felder werden geschrieben. Danach importiert beets die
-            Dateien so, wie sie dann sind.
+            Nur ausgefüllte Felder werden geschrieben. Mit „Text erkennen" wird die
+            Trackliste aus dem Backcover vorbefüllt und bleibt danach vollständig
+            bearbeitbar.
         </p>
+
         <div class="fields">
-            <label>Album-Künstler
-                <input type="text" name="albumartist"></label>
+            <label>Albumkünstler
+                <input type="text" name="albumartist" data-albumartist
+                       placeholder="z. B. The Beatles">
+            </label>
             <label>Album
-                <input type="text" name="album"></label>
-            <label>Künstler <small>(pro Track)</small>
-                <input type="text" name="artist"></label>
+                <input type="text" name="album" placeholder="z. B. Abbey Road">
+            </label>
+            <label data-alle-interpreten>Interpret <small>(für alle Tracks)</small>
+                <input type="text" name="artist">
+            </label>
             <label>Jahr
-                <input type="text" name="year" inputmode="numeric" placeholder="1969"></label>
+                <input type="text" name="year" inputmode="numeric" placeholder="1969">
+            </label>
             <label>Genre
-                <input type="text" name="genre"></label>
+                <input type="text" name="genre" placeholder="Rock">
+            </label>
         </div>
+
+        <label class="checkbox">
+            <input type="checkbox" name="compilation" value="true" data-sampler>
+            Sampler (Various Artists)
+        </label>
+        <p class="hint" data-sampler-hinweis hidden>
+            Das Feld „Interpret für alle Tracks" ist jetzt deaktiviert; Interpreten
+            bitte pro Track unten eintragen.
+        </p>
+
+        {% include "_manual_ocr.html" %}
+
         <div class="actions">
             <button type="submit" class="button">Tags schreiben</button>
-            <span id="manual-spinner" class="htmx-indicator spinner">schreibe …</span>
+            <span id="manual-spinner-{{ session_id }}" class="htmx-indicator spinner">schreibe …</span>
         </div>
     </form>
 </details>

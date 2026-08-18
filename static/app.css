@@ -198,7 +198,9 @@ main, .page-head, .page-foot { max-width: 62rem; margin: 0 auto; }
 .fields label.wide { grid-column: 1 / -1; }
 .fields small { color: var(--text-dim); font-weight: 400; }
 
-input[type="text"] {
+input[type="text"],
+select,
+textarea {
     padding: 0.45rem 0.6rem;
     border: 1px solid var(--border);
     border-radius: 6px;
@@ -208,7 +210,11 @@ input[type="text"] {
     font-size: 0.92rem;
 }
 
-input[type="text"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+textarea { width: 100%; resize: vertical; }
+
+input[type="text"]:focus-visible,
+select:focus-visible,
+textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 .actions { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; }
 .actions form { display: flex; gap: 0.5rem; align-items: center; }
@@ -381,6 +387,10 @@ td.name { word-break: break-all; }
 .candidate-actions form { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; }
 
 .manual { margin-top: 1rem; }
+.manual-ocr { margin-top: 1rem; border-top: 1px solid var(--border); padding-top: 0.9rem; }
+.manual-ocr h4 { margin: 0 0 0.35rem; }
+.manual-ocr-text { display: block; margin-top: 0.75rem; font-size: 0.88rem; }
+.fields.compact { grid-template-columns: minmax(12rem, 20rem); }
 .search-form { margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid var(--border); }
 
 /* --- Import ----------------------------------------------------------- */

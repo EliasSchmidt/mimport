@@ -27,9 +27,11 @@ from backend import (
     disc,
     importer,
     matching,
+    ocr,
     rip,
     sessions,
     tagging,
+    trackparse,
 )
 from backend.config import AUDIO_EXTENSIONS, settings
 from backend.templates import templates
@@ -41,6 +43,7 @@ router = APIRouter()
 #: Uploads in Häppchen auf die Platte schreiben, damit ein Album mit
 #: verlustfreien Dateien nicht komplett im Speicher landet.
 CHUNK_SIZE = 1024 * 1024
+DEFAULT_PARSE_MODE = "track_title_duration"
 
 
 def _storage_allowance(was: str = "Upload") -> tuple[int, str]:
@@ -96,6 +99,37 @@ def _fragment(request: Request, name: str, **context: object) -> HTMLResponse:
     return templates.TemplateResponse(request, name, context)
 
 
+def _track_files(session: sessions.StagingSession) -> list[dict[str, str]]:
+    """Dateien einer Session mit stabilem Formularschlüssel."""
+    files: list[dict[str, str]] = []
+    for path in session.audio_paths:
+        relative = str(path.relative_to(session.directory))
+        files.append({"key": relative, "display": relative})
+    return files
+
+
+def _track_inputs(
+    session: sessions.StagingSession,
+    parsed: list[trackparse.ParsedTrack] | None = None,
+) -> list[dict[str, str]]:
+    """Track-Eingaben fürs manuelle Formular, optional aus Parser vorbefüllt."""
+    parsed = parsed or []
+    rows: list[dict[str, str]] = []
+    for index, file in enumerate(_track_files(session)):
+        row = parsed[index] if index < len(parsed) else None
+        rows.append(
+            {
+                "key": file["key"],
+                "display": file["display"],
+                "title": (row.title if row else "").strip(),
+                "artist": (row.artist if row else "").strip(),
+                "track": (row.number if row else "").strip(),
+                "duration": (row.duration if row else "").strip(),
+            }
+        )
+    return rows
+
+
 def _files_fragment(request: Request, session: sessions.StagingSession) -> HTMLResponse:
     """Die geprüfte Dateiliste einer Session.
 
@@ -114,6 +148,11 @@ def _files_fragment(request: Request, session: sessions.StagingSession) -> HTMLR
         infos=infos,
         summary=audio.summarize(infos),
         health=beets_env.health(),
+        parse_modes=trackparse.modes(),
+        parse_mode=DEFAULT_PARSE_MODE,
+        ocr_text="",
+        ocr_warnings=[],
+        track_inputs=_track_inputs(session),
     )
 
 
@@ -904,6 +943,11 @@ def match(
         session_id=session_id,
         result=result,
         file_count=len(paths),
+        parse_modes=trackparse.modes(),
+        parse_mode=DEFAULT_PARSE_MODE,
+        ocr_text="",
+        ocr_warnings=[],
+        track_inputs=_track_inputs(session),
     )
 
 
@@ -943,6 +987,101 @@ def choose(
         result=write_result,
         candidate=matching.serialize_candidate(match_obj, 0),
         health=beets_env.health(),
+    )
+
+
+@router.post("/ocr/{session_id}", response_class=HTMLResponse)
+async def ocr_backcover(
+    request: Request,
+    session_id: str,
+    bild: UploadFile | None = File(default=None),
+    mode: str = Form(default=DEFAULT_PARSE_MODE),
+) -> HTMLResponse:
+    """Liest Text aus einem Backcover-Bild und füllt die Trackliste vor."""
+    session = _session_or_404(session_id)
+    warnings: list[str] = []
+    selected_mode = mode if mode in {m["value"] for m in trackparse.modes()} else DEFAULT_PARSE_MODE
+
+    if bild is None:
+        warnings.append("Bitte zuerst ein Backcover-Foto auswählen.")
+        return _fragment(
+            request,
+            "_manual_ocr.html",
+            session_id=session_id,
+            parse_modes=trackparse.modes(),
+            parse_mode=selected_mode,
+            ocr_text="",
+            ocr_warnings=warnings,
+            track_inputs=_track_inputs(session),
+        )
+
+    suffix = Path(bild.filename or "bild.jpg").suffix or ".jpg"
+    try:
+        result = ocr.recognize(await bild.read(), suffix=suffix)
+    except ocr.OcrError as exc:
+        warnings.append(str(exc))
+        return _fragment(
+            request,
+            "_manual_ocr.html",
+            session_id=session_id,
+            parse_modes=trackparse.modes(),
+            parse_mode=selected_mode,
+            ocr_text="",
+            ocr_warnings=warnings,
+            track_inputs=_track_inputs(session),
+        )
+
+    parsed = trackparse.parse_text(result.text, selected_mode)
+    warnings.extend(result.warnings)
+    if len(parsed) != len(session.audio_paths):
+        warnings.append(
+            f"Parser hat {len(parsed)} Zeile(n) erkannt, Session enthält "
+            f"{len(session.audio_paths)} Datei(en)."
+        )
+
+    return _fragment(
+        request,
+        "_manual_ocr.html",
+        session_id=session_id,
+        parse_modes=trackparse.modes(),
+        parse_mode=selected_mode,
+        ocr_text=result.text,
+        ocr_warnings=warnings,
+        track_inputs=_track_inputs(session, parsed),
+    )
+
+
+@router.post("/ocr/parse/{session_id}", response_class=HTMLResponse)
+async def ocr_parse(
+    request: Request,
+    session_id: str,
+    ocr_text: str = Form(default=""),
+    mode: str = Form(default=DEFAULT_PARSE_MODE),
+) -> HTMLResponse:
+    """Wendet einen einfachen Parser auf den OCR-Text an."""
+    session = _session_or_404(session_id)
+    selected_mode = mode if mode in {m["value"] for m in trackparse.modes()} else DEFAULT_PARSE_MODE
+
+    warnings: list[str] = []
+    text = ocr_text.strip()
+    parsed = trackparse.parse_text(text, selected_mode) if text else []
+    if not text:
+        warnings.append("Noch kein OCR-Text vorhanden.")
+    elif len(parsed) != len(session.audio_paths):
+        warnings.append(
+            f"Parser hat {len(parsed)} Zeile(n) erkannt, Session enthält "
+            f"{len(session.audio_paths)} Datei(en)."
+        )
+
+    return _fragment(
+        request,
+        "_manual_ocr.html",
+        session_id=session_id,
+        parse_modes=trackparse.modes(),
+        parse_mode=selected_mode,
+        ocr_text=text,
+        ocr_warnings=warnings,
+        track_inputs=_track_inputs(session, parsed),
     )
 
 
@@ -991,6 +1130,7 @@ async def manual(
             "comp": compilation,
         },
         je_track=je_track,
+        relative_to=session.directory,
     )
     if not write_result.written and not write_result.failed:
         return _fragment(

@@ -96,7 +96,7 @@ def sampler_name() -> str:
         return "Various Artists"
 
 
-def _werte(value: str) -> list[str]:
+def _werte(value: object) -> list[str]:
     """Zerlegt eine Eingabe wie ``A feat. B`` in einzelne Namen."""
     return [teil.strip() for teil in _TRENNER.split(str(value)) if teil.strip()]
 
@@ -129,6 +129,7 @@ def apply_manual_tags(
     fields: dict[str, object],
     *,
     je_track: dict[str, dict[str, str]] | None = None,
+    relative_to: Path | None = None,
 ) -> TagWriteResult:
     """Schreibt handgepflegte Tags.
 
@@ -136,6 +137,9 @@ def apply_manual_tags(
     ``je_track`` trägt zusätzlich für einzelne Dateien Titel und Künstler ein,
     und genau das braucht eine Sampler-CD: dort hat jeder Track einen anderen
     Interpreten, während der Albumkünstler „Various Artists" bleibt.
+
+    ``je_track`` darf mit Basenamen (``Track01.flac``) oder mit Pfaden relativ
+    zu ``relative_to`` (``CD1/Track01.flac``) adressieren.
 
     Leere Werte werden übersprungen, damit ein leeres Formularfeld nichts
     überschreibt.
@@ -167,9 +171,17 @@ def apply_manual_tags(
         return result
 
     for nummer, path in enumerate(paths, start=1):
+        relative = ""
+        if relative_to is not None:
+            try:
+                relative = str(path.relative_to(relative_to))
+            except Exception:
+                relative = ""
+
+        eigene_quelle = je_track.get(relative) or je_track.get(path.name) or {}
         eigene = {
             key: wert
-            for key, wert in (je_track.get(path.name) or {}).items()
+            for key, wert in eigene_quelle.items()
             if str(wert).strip()
         }
         if not usable and not eigene:

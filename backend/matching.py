@@ -286,11 +286,25 @@ def find_candidates(
         )
 
     search_ids = [mbid] if mbid else []
+    search_artist = artist or None
+    search_name = album or None
+    # beets verwirft *beide* Suchbegriffe, sobald einer der beiden fehlt, und
+    # sucht stattdessen komplett mit den (oft falschen) Tags aus den Dateien
+    # weiter -- siehe tag_album(): "if not (search_artist and search_name):
+    # search_artist, search_name = cur_artist, cur_album". Wer hier nur den
+    # Künstler einträgt und das Album leer lässt, würde also seine Eingabe
+    # stillschweigend verlieren. Ein Leerzeichen als Platzhalter für das
+    # jeweils andere Feld hält beets' Prüfung zufrieden, wird aber beim
+    # eigentlichen MusicBrainz-Query wieder herausgefiltert (dort wird jeder
+    # Kriteriumswert getrimmt und bei Leere verworfen).
+    if search_artist or search_name:
+        search_artist = search_artist or " "
+        search_name = search_name or " "
     try:
         current_artist, current_album, proposal = tag_album(
             items,
-            search_artist=artist or None,
-            search_name=album or None,
+            search_artist=search_artist,
+            search_name=search_name,
             search_ids=search_ids,
         )
     except Exception as exc:  # Netzfehler, MusicBrainz-Ausfall, Plugin-Fehler

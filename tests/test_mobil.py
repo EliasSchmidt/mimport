@@ -248,6 +248,63 @@ def test_eigener_albumkuenstler_bleibt_stehen(browser, server):
         seite.close()
 
 
+def test_artist_lookup_trifft_nur_das_angeklickte_feld(browser, server, monkeypatch):
+    """``hx-trigger="click from:.lookup-button"`` (ohne ``find``) hörte auf
+    JEDEN Klick auf JEDEN Lookup-Button der Seite, weil ``from:`` ohne
+    ``find``/``closest`` global im ganzen Dokument sucht -- ein Klick auf den
+    Track-Künstler-Button hat also nebenbei auch den Albumkünstler erneut
+    (mit dessen aktuellem Feldwert) gegen MusicBrainz gesucht und dessen
+    Treffer überschrieben. Ein Klick darf nur das eigene Feld auslösen.
+    """
+    from backend import artist_ids
+
+    def stub(name, **kwargs):
+        return (
+            artist_ids.ArtistMatch(name=name, mbid="deadbeef-0000-0000-0000-000000000000", exact=True),
+        )
+
+    monkeypatch.setattr(artist_ids, "search", stub)
+
+    seite = browser.new_page(viewport={"width": 900, "height": 800})
+    try:
+        seite.goto(server + "/musik", wait_until="networkidle")
+        seite.set_input_files(
+            "#upload-files",
+            [{"name": "01 Stück.flac", "mimeType": "audio/flac",
+              "buffer": b"fLaC\x00\x00\x00\x22" + b"\x00" * 34}],
+        )
+        seite.click("#upload-submit")
+        seite.wait_for_selector("#files-inner", timeout=20000)
+        seite.click("details.manual > summary")
+
+        seite.fill("[data-artist-field=albumartist]", "Windsbacher Knabenchor")
+        seite.fill("[data-artist-field=artist]", "Irgendwer")
+
+        # Nur den Track-Künstler-Button klicken -- der Albumkünstler bleibt
+        # unangetastet.
+        seite.locator("[data-artist-field=artist]").locator(
+            "xpath=ancestor::div[contains(@class,'lookup-field')]"
+        ).locator(".lookup-button").click()
+
+        artist_ergebnis = seite.locator("[data-artist-results=artist]")
+        albumartist_ergebnis = seite.locator("[data-artist-results=albumartist]")
+
+        artist_ergebnis.locator(".artist-match-item").wait_for(timeout=5000)
+        seite.wait_for_timeout(200)
+
+        assert artist_ergebnis.locator(".artist-match-item").count() == 1
+        assert albumartist_ergebnis.locator(".artist-match-item").count() == 0
+        assert "Noch kein MusicBrainz-Match" in albumartist_ergebnis.inner_text()
+
+        # Die Umstellung von "from:input" auf "from:find input" darf das
+        # Enter-zum-Suchen im eigenen Textfeld nicht miträumen.
+        seite.locator("[data-artist-field=albumartist]").press("Enter")
+        albumartist_ergebnis.locator(".artist-match-item").wait_for(timeout=5000)
+        assert albumartist_ergebnis.locator(".artist-match-item").count() == 1
+    finally:
+        seite.close()
+
+
 def test_genre_vorschlaege_werden_beim_tippen_aktualisiert(browser, server):
     """Auch nach einem ersten Genre sollen sinnvolle Vorschläge übrig bleiben."""
     seite = browser.new_page(viewport={"width": 900, "height": 800})

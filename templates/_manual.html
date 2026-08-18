@@ -18,17 +18,20 @@
                 <label>Albumkünstler <small>(für das ganze Album)</small>
                     <div class="lookup-field"
                          hx-post="/artist-match/{{ session_id }}"
-                         hx-trigger="click from:.lookup-button, keydown[key=='Enter'] from:input consume"
+                         hx-trigger="click from:find .lookup-button, keydown[key=='Enter'] from:find input consume"
                          hx-include="this"
                          hx-vals='{"field":"albumartist"}'
                          hx-target="#artist-match-albumartist-{{ session_id }}"
-                         hx-swap="innerHTML">
+                         hx-swap="innerHTML"
+                         hx-indicator="#lookup-spinner-albumartist-{{ session_id }}">
                         <input type="text" name="albumartist" data-albumartist data-artist-field="albumartist"
                                placeholder="z. B. The Beatles">
                         <input type="hidden" name="mb_albumartistids" data-artist-mbid="albumartist">
                         <button type="button" class="button secondary lookup-button" aria-label="Bei MusicBrainz suchen">
                             <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M11 11l4 4M7.2 12.4a5.2 5.2 0 1 0 0-10.4 5.2 5.2 0 0 0 0 10.4z"/></svg>
                         </button>
+                        <span id="lookup-spinner-albumartist-{{ session_id }}"
+                              class="htmx-indicator spinner-ring" aria-hidden="true"></span>
                     </div>
                     <small>Sorgt dafür, dass ein Album zusammenbleibt. Bei einem normalen Soloalbum ist das oft derselbe Name wie beim Track-Künstler.</small>
                     <div id="artist-match-albumartist-{{ session_id }}" class="artist-match" data-artist-results="albumartist">
@@ -41,16 +44,19 @@
                 <label data-alle-interpreten>Track-Künstler <small>(für alle Tracks)</small>
                     <div class="lookup-field"
                          hx-post="/artist-match/{{ session_id }}"
-                         hx-trigger="click from:.lookup-button, keydown[key=='Enter'] from:input consume"
+                         hx-trigger="click from:find .lookup-button, keydown[key=='Enter'] from:find input consume"
                          hx-include="this"
                          hx-vals='{"field":"artist"}'
                          hx-target="#artist-match-artist-{{ session_id }}"
-                         hx-swap="innerHTML">
+                         hx-swap="innerHTML"
+                         hx-indicator="#lookup-spinner-artist-{{ session_id }}">
                         <input type="text" name="artist" data-artist-field="artist" placeholder="z. B. Harmonic Brass">
                         <input type="hidden" name="mb_artistids" data-artist-mbid="artist">
                         <button type="button" class="button secondary lookup-button" aria-label="Bei MusicBrainz suchen">
                             <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M11 11l4 4M7.2 12.4a5.2 5.2 0 1 0 0-10.4 5.2 5.2 0 0 0 0 10.4z"/></svg>
                         </button>
+                        <span id="lookup-spinner-artist-{{ session_id }}"
+                              class="htmx-indicator spinner-ring" aria-hidden="true"></span>
                     </div>
                     <small>Das ist der Künstler des einzelnen Tracks. Bei einem normalen Alligatoah-Album ohne Gast-Artists trägst du hier ebenfalls Alligatoah ein.</small>
                     <div id="artist-match-artist-{{ session_id }}" class="artist-match" data-artist-results="artist">

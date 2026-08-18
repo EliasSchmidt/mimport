@@ -1203,7 +1203,14 @@ async def artist_match(
     query = name.strip()
     if not query and field in {"artist", "albumartist"}:
         query = str(formular.get(field) or "").strip()
-    matches = artist_ids.search(query) if query else ()
+
+    lookup_failed = False
+    matches: tuple = ()
+    if query:
+        try:
+            matches = artist_ids.search(query)
+        except artist_ids.LookupFehlgeschlagen:
+            lookup_failed = True
     exact_count = sum(1 for match in matches if match.exact)
     return _fragment(
         request,
@@ -1214,6 +1221,7 @@ async def artist_match(
         query=query,
         matches=matches,
         exact_count=exact_count,
+        lookup_failed=lookup_failed,
         invalid_field=field not in {"albumartist", "artist"},
     )
 

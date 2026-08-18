@@ -334,17 +334,20 @@ function lupePositionieren(event) {
   const breite = lupe.offsetWidth;
   const hoehe = lupe.offsetHeight;
 
-  let x = quelle.clientX + abstand;
-  let y = quelle.clientY + abstand;
+  // Standardmäßig oben links vom Zeiger: bei Rechtshändern liegt die Hand
+  // beim Ziehen unten rechts vom Finger/Mauszeiger und würde die Lupe sonst
+  // verdecken.
+  let x = quelle.clientX - breite - abstand;
+  let y = quelle.clientY - hoehe - abstand;
 
-  // Falls rechts kein Platz ist: links vom Finger/Mauszeiger.
-  if (x + breite > window.innerWidth) {
-    x = quelle.clientX - breite - abstand;
+  // Falls links kein Platz ist: rechts vom Finger/Mauszeiger.
+  if (x < 0) {
+    x = quelle.clientX + abstand;
   }
 
-  // Falls unten kein Platz ist: oberhalb des Fingers/Mauszeigers.
-  if (y + hoehe > window.innerHeight) {
-    y = quelle.clientY - hoehe - abstand;
+  // Falls oben kein Platz ist: unterhalb des Fingers/Mauszeigers.
+  if (y < 0) {
+    y = quelle.clientY + abstand;
   }
 
   lupe.style.left = `${x}px`;

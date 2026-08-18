@@ -362,13 +362,44 @@ class TestMehrwertigeTags:
 
         assert tagging._genrewerte(eingabe) == erwartet
 
-    def test_sampler_bekommt_je_track_einen_kuenstler(self, tmp_path):
+    def test_mbids_werden_nur_bei_vollstaendiger_auflosung_gesetzt(self, tmp_path, monkeypatch):
+        from tests.flacfixture import write_flac
+
+        import mediafile
+
+        from backend import tagging
+
+        monkeypatch.setattr(
+            tagging.artist_ids,
+            "lookup_exact",
+            lambda name: {
+                "Miles Davis": "561d854a-6a28-4aa7-8c99-323e6ce46c2a",
+                "John Coltrane": None,
+            }.get(name),
+        )
+
+        pfad = write_flac(tmp_path / "t.flac", seconds=5)
+        tagging.apply_manual_tags([pfad], {"artists": "Miles Davis; John Coltrane"})
+
+        medien = mediafile.MediaFile(pfad)
+        assert medien.artists == ["Miles Davis", "John Coltrane"]
+        assert medien.mb_artistid in (None, "")
+        assert medien.mb_artistids in (None, [])
+
+    def test_sampler_bekommt_je_track_einen_kuenstler(self, tmp_path, monkeypatch):
         """Der Fall Various Artists: Albumkünstler gleich, Interpret je Track."""
         from tests.flacfixture import write_flac
 
         import mediafile
 
         from backend import tagging
+
+        ids = {
+            "Various Artists": "89ad4ac3-39f7-470e-963a-56509c546377",
+            "Miles Davis": "561d854a-6a28-4aa7-8c99-323e6ce46c2a",
+            "Bill Evans": "5b689d33-aca8-4c64-9a6d-c3e7f9f7d9e5",
+        }
+        monkeypatch.setattr(tagging.artist_ids, "lookup_exact", lambda name: ids.get(name))
 
         dateien = [write_flac(tmp_path / f"{i:02d}.flac", seconds=5) for i in (1, 2)]
         tagging.apply_manual_tags(
@@ -383,8 +414,11 @@ class TestMehrwertigeTags:
         erste, zweite = (mediafile.MediaFile(p) for p in dateien)
         assert erste.artist == "Miles Davis"
         assert zweite.artist == "Bill Evans"
+        assert erste.mb_artistids == [ids["Miles Davis"]]
+        assert zweite.mb_artistids == [ids["Bill Evans"]]
         # Zusammengehalten wird das Album über den Albumkünstler ...
         assert erste.albumartist == zweite.albumartist == "Various Artists"
+        assert erste.mb_albumartistids == zweite.mb_albumartistids == [ids["Various Artists"]]
         # ... und über das Compilation-Flag, das Navidrome dafür liest.
         assert erste.comp is True and zweite.comp is True
 

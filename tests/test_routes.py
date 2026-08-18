@@ -1371,6 +1371,7 @@ class TestManuellTaggen:
         assert 'name="compilation"' in html
         assert 'list="genre-vorschlaege-' in html
         assert 'mehrere mit <span class="mono">;</span>' in html
+        assert 'Artist-ID in die Datei' in html
 
     def test_sampler_bekommt_je_track_einen_interpreten(self, client):
         import mediafile

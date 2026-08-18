@@ -15,11 +15,12 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from backend import beets_env
+from backend import artist_ids, beets_env
 
 log = logging.getLogger(__name__)
 
@@ -70,6 +71,10 @@ def apply_album_match(match: Any, *, from_scratch: bool = False) -> TagWriteResu
 #: als flexibles Attribut und **wird nicht in die Datei geschrieben** -- genau
 #: das passierte mit "genre", das in beets 2.x "genres" heißt.
 _MEHRWERTIG = {"genres": "genre", "artists": "artist", "albumartists": "albumartist"}
+_ID_MEHRWERTIG = {
+    "mb_artistids": "mb_artistid",
+    "mb_albumartistids": "mb_albumartistid",
+}
 
 #: Womit mehrere Namen in einem Feld getrennt werden. Genau die Zeichenfolgen,
 #: die auch Navidrome kennt: " / ", " feat. ", " feat ", " ft. ", " ft ", "; ".
@@ -112,6 +117,63 @@ def _genrewerte(value: object) -> list[str]:
     return [teil.strip() for teil in _GENRE_TRENNER.split(str(value)) if teil.strip()]
 
 
+def _listenwerte(value: object) -> list[str]:
+    """Mehrwertige Felder aus Liste/Tupel oder ``;``-getrenntem String lesen."""
+    if isinstance(value, (list, tuple)):
+        return [str(teil).strip() for teil in value if str(teil).strip()]
+    return [teil.strip() for teil in str(value).split(";") if teil.strip()]
+
+
+def _kuenstler_mbids(value: object) -> list[str] | None:
+    """Löst einen Künstlerwert vollständig zu Artist-MBIDs auf.
+
+    Gibt nur dann IDs zurück, wenn **alle** beteiligten Künstler eindeutig
+    gefunden wurden. Teiltreffer wären mehrdeutig und würden Name und ID aus dem
+    Tritt bringen.
+    """
+    namen = _kuenstlerwerte(value)
+    if not namen:
+        return None
+
+    ids: list[str] = []
+    for name in namen:
+        mbid = artist_ids.lookup_exact(name)
+        if not mbid:
+            return None
+        ids.append(mbid)
+    return ids
+
+
+def _inhalt(value: object) -> bool:
+    if isinstance(value, (list, tuple)):
+        return any(str(teil).strip() for teil in value)
+    return bool(str(value).strip())
+
+
+def _ergänze_kuenstler_ids(fields: Mapping[str, object]) -> dict[str, object]:
+    """Schreibt MusicBrainz-Artist-IDs ergänzend zu manuellen Namen dazu.
+
+    Es werden bewusst nur Künstler-IDs ergänzt, keine Release-ID: für ein lokal
+    zusammengestelltes oder inoffizielles Album wäre eine erfundene Album-MBID
+    schlicht falsch.
+    """
+    ergänzt = dict(fields)
+
+    if _inhalt(ergänzt.get("artists", "")) and not _inhalt(ergänzt.get("mb_artistids", "")):
+        artist_ids_wert = _kuenstler_mbids(ergänzt["artists"])
+        if artist_ids_wert:
+            ergänzt["mb_artistids"] = artist_ids_wert
+
+    if _inhalt(ergänzt.get("albumartist", "")) and not _inhalt(
+        ergänzt.get("mb_albumartistids", "")
+    ):
+        albumartist_ids = _kuenstler_mbids(ergänzt["albumartist"])
+        if albumartist_ids:
+            ergänzt["mb_albumartistids"] = albumartist_ids
+
+    return ergänzt
+
+
 def _setzen(item: Any, key: str, value: object) -> None:
     """Setzt ein Feld so, dass es tatsächlich in der Datei landet."""
     if key == "year":
@@ -132,6 +194,13 @@ def _setzen(item: Any, key: str, value: object) -> None:
         # lesen nur dieses.
         item[_MEHRWERTIG[key]] = "; ".join(teile)
         return
+    if key in _ID_MEHRWERTIG:
+        teile = _listenwerte(value)
+        if not teile:
+            return
+        item[key] = teile
+        item[_ID_MEHRWERTIG[key]] = "; ".join(teile)
+        return
     item[key] = str(value).strip()
 
 
@@ -139,7 +208,7 @@ def apply_manual_tags(
     paths: list[Path],
     fields: dict[str, object],
     *,
-    je_track: dict[str, dict[str, str]] | None = None,
+    je_track: dict[str, dict[str, object]] | None = None,
     relative_to: Path | None = None,
 ) -> TagWriteResult:
     """Schreibt handgepflegte Tags.
@@ -168,6 +237,9 @@ def apply_manual_tags(
     if fields.get("comp") is True and not str(fields.get("albumartist", "")).strip():
         fields["albumartist"] = sampler_name()
 
+    fields = _ergänze_kuenstler_ids(fields)
+    je_track = {key: _ergänze_kuenstler_ids(value) for key, value in (je_track or {}).items()}
+
     result = TagWriteResult()
     # Ein nicht gesetztes Häkchen ist keine Eingabe. Ohne die ausdrückliche
     # Prüfung auf ``False`` zählte es als solche -- ``str(False)`` ist nicht
@@ -177,7 +249,6 @@ def apply_manual_tags(
         for key, value in fields.items()
         if value is not False and (value is True or str(value).strip())
     }
-    je_track = je_track or {}
     if not usable and not je_track:
         return result
 

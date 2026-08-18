@@ -19,6 +19,16 @@ def client():
         yield test_client
 
 
+@pytest.fixture
+def isolierte_hoerbuecher(tmp_path, monkeypatch):
+    from backend import config
+
+    wurzel = tmp_path / "audiobooks"
+    monkeypatch.setattr(config.settings, "audiobook_root", wurzel)
+    monkeypatch.setattr(config.settings, "min_free_bytes", 0)
+    return wurzel
+
+
 class TestIndex:
     """Die Startseite stellt nur die eine Frage, die beiden Wege sind getrennt."""
 
@@ -47,8 +57,7 @@ class TestIndex:
         response = client.get("/hoerbuch")
         assert response.status_code == 200
         assert 'hx-get="/audiobook"' in response.text
-        # Kein Upload, kein Match -- das gehört zum anderen Weg.
-        assert "upload-form" not in response.text
+        # Kein Match und kein beets-Import -- das gehört zum Musikweg.
         assert "Match auswählen" not in response.text
 
     def test_zurueck_zur_auswahl(self, client):
@@ -130,6 +139,56 @@ class TestUpload:
         )
         assert response.status_code == 200
         assert "nicht lesbar" in response.text.lower()
+
+
+class TestAudiobookUpload:
+    def test_fragment_bietet_den_upload_an(self, client):
+        response = client.get("/audiobook")
+        assert response.status_code == 200
+        assert "audiobook-upload-form" in response.text
+        assert "Dateien übernehmen" in response.text
+
+    def test_ordnerstruktur_wird_im_buch_erhalten(self, client, isolierte_hoerbuecher):
+        response = client.post(
+            "/audiobook/upload",
+            data={"autor": "Frank Herbert", "titel": "Der Wüstenplanet"},
+            files={"files": ("CD 1/01 Kapitel.mp3", b"ID3\x00\x00\x00\x00", "audio/mpeg")},
+        )
+        assert response.status_code == 200
+        assert (
+            isolierte_hoerbuecher
+            / "Frank Herbert"
+            / "Der Wüstenplanet"
+            / "CD 1"
+            / "01 Kapitel.mp3"
+        ).is_file()
+
+    def test_erster_flacher_upload_landet_direkt_im_buch(self, client, isolierte_hoerbuecher):
+        response = client.post(
+            "/audiobook/upload",
+            data={"autor": "A", "titel": "B"},
+            files={"files": ("01 Kapitel.mp3", b"ID3\x00\x00\x00\x00", "audio/mpeg")},
+        )
+        assert response.status_code == 200
+        assert (isolierte_hoerbuecher / "A" / "B" / "01 Kapitel.mp3").is_file()
+
+    def test_zweiter_upload_normalisiert_zu_cd_ordnern(self, client, isolierte_hoerbuecher):
+        daten = {"autor": "A", "titel": "B"}
+        client.post(
+            "/audiobook/upload",
+            data=daten,
+            files={"files": ("01 Erste.mp3", b"ID3\x00\x00\x00\x00", "audio/mpeg")},
+        )
+
+        response = client.post(
+            "/audiobook/upload",
+            data=daten,
+            files={"files": ("01 Zweite.mp3", b"ID3\x00\x00\x00\x00", "audio/mpeg")},
+        )
+        assert response.status_code == 200
+        buch = isolierte_hoerbuecher / "A" / "B"
+        assert (buch / "CD 1" / "01 Erste.mp3").is_file()
+        assert (buch / "CD 2" / "01 Zweite.mp3").is_file()
 
 
 class TestSessionEndpunkte:

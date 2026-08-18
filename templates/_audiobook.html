@@ -120,19 +120,21 @@
     </div>
     {% endif %}
 
-    {# ------------------------------------------------------- neue Disc lesen #}
-    <form hx-post="/audiobook/rip" hx-target="#audiobook" hx-swap="innerHTML">
+    {# ------------------------------------------------ Hörbuch übernehmen #}
+    <h4>Hörbuch übernehmen</h4>
+    <form id="audiobook-upload-form"
+          data-upload-widget
+          data-upload-endpoint="/audiobook/upload"
+          data-upload-target="#audiobook"
+          data-preflight-target="#audiobook-preflight">
         <p class="hint">
-            {% if disc_da %}
-            Eine <strong>Daten-CD</strong> liegt ein – sie wird kopiert, nicht gerippt.
-            {% else %}
-            Audio-CD einlegen. Jede Disc landet als <span class="mono">CD n</span>
-            im Buchordner; für Fortsetzungen dieselben Angaben erneut eintragen.
-            {% endif %}
+            Autor und Titel einmal eintragen, dann entweder Dateien wählen oder
+            eine eingelegte CD übernehmen. Ob die CD kopiert oder gelesen werden
+            muss, entscheidet mimport selbst.
             <br>
-            <strong>Erst alle Discs einlesen, dann einmal bündeln.</strong>
+            <strong>Erst alles übernehmen, dann einmal bündeln.</strong>
             Beim Bündeln werden die Quelldateien gelöscht – wer zwischendurch
-            bündelt, kann die früheren Discs nicht mehr mit aufnehmen.
+            bündelt, kann spätere Teile nicht mehr mit aufnehmen.
         </p>
         <div class="fields">
             {# Kein vorbefüllter Wert: hier stand einmal der Autor des ersten
@@ -145,10 +147,32 @@
                 <input type="text" name="titel" required placeholder="Der Wüstenplanet">
             </label>
         </div>
+
+        <div class="picker">
+            <label class="button" for="audiobook-upload-folder">Ordner wählen</label>
+            <input type="file" id="audiobook-upload-folder" name="files" hidden
+                   webkitdirectory directory multiple data-upload-folder>
+
+            <label class="button secondary" for="audiobook-upload-files">Einzelne Dateien</label>
+            <input type="file" id="audiobook-upload-files" name="files" hidden multiple
+                   accept="audio/*,.flac,.wav,.aiff,.aif,.m4a,.mp3,.ogg,.opus,.wv,.ape,.m4b"
+                   data-upload-files>
+        </div>
+
+        <div id="audiobook-preflight"></div>
+
         <div class="actions">
-            <button type="submit" class="button primary">
-                {{ "Daten-CD übernehmen" if disc_da else "Disc lesen" }}
+            <button type="submit" class="button primary"
+                    data-upload-submit data-submit-mode="upload" disabled>
+                Dateien übernehmen
             </button>
+            <button type="submit" class="button"
+                    data-submit-endpoint="/audiobook/rip"
+                    data-submit-mode="plain"
+                    data-progress-text="Übernehme die CD …">
+                {{ "Eingelegte CD übernehmen" if disc_da else "CD übernehmen" }}
+            </button>
+            <span class="htmx-indicator spinner" data-upload-spinner>arbeite …</span>
         </div>
     </form>
 

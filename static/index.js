@@ -13,15 +13,8 @@ const LOSSY_EXT = new Set(["mp3", "aac", "ogg", "oga", "opus", "wma", "mpc", "m4
 const AMBIGUOUS_EXT = new Set(["m4a", "mp4", "mka", "ogx"]);
 const AUDIO_EXT = new Set([...LOSSLESS_EXT, ...LOSSY_EXT, ...AMBIGUOUS_EXT]);
 
-const form = document.getElementById("upload-form");
-const folderInput = document.getElementById("upload");
-const fileInput = document.getElementById("upload-files");
-const submitButton = document.getElementById("upload-submit");
-const preflight = document.getElementById("preflight");
-const filesTarget = document.getElementById("files");
-
-/** Aktuell gewählte Dateien (aus einem der beiden Inputs). */
-let selection = [];
+/** Gemerkte Dateiauswahl je Upload-Formular. */
+const selections = new WeakMap();
 
 const extensionOf = (name) => (name.split(".").pop() || "").toLowerCase();
 
@@ -108,9 +101,10 @@ function escapeHtml(value) {
   return div.innerHTML;
 }
 
-function render(results) {
+function render(results, target) {
+  if (!target) return;
   if (!results.length) {
-    preflight.innerHTML =
+    target.innerHTML =
       '<div class="banner warn"><strong>Keine Audiodateien in der Auswahl</strong></div>';
     return;
   }
@@ -156,7 +150,7 @@ function render(results) {
     )
     .join("");
 
-  preflight.innerHTML = `
+  target.innerHTML = `
     ${banner}
     <table class="stapelbar files">
       <thead><tr><th>Datei</th><th>Größe</th><th>Vorprüfung</th></tr></thead>
@@ -165,63 +159,91 @@ function render(results) {
     <p class="hint">${results.length} Dateien, ${humanBytes(totalSize)} insgesamt</p>`;
 }
 
-async function onPick(event) {
-  const picked = Array.from(event.target.files || []).filter((file) =>
-    AUDIO_EXT.has(extensionOf(file.name))
-  );
-  // Den jeweils anderen Input leeren, damit nicht versehentlich beide
-  // Auswahlen zusammen hochgehen.
-  [folderInput, fileInput].forEach((input) => {
-    if (input && input !== event.target) input.value = "";
-  });
+function bindUploadWidget(form) {
+  if (!form || form.dataset.uploadBound === "ja") return;
+  form.dataset.uploadBound = "ja";
 
-  selection = await Promise.all(picked.map(inspect));
-  render(selection);
-  submitButton.disabled = selection.length === 0;
-}
+  const folderInput = form.querySelector("[data-upload-folder]");
+  const fileInput = form.querySelector("[data-upload-files]");
+  const submitButton = form.querySelector("[data-upload-submit]");
+  const preflightTarget = document.querySelector(form.dataset.preflightTarget || "");
+  const resultTarget = document.querySelector(form.dataset.uploadTarget || "");
+  const revealTarget = document.querySelector(form.dataset.uploadReveal || "");
+  const endpoint = form.dataset.uploadEndpoint || "/upload";
 
-/**
- * Upload von Hand statt über hx-post: nur so kommt die Ordnerstruktur mit.
- * Der Browser setzt in `filename` sonst ausschließlich den Basisnamen, der
- * Unterordner steckt in `webkitRelativePath` -- und den hängen wir hier als
- * dritten fetch-Parameter an, wo er beim Server als Dateiname ankommt.
- */
-async function onSubmit(event) {
-  event.preventDefault();
-  if (!selection.length) return;
+  selections.set(form, []);
 
-  const payload = new FormData();
-  selection.forEach((entry) => {
-    payload.append("files", entry.file, entry.name);
-  });
+  async function onPick(event) {
+    const picked = Array.from(event.target.files || []).filter((file) =>
+      AUDIO_EXT.has(extensionOf(file.name))
+    );
+    [folderInput, fileInput].forEach((input) => {
+      if (input && input !== event.target) input.value = "";
+    });
 
-  submitButton.disabled = true;
-  form.classList.add("busy");
-  document.getElementById("files-step").hidden = false;
-  filesTarget.innerHTML = '<p class="hint">Lade hoch …</p>';
-
-  try {
-    const response = await fetch("/upload", { method: "POST", body: payload });
-    filesTarget.innerHTML = await response.text();
-    // Neu eingefügtes HTML enthält hx-Attribute, die htmx erst kennen muss.
-    if (window.htmx) window.htmx.process(filesTarget);
-  } catch (error) {
-    filesTarget.innerHTML =
-      '<div class="banner error"><strong>Upload fehlgeschlagen</strong><p>' +
-      escapeHtml(String(error)) +
-      "</p></div>";
-  } finally {
-    submitButton.disabled = false;
-    form.classList.remove("busy");
+    const selection = await Promise.all(picked.map(inspect));
+    selections.set(form, selection);
+    render(selection, preflightTarget);
+    if (submitButton) submitButton.disabled = selection.length === 0;
   }
+
+  async function onSubmit(event) {
+    event.preventDefault();
+    if (!resultTarget) return;
+
+    const submitter = event.submitter;
+    const mode = submitter?.dataset.submitMode || "upload";
+    const action = submitter?.dataset.submitEndpoint || endpoint;
+    const progressText = submitter?.dataset.progressText || "Lade hoch …";
+    const selection = selections.get(form) || [];
+    if (mode === "upload" && !selection.length) return;
+
+    const payload = new FormData();
+    for (const [name, value] of new FormData(form).entries()) {
+      if (!(value instanceof File)) payload.append(name, value);
+    }
+    if (mode === "upload") {
+      selection.forEach((entry) => {
+        payload.append("files", entry.file, entry.name);
+      });
+    }
+
+    if (submitButton) submitButton.disabled = true;
+    form.classList.add("busy");
+    if (revealTarget) revealTarget.hidden = false;
+    resultTarget.innerHTML = `<p class="hint">${escapeHtml(progressText)}</p>`;
+
+    try {
+      const response = await fetch(action, { method: "POST", body: payload });
+      resultTarget.innerHTML = await response.text();
+      if (window.htmx) window.htmx.process(resultTarget);
+      bindUploadWidgets(resultTarget);
+    } catch (error) {
+      resultTarget.innerHTML =
+        '<div class="banner error"><strong>Upload fehlgeschlagen</strong><p>' +
+        escapeHtml(String(error)) +
+        "</p></div>";
+    } finally {
+      if (submitButton) submitButton.disabled = false;
+      form.classList.remove("busy");
+    }
+  }
+
+  folderInput?.addEventListener("change", onPick);
+  fileInput?.addEventListener("change", onPick);
+  form.addEventListener("submit", onSubmit);
 }
 
-folderInput?.addEventListener("change", onPick);
-fileInput?.addEventListener("change", onPick);
-form?.addEventListener("submit", onSubmit);
+function bindUploadWidgets(root = document) {
+  root.querySelectorAll?.("[data-upload-widget]").forEach(bindUploadWidget);
+}
+
+bindUploadWidgets();
 
 // Die Abschnitte 3 und 4 tauchen erst auf, wenn dort etwas landet.
 document.body.addEventListener("htmx:afterSwap", (event) => {
+  bindUploadWidgets(event.detail.target);
+
   const reveal = { candidates: "match-step", result: "result-step" };
   const stepId = reveal[event.detail.target.id];
   if (!stepId) return;

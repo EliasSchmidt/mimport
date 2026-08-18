@@ -16,20 +16,27 @@
 
     {# Der Upload läuft in index.js per fetch, nicht über htmx: nur so kommt
        die Ordnerstruktur aus webkitRelativePath beim Server an. #}
-    <form id="upload-form">
+    <form id="upload-form"
+          data-upload-widget
+          data-upload-endpoint="/upload"
+          data-upload-target="#files"
+          data-upload-reveal="#files-step"
+          data-preflight-target="#preflight">
         <div class="picker">
             <label class="button" for="upload">Ordner wählen</label>
             <input type="file" id="upload" name="files" hidden
-                   webkitdirectory directory multiple>
+                   webkitdirectory directory multiple data-upload-folder>
 
             <label class="button secondary" for="upload-files">Einzelne Dateien</label>
             <input type="file" id="upload-files" name="files" hidden multiple
-                   accept="audio/*,.flac,.wav,.aiff,.aif,.m4a,.mp3,.ogg,.opus,.wv,.ape">
+                   accept="audio/*,.flac,.wav,.aiff,.aif,.m4a,.mp3,.ogg,.opus,.wv,.ape"
+                   data-upload-files>
 
-            <button type="submit" id="upload-submit" class="button primary" disabled>
+            <button type="submit" id="upload-submit" class="button primary"
+                    data-upload-submit disabled>
                 Hochladen
             </button>
-            <span id="upload-spinner" class="htmx-indicator spinner">lädt …</span>
+            <span id="upload-spinner" class="htmx-indicator spinner" data-upload-spinner>lädt …</span>
         </div>
     </form>
 

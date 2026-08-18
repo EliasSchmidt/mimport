@@ -492,6 +492,110 @@ def audiobook_status(request: Request) -> HTMLResponse:
     return _audiobook_fragment(request)
 
 
+@router.post("/audiobook/upload", response_class=HTMLResponse)
+async def audiobook_upload(
+    request: Request,
+    files: list[UploadFile],
+    autor: str = Form(default=""),
+    titel: str = Form(default=""),
+    buch: str = Form(default=""),
+) -> HTMLResponse:
+    """Übernimmt hochgeladene Hörbuch-Dateien direkt in die Bibliothek.
+
+    Anders als bei Musik gibt es danach weder Match noch beets-Import. Die
+    Dateien landen sofort im Buchordner; eine vorhandene Unterordnerstruktur
+    bleibt erhalten, damit mehrteilige MP3-Hörbücher in ihrer Reihenfolge
+    zusammenbleiben.
+    """
+    if not files:
+        return _audiobook_fragment(request, fehler="Es wurden keine Dateien gesendet.")
+
+    dateien = [
+        f for f in files if f.filename and Path(f.filename).suffix.lower() in AUDIO_EXTENSIONS
+    ]
+    if not dateien:
+        return _audiobook_fragment(
+            request,
+            fehler="Keine Audiodateien in der Auswahl. Unterstützt werden u. a. "
+            "FLAC, WAV, AIFF, ALAC, MP3 und AAC.",
+        )
+    if len(dateien) > settings.max_files:
+        return _audiobook_fragment(
+            request,
+            fehler=f"Zu viele Dateien ({len(dateien)}), erlaubt sind {settings.max_files}.",
+        )
+
+    try:
+        buchpfad = audiobook.resolve_book(buch) if buch.strip() else audiobook.book_dir(autor, titel)
+    except audiobook.AudiobookError as exc:
+        return _audiobook_fragment(request, fehler=str(exc))
+
+    belegt = _buch_belegt(buchpfad)
+    if belegt:
+        return _audiobook_fragment(request, fehler=belegt)
+
+    frei = audiobook.free_bytes() - settings.min_free_bytes
+    upload_limit = min(settings.max_upload_bytes, frei)
+    if upload_limit <= 0:
+        meldung = (
+            "Auf dem Hörbuch-Volume ist nicht genug Platz frei."
+            if frei <= settings.max_upload_bytes
+            else f"Upload überschreitet das Limit von {settings.max_upload_bytes / 1024**3:.1f} GB."
+        )
+        return _audiobook_fragment(request, fehler=meldung)
+
+    arbeit = audiobook.neuer_arbeitsordner("upload")
+    wurzel = arbeit.resolve()
+    geschrieben = 0
+    gesamtgroesse = 0
+
+    try:
+        for upload_datei in dateien:
+            relativ = sessions.sanitize_relative_path(upload_datei.filename or "unbenannt")
+            ziel = (wurzel / relativ).resolve()
+            if not ziel.is_relative_to(wurzel):
+                continue
+
+            ziel.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                with ziel.open("wb") as senke:
+                    while chunk := await upload_datei.read(CHUNK_SIZE):
+                        gesamtgroesse += len(chunk)
+                        if gesamtgroesse > upload_limit:
+                            senke.close()
+                            shutil.rmtree(arbeit, ignore_errors=True)
+                            meldung = (
+                                "Auf dem Hörbuch-Volume ist nicht genug Platz frei."
+                                if frei <= settings.max_upload_bytes
+                                else f"Upload überschreitet das Limit von {settings.max_upload_bytes / 1024**3:.1f} GB."
+                            )
+                            return _audiobook_fragment(request, fehler=meldung)
+                        senke.write(chunk)
+                geschrieben += 1
+            finally:
+                await upload_datei.close()
+
+        if not geschrieben:
+            shutil.rmtree(arbeit, ignore_errors=True)
+            return _audiobook_fragment(request, fehler="Keine Datei konnte gespeichert werden.")
+
+        audiobook.discs_normalisieren(buchpfad)
+        ordner = audiobook.next_disc_dir(buchpfad, ist_datencd=True)
+        if ordner == buchpfad and not buchpfad.exists():
+            ordner = audiobook.fertigstellen(arbeit, buchpfad)
+        else:
+            ordner = _einsortieren(arbeit, ordner)
+    except BaseException:
+        shutil.rmtree(arbeit, ignore_errors=True)
+        raise
+
+    wohin = "ins Buch" if ordner == buchpfad else f"nach {ordner.name}"
+    return _audiobook_fragment(
+        request,
+        meldung=f"{geschrieben} Datei(en) {wohin} kopiert.",
+    )
+
+
 @router.post("/audiobook/rip", response_class=HTMLResponse)
 def audiobook_rip(
     request: Request,

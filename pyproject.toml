@@ -16,8 +16,11 @@ dependencies = [
     # Für die DiscID-Abfrage bei MusicBrainz. Kommt ohnehin mit beets, wird
     # hier aber direkt benutzt und deshalb auch direkt genannt.
     "requests>=2.32",
-    # OCR für Backcover-Text; verwendet serverseitig das kleine Mobile-Modell.
-    "paddleocr>=2.8.1",
+    # OCR für Backcover-Text; bewusst auf der 2.x-API, die mimport direkt
+    # benutzt. Die Inference-Engine kommt explizit dazu -- paddleocr allein
+    # zieht sie nicht zuverlässig mit.
+    "paddleocr>=2.10,<3",
+    "paddlepaddle>=2.6.2,<3",
 ]
 
 [dependency-groups]

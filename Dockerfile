@@ -17,8 +17,18 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 # ffmpeg kommt für die Hörbücher dazu: es bündelt die Discs zu einer m4b mit
 # Kapiteln. Es ist das mit Abstand größte Paket hier (mit den libav*-Dekodern
 # grob 200 MB) -- ohne m4b-Bau kann man die beiden Zeilen streichen.
+#
+# Für PaddleOCR auf CPU kommen drei kleine Laufzeitbibliotheken dazu:
+# * libgl1 / libglib2.0-0 für OpenCV
+# * libgomp1 für OpenMP in Paddle
 RUN apt-get update \
- && apt-get install -y --no-install-recommends cdparanoia flac ffmpeg \
+ && apt-get install -y --no-install-recommends \
+    cdparanoia \
+    flac \
+    ffmpeg \
+    libgl1 \
+    libglib2.0-0 \
+    libgomp1 \
  && rm -rf /var/lib/apt/lists/*
 
 ENV PYTHONUNBUFFERED=1 \
@@ -61,12 +71,15 @@ COPY beets/config.yaml /config/config.yaml
 # ein Volume -- nicht dieses chown erweitert.
 RUN groupadd --gid 1000 mimport \
  && useradd --uid 1000 --gid 1000 --no-create-home mimport \
- && mkdir -p /music /data /staging /config /disc /audiobooks \
+ && mkdir -p /music /data/.paddleocr /staging /config /disc /audiobooks \
  && chown -R mimport:mimport /music /data /staging /config /disc /audiobooks
 
 USER mimport
 
-ENV MIMPORT_STAGING=/staging \
+ENV HOME=/data \
+    # Modelle und sonstige PaddleOCR-Ressourcen im persistenten Daten-Volume.
+    PADDLE_OCR_BASE_DIR=/data/.paddleocr \
+    MIMPORT_STAGING=/staging \
     # Hier taucht eine eingelegte Daten-CD auf. Gemountet wird auf dem Host,
     # hereingereicht wird nur der fertige Mount -- der Container braucht
     # dadurch weder /dev/sr0 noch CAP_SYS_ADMIN. Kein Mount, kein CD-Bereich.

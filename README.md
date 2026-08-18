@@ -197,6 +197,19 @@ Wohin es kommt, war an beiden Wegen schon vorbereitet:
 
 Deshalb heißt die Datei in beiden Fällen genau so.
 
+## Backcover-Text (OCR)
+
+Für das **manuelle Taggen** kann mimport zusätzlich den Text eines
+CD-Backcovers lesen. Dafür läuft `PaddleOCR` **serverseitig im Container**;
+der Browser lädt nur das Foto hoch. Das Ergebnis erscheint als Rohtext in der
+Oberfläche und lässt sich dort mit einfachen Parsern (etwa `01 Titel 3:45`
+oder `Artist - Titel`) in eine **weiter bearbeitbare** Trackliste vorfüllen.
+
+Die OCR-Modelle werden beim **ersten OCR-Aufruf** einmal heruntergeladen und im
+Daten-Volume unter <span class="mono">/data/.paddleocr</span> abgelegt. Danach
+bleiben sie über Neustarts hinweg erhalten. Zusätzliche Pakete auf dem Debian-
+Host braucht der CPU-Betrieb nicht; alles Nötige steckt im Container-Image.
+
 ### In der Liste
 
 Jedes Buch zeigt sein Cover als kleine Kachel, Bücher ohne bekommen einen

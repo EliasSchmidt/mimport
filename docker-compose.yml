@@ -59,6 +59,11 @@ services:
       # beets/config.yaml sowie fpcalc im Image -- siehe README.
       MIMPORT_FINGERPRINT: "0"
 
+      # PaddleOCR legt seine Modelle hier ab. Der erste OCR-Aufruf lädt sie
+      # einmal herunter; danach bleiben sie im Daten-Volume erhalten.
+      HOME: /data
+      PADDLE_OCR_BASE_DIR: /data/.paddleocr
+
     restart: unless-stopped
 
     # Abschottung: hochgeladene Dateien werden von Audio-Parsern gelesen, die
@@ -127,6 +132,11 @@ services:
       MIMPORT_MIN_FREE_BYTES: "2147483648"
       MIMPORT_MAX_STAGING_BYTES: "21474836480"
       MIMPORT_SESSION_TTL_HOURS: "24"
+
+      # Wie beim Upload-Dienst: OCR-Modelle einmalig laden und im Daten-Volume
+      # behalten.
+      HOME: /data
+      PADDLE_OCR_BASE_DIR: /data/.paddleocr
 
     restart: unless-stopped
 

@@ -1,0 +1,51 @@
+{# Liste der bereits importierten Alben. Eigenes Fragment, weil dasselbe HTML
+   zweimal gebraucht wird: einmal beim Laden von /albums, einmal als Ziel des
+   Cover-Dialogs (der ersetzt #albums-liste komplett, siehe cover.js). #}
+{% if fehler %}
+<div class="banner error"><p>{{ fehler }}</p></div>
+{% endif %}
+
+{% if not alben %}
+<p class="hint">Keine Alben gefunden.</p>
+{% else %}
+<table class="stapelbar files">
+    <thead>
+        <tr>
+            <th class="cover-spalte"></th>
+            <th>Interpret</th>
+            <th>Album</th>
+            <th>Jahr</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for a in alben %}
+        <tr>
+            {# Feste Kachelgröße, auch ohne Bild: sonst springen die Zeilen in
+               der Höhe, je nachdem ob ein Cover da ist. #}
+            <td class="cover-spalte">
+                {% if a.has_cover %}
+                <img class="cover-mini" loading="lazy" alt=""
+                     src="/cover/album/{{ a.id }}?v={{ a.cover_version }}">
+                {% else %}
+                <span class="cover-mini leer" aria-hidden="true">♪</span>
+                {% endif %}
+            </td>
+            <td class="name" data-spalte="Interpret">{{ a.albumartist }}</td>
+            <td class="name" data-spalte="Album">{{ a.album }}</td>
+            {# '0000' ist beets' Wert für "kein Jahr bekannt", keine echte
+               Jahreszahl. #}
+            <td class="mono small" data-spalte="Jahr">
+                {{ a.year if a.year and a.year != "0000" else "–" }}
+            </td>
+            <td>
+                <button type="button" class="button"
+                        onclick="coverAufnehmen('/cover/album/{{ a.id }}', 'albums-liste', '{{ a.albumartist }} – {{ a.album }}')">
+                    {{ "Cover ersetzen" if a.has_cover else "Cover hinzufügen" }}
+                </button>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endif %}

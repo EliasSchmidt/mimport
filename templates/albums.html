@@ -1,0 +1,22 @@
+{% extends "_layout.html" %}
+
+{% block title %}Alben – mimport{% endblock %}
+{% block lead %}
+    Bereits importierte Alben durchsuchen und nachträglich ein Cover
+    hinzufügen oder ersetzen.
+{% endblock %}
+
+{% block inhalt %}
+<section class="step">
+    <form method="get" action="/albums" class="picker">
+        <input type="search" name="q" value="{{ q }}"
+               placeholder="Interpret oder Album …">
+        <button type="submit" class="button">Suchen</button>
+        {% if q %}<a class="button secondary" href="/albums">Zurücksetzen</a>{% endif %}
+    </form>
+
+    <div id="albums-liste">
+        {% include "_albums_liste.html" %}
+    </div>
+</section>
+{% endblock %}

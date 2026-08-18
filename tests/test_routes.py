@@ -9,7 +9,7 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
-from backend import sessions
+from backend import routes, sessions
 from backend.main import app
 
 
@@ -1472,3 +1472,118 @@ class TestManuellTaggen:
         session = self._session_mit(["01.flac"])
         response = client.post(f"/manual/{session.session_id}", data={})
         assert "kein Feld" in response.text
+
+
+class TestAlbenCover:
+    """Cover für ein bereits importiertes Album nachträglich ändern.
+
+    ``beet embedart`` selbst läuft nicht mit -- das Kommando und dessen Sperre
+    prüft ``test_albums.py``. Hier zählt nur die HTTP-Seite: Album finden,
+    Bild speichern, Fehler sauber melden.
+    """
+
+    JPEG = b"\xff\xd8\xff\xe0" + b"x" * 200
+
+    @pytest.fixture
+    def album(self, tmp_path, monkeypatch):
+        from backend import albums
+
+        ordner = tmp_path / "The Beatles" / "Abbey Road"
+        ordner.mkdir(parents=True)
+        eintrag = albums.Album(
+            id=1, albumartist="The Beatles", album="Abbey Road", year="1969",
+            path=ordner,
+        )
+        monkeypatch.setattr(
+            routes.albums, "get_album", lambda album_id: eintrag if album_id == 1 else None
+        )
+        return eintrag
+
+    def test_seite_listet_alben(self, client, album, monkeypatch):
+        monkeypatch.setattr(routes.albums, "list_albums", lambda q="": [album])
+        response = client.get("/albums")
+        assert response.status_code == 200
+        assert "Abbey Road" in response.text
+        assert "The Beatles" in response.text
+        assert 'id="cover-dialog"' in response.text
+
+    def test_fehler_beim_listen_wird_angezeigt(self, client, monkeypatch):
+        from backend import albums
+
+        def kaputt(q=""):
+            raise albums.AlbumError("beets antwortet nicht.")
+
+        monkeypatch.setattr(routes.albums, "list_albums", kaputt)
+        response = client.get("/albums")
+        assert response.status_code == 200
+        assert "beets antwortet nicht." in response.text
+
+    def test_ohne_cover_gibt_es_404(self, client, album):
+        assert client.get("/cover/album/1").status_code == 404
+
+    def test_unbekanntes_album_gibt_es_404(self, client, album):
+        assert client.get("/cover/album/999").status_code == 404
+
+    def test_vorhandenes_cover_wird_ausgeliefert(self, client, album):
+        (album.path / "cover.jpg").write_bytes(self.JPEG)
+        antwort = client.get("/cover/album/1?v=123")
+        assert antwort.status_code == 200
+        assert antwort.content == self.JPEG
+        assert "immutable" in antwort.headers["cache-control"]
+
+    def test_neues_cover_landet_im_albumordner_und_wird_eingebettet(
+        self, client, album, monkeypatch
+    ):
+        monkeypatch.setattr(routes.albums, "list_albums", lambda q="": [album])
+        aufrufe = []
+        monkeypatch.setattr(
+            routes.albums, "update_cover", lambda a, pfad: aufrufe.append((a.id, pfad))
+        )
+
+        response = client.post(
+            "/cover/album/1", files={"bild": ("cover.jpg", self.JPEG, "image/jpeg")}
+        )
+        assert response.status_code == 200
+        assert (album.path / "cover.jpg").read_bytes() == self.JPEG
+        assert aufrufe == [(1, album.path / "cover.jpg")]
+
+    def test_unbekanntes_album_beim_hochladen_gibt_es_404(self, client, album):
+        response = client.post(
+            "/cover/album/999", files={"bild": ("cover.jpg", self.JPEG, "image/jpeg")}
+        )
+        assert response.status_code == 404
+
+    def test_kaputtes_bild_wird_gemeldet_ohne_einzubetten(
+        self, client, album, monkeypatch
+    ):
+        monkeypatch.setattr(routes.albums, "list_albums", lambda q="": [album])
+        aufrufe = []
+        monkeypatch.setattr(
+            routes.albums, "update_cover", lambda a, pfad: aufrufe.append((a.id, pfad))
+        )
+
+        response = client.post(
+            "/cover/album/1",
+            files={"bild": ("cover.jpg", b"kein bild", "image/jpeg")},
+        )
+        assert response.status_code == 200
+        assert "sieht nicht nach einem Bild aus" in response.text
+        assert not aufrufe, "bei einem unbrauchbaren Bild darf nichts eingebettet werden"
+
+    def test_fehlschlag_beim_einbetten_wird_gemeldet(self, client, album, monkeypatch):
+        from backend import albums
+
+        monkeypatch.setattr(routes.albums, "list_albums", lambda q="": [album])
+
+        def kaputt(a, pfad):
+            raise albums.AlbumError("Das Cover ließ sich nicht einbetten.")
+
+        monkeypatch.setattr(routes.albums, "update_cover", kaputt)
+
+        response = client.post(
+            "/cover/album/1", files={"bild": ("cover.jpg", self.JPEG, "image/jpeg")}
+        )
+        assert response.status_code == 200
+        assert "Das Cover ließ sich nicht einbetten." in response.text
+        # Das Bild liegt trotzdem schon im Ordner -- nichts geht verloren.
+        assert (album.path / "cover.jpg").read_bytes() == self.JPEG

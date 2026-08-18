@@ -21,6 +21,7 @@ from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse
 
 from backend import (
+    albums,
     artist_ids,
     audio,
     audiobook,
@@ -1329,3 +1330,66 @@ def discard(request: Request, session_id: str) -> HTMLResponse:
 def health_fragment(request: Request) -> HTMLResponse:
     """Zustand der beets-Anbindung, für das Banner oben auf der Seite."""
     return _fragment(request, "_health.html", health=beets_env.health())
+
+
+def _alben_oder_fehler(q: str = "") -> tuple[list[albums.Album], str]:
+    try:
+        return albums.list_albums(q), ""
+    except albums.AlbumError as exc:
+        return [], str(exc)
+
+
+def _albums_fragment(request: Request, fehler: str = "") -> HTMLResponse:
+    treffer, listen_fehler = _alben_oder_fehler()
+    return _fragment(
+        request, "_albums_liste.html", alben=treffer, fehler=fehler or listen_fehler
+    )
+
+
+@router.get("/albums", response_class=HTMLResponse)
+def album_list(request: Request, q: str = "") -> HTMLResponse:
+    """Bereits importierte Alben durchsuchen, um ihr Cover zu ändern."""
+    treffer, fehler = _alben_oder_fehler(q)
+    return _seite(request, "albums.html", "alben", alben=treffer, q=q, fehler=fehler)
+
+
+@router.get("/cover/album/{album_id}")
+def album_cover(album_id: int, v: str = "") -> FileResponse:
+    """Liefert das Coverbild eines Albums aus.
+
+    ``v`` trägt die Änderungszeit in der Adresse, damit der Browser ein neues
+    Cover sofort lädt und ein altes sonst aggressiv cachen darf.
+    """
+    album = albums.get_album(album_id)
+    if album is None:
+        raise HTTPException(status_code=404, detail="Album nicht gefunden.")
+    if not album.has_cover:
+        raise HTTPException(
+            status_code=404, detail="Für dieses Album gibt es kein Cover."
+        )
+    return FileResponse(
+        album.cover_path,
+        headers={"Cache-Control": "public, max-age=31536000, immutable"},
+    )
+
+
+@router.post("/cover/album/{album_id}", response_class=HTMLResponse)
+async def update_album_cover(
+    request: Request, album_id: int, bild: UploadFile = File(...)
+) -> HTMLResponse:
+    """Nimmt ein neues Cover für ein bereits importiertes Album entgegen.
+
+    Landet als ``cover.jpg`` im Albumordner und wird zusätzlich über
+    ``beet embedart`` in die vorhandenen Dateien eingebettet -- die tragen ihr
+    altes Cover sonst weiter in den eigenen Tags, ein Neuimport findet für ein
+    schon importiertes Album ja nicht mehr statt.
+    """
+    album = albums.get_album(album_id)
+    if album is None:
+        raise HTTPException(status_code=404, detail="Album nicht gefunden.")
+    try:
+        bild_pfad = cover.speichern(album.path, await bild.read())
+        albums.update_cover(album, bild_pfad)
+    except (cover.CoverError, albums.AlbumError) as exc:
+        return _albums_fragment(request, fehler=str(exc))
+    return _albums_fragment(request)

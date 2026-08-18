@@ -197,6 +197,20 @@ Wohin es kommt, war an beiden Wegen schon vorbereitet:
 
 Deshalb heißt die Datei in beiden Fällen genau so.
 
+### Nachträglich, für ein schon importiertes Album
+
+Unter „Alben" (`/albums`) lässt sich die Library nach Interpret oder Titel
+durchsuchen und für jedes Ergebnis ein Cover aufnehmen oder ersetzen — auch
+wenn der Import längst gelaufen ist.
+
+Zwei Dinge passieren dabei, nicht nur eines: die `cover.jpg` im Albumordner
+wird überschrieben (wie oben), und zusätzlich läuft `beet embedart -f` über
+die vorhandenen Dateien. Ohne Letzteres bliebe es bei einem neuen Bild im
+Ordner — die schon importierten Tracks tragen ihr altes Cover weiterhin in
+den eigenen Tags, ein `fetchart`-Automatismus greift nur beim Import selbst.
+Wie beim Import selbst teilen sich beide Dienste dafür denselben
+Library-Lock (siehe [Zwei Dienste](#zwei-dienste)).
+
 ## Backcover-Text (OCR)
 
 Für das **manuelle Taggen** kann mimport zusätzlich den Text eines

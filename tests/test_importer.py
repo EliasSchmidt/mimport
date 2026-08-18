@@ -122,11 +122,11 @@ class TestLibraryLock:
         zweiter_drin = threading.Event()
 
         def zweiter():
-            with importer._library_lock():
+            with importer.library_lock():
                 verlauf.append("zweiter")
                 zweiter_drin.set()
 
-        with importer._library_lock():
+        with importer.library_lock():
             verlauf.append("erster")
             thread = threading.Thread(target=zweiter)
             thread.start()
@@ -144,5 +144,5 @@ class TestLibraryLock:
         monkeypatch.setattr(
             importer, "_lock_path", lambda: Path("/nicht/anlegbar/x.lock")
         )
-        with importer._library_lock():
+        with importer.library_lock():
             pass  # kein Fehler

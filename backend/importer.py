@@ -96,14 +96,16 @@ def _lock_path() -> Path:
 
 
 @contextmanager
-def _library_lock() -> Iterator[None]:
-    """Lässt immer nur einen Import gleichzeitig an die Library.
+def library_lock() -> Iterator[None]:
+    """Lässt immer nur einen Schreibzugriff gleichzeitig an die Library.
 
     mimport läuft als zwei Dienste -- einer für Uploads, einer für CDs -- und
     beide rufen dasselbe ``beet import`` auf derselben ``library.db`` auf. Ein
     Import ist eine lange SQLite-Transaktion; zwei gleichzeitig geraten sich in
     die Quere. Das Matching braucht den Lock nicht, es fasst die Datenbank
-    ohnehin nie an.
+    ohnehin nie an. Denselben Lock nutzt ``backend.albums`` für ``beet
+    embedart``, aus demselben Grund: auch das ist ein Schreibzugriff auf
+    dieselbe Library.
 
     Wird bewusst ohne Zeitlimit gewartet: der zweite Import soll laufen, nicht
     scheitern. Nach oben begrenzt ihn das Zeitlimit des Subprozesses.
@@ -145,7 +147,7 @@ def run_import(directory: Path, *, pretend: bool = False) -> ImportResult:
 
     # Nur der echte Import schreibt in die Library; ``--pretend`` liest bloß
     # und soll nicht auf einen laufenden Import warten müssen.
-    lock = nullcontext() if pretend else _library_lock()
+    lock = nullcontext() if pretend else library_lock()
 
     try:
         with lock:

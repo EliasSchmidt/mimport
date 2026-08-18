@@ -1,47 +1,56 @@
 {# Offene Sitzungen. Die Session-ID steht sonst nur im ausgelieferten HTML --
    ohne diese Liste wäre ein hochgeladenes Album nach einem Neuladen zwar noch
    auf der Platte, aber nicht mehr erreichbar. #}
+{# Eigenständiger Umschalter samt Summary: das Ziel von GET /sessions ist ein
+   leerer Container, der hier komplett befüllt wird. Ohne offene Sitzungen
+   liefert dieses Fragment nichts -- der Umschalter ist dann unsichtbar,
+   statt als leerer Abschnitt auf der Seite zu stehen. #}
 {% if offen %}
-<div class="open-sessions">
-    <h3>Unterbrochene Sitzungen</h3>
-    <table class="stapelbar files">
-        <thead>
-            <tr>
-                <th>Auswahl</th>
-                <th>Dateien</th>
-                <th>Größe</th>
-                <th>Zuletzt</th>
-                <th></th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for eintrag in offen %}
-            <tr>
-                <td class="name" data-spalte="Auswahl">{{ eintrag.label }}</td>
-                <td class="mono small" data-spalte="Dateien">{{ eintrag.file_count }}</td>
-                <td class="mono small" data-spalte="Größe">{{ eintrag.size_label }}</td>
-                <td class="mono small" data-spalte="Zuletzt">{{ eintrag.age_label }}</td>
-                <td>
-                    <button type="button" class="button primary"
-                            hx-get="/session/{{ eintrag.session_id }}"
-                            hx-target="#files" hx-swap="innerHTML"
-                            hx-on::after-request="document.getElementById('files-step').hidden = false">
-                        Fortsetzen
-                    </button>
-                    <button type="button" class="button danger"
-                            hx-delete="/sessions/{{ eintrag.session_id }}"
-                            hx-target="#sessions" hx-swap="innerHTML"
-                            hx-confirm="Diese Sitzung samt Dateien verwerfen?">
-                        Verwerfen
-                    </button>
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-    <p class="hint">
-        Nicht importierte Sitzungen verschwinden nach {{ ttl }} Stunden von
-        selbst.
-    </p>
-</div>
+<details class="sessions-dropdown">
+    <summary>
+        {{ offen | length }} offene Sitzung{{ "en" if offen | length != 1 }}
+        <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4"/></svg>
+    </summary>
+    <div class="sessions-panel">
+        <table class="stapelbar files">
+            <thead>
+                <tr>
+                    <th>Auswahl</th>
+                    <th>Dateien</th>
+                    <th>Größe</th>
+                    <th>Zuletzt</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for eintrag in offen %}
+                <tr>
+                    <td class="name" data-spalte="Auswahl">{{ eintrag.label }}</td>
+                    <td class="mono small" data-spalte="Dateien">{{ eintrag.file_count }}</td>
+                    <td class="mono small" data-spalte="Größe">{{ eintrag.size_label }}</td>
+                    <td class="mono small" data-spalte="Zuletzt">{{ eintrag.age_label }}</td>
+                    <td>
+                        <button type="button" class="button primary"
+                                hx-get="/session/{{ eintrag.session_id }}"
+                                hx-target="#files" hx-swap="innerHTML"
+                                hx-on::after-request="document.getElementById('files-step').hidden = false">
+                            Fortsetzen
+                        </button>
+                        <button type="button" class="button danger"
+                                hx-delete="/sessions/{{ eintrag.session_id }}"
+                                hx-target="#sessions" hx-swap="innerHTML"
+                                hx-confirm="Diese Sitzung samt Dateien verwerfen?">
+                            Verwerfen
+                        </button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <p class="hint">
+            Nicht importierte Sitzungen verschwinden nach {{ ttl }} Stunden von
+            selbst.
+        </p>
+    </div>
+</details>
 {% endif %}

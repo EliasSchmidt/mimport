@@ -5,81 +5,87 @@
     <div class="manual-form"
          data-manual-form
          hx-on::after-request="document.getElementById(&#39;result-step&#39;).hidden = false">
-        <p class="hint">
-            Nur ausgefüllte Felder werden geschrieben. Mit „Text erkennen" wird die
-            Trackliste aus dem Backcover vorbefüllt und bleibt danach vollständig
-            bearbeitbar. Wenn MusicBrainz einen Künstlernamen eindeutig kennt,
-            schreiben wir zusätzlich dessen Artist-ID in die Datei; eine Album-
-            oder Release-ID setzen wir beim Handtaggen bewusst nicht.
-        </p>
+        <div class="card">
+            <h4>Metadaten</h4>
+            <p class="hint">
+                Nur ausgefüllte Felder werden geschrieben. Wenn MusicBrainz einen
+                Künstlernamen eindeutig kennt, schreiben wir zusätzlich dessen
+                Artist-ID in die Datei; eine Album- oder Release-ID setzen wir
+                beim Handtaggen bewusst nicht.
+            </p>
 
-        <div class="fields">
-            <label>Albumkünstler <small>(für das ganze Album)</small>
-                <div class="lookup-field"
-                     hx-post="/artist-match/{{ session_id }}"
-                     hx-trigger="click from:.lookup-button, keydown[key=='Enter'] from:input consume"
-                     hx-include="this"
-                     hx-vals='{"field":"albumartist"}'
-                     hx-target="#artist-match-albumartist-{{ session_id }}"
-                     hx-swap="innerHTML">
-                    <input type="text" name="albumartist" data-albumartist data-artist-field="albumartist"
-                           placeholder="z. B. The Beatles">
-                    <input type="hidden" name="mb_albumartistids" data-artist-mbid="albumartist">
-                    <button type="button" class="button secondary lookup-button">🔎</button>
-                </div>
-                <small>Sorgt dafür, dass ein Album zusammenbleibt. Bei einem normalen Soloalbum ist das oft derselbe Name wie beim Track-Künstler.</small>
-                <div id="artist-match-albumartist-{{ session_id }}" class="artist-match" data-artist-results="albumartist">
-                    <div class="hint">Noch kein MusicBrainz-Match ausgewählt.</div>
-                </div>
+            <div class="fields">
+                <label>Albumkünstler <small>(für das ganze Album)</small>
+                    <div class="lookup-field"
+                         hx-post="/artist-match/{{ session_id }}"
+                         hx-trigger="click from:.lookup-button, keydown[key=='Enter'] from:input consume"
+                         hx-include="this"
+                         hx-vals='{"field":"albumartist"}'
+                         hx-target="#artist-match-albumartist-{{ session_id }}"
+                         hx-swap="innerHTML">
+                        <input type="text" name="albumartist" data-albumartist data-artist-field="albumartist"
+                               placeholder="z. B. The Beatles">
+                        <input type="hidden" name="mb_albumartistids" data-artist-mbid="albumartist">
+                        <button type="button" class="button secondary lookup-button" aria-label="Bei MusicBrainz suchen">
+                            <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M11 11l4 4M7.2 12.4a5.2 5.2 0 1 0 0-10.4 5.2 5.2 0 0 0 0 10.4z"/></svg>
+                        </button>
+                    </div>
+                    <small>Sorgt dafür, dass ein Album zusammenbleibt. Bei einem normalen Soloalbum ist das oft derselbe Name wie beim Track-Künstler.</small>
+                    <div id="artist-match-albumartist-{{ session_id }}" class="artist-match" data-artist-results="albumartist">
+                        <div class="hint">Noch kein MusicBrainz-Match ausgewählt.</div>
+                    </div>
+                </label>
+                <label>Album
+                    <input type="text" name="album" placeholder="z. B. Abbey Road">
+                </label>
+                <label data-alle-interpreten>Track-Künstler <small>(für alle Tracks)</small>
+                    <div class="lookup-field"
+                         hx-post="/artist-match/{{ session_id }}"
+                         hx-trigger="click from:.lookup-button, keydown[key=='Enter'] from:input consume"
+                         hx-include="this"
+                         hx-vals='{"field":"artist"}'
+                         hx-target="#artist-match-artist-{{ session_id }}"
+                         hx-swap="innerHTML">
+                        <input type="text" name="artist" data-artist-field="artist" placeholder="z. B. Harmonic Brass">
+                        <input type="hidden" name="mb_artistids" data-artist-mbid="artist">
+                        <button type="button" class="button secondary lookup-button" aria-label="Bei MusicBrainz suchen">
+                            <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M11 11l4 4M7.2 12.4a5.2 5.2 0 1 0 0-10.4 5.2 5.2 0 0 0 0 10.4z"/></svg>
+                        </button>
+                    </div>
+                    <small>Das ist der Künstler des einzelnen Tracks. Bei einem normalen Alligatoah-Album ohne Gast-Artists trägst du hier ebenfalls Alligatoah ein.</small>
+                    <div id="artist-match-artist-{{ session_id }}" class="artist-match" data-artist-results="artist">
+                        <div class="hint">Noch kein MusicBrainz-Match ausgewählt.</div>
+                    </div>
+                </label>
+                <label>Jahr
+                    <input type="text" name="year" inputmode="numeric" placeholder="1969">
+                </label>
+                <label>Genre <small>(mehrere mit <span class="mono">;</span>)</small>
+                    <input type="text"
+                           name="genre"
+                           placeholder="z. B. Jazz; Fusion"
+                           list="genre-vorschlaege-{{ session_id }}"
+                           autocomplete="off"
+                           data-genre-input>
+                    <small>Beim Tippen erscheinen Vorschläge aus dem Projektkatalog; Freitext bleibt erlaubt.</small>
+                </label>
+            </div>
+
+            <datalist id="genre-vorschlaege-{{ session_id }}" data-genre-vorschlaege>
+                {% for genre in genre_vorschlaege %}
+                <option value="{{ genre }}"></option>
+                {% endfor %}
+            </datalist>
+
+            <label class="checkbox">
+                <input type="checkbox" name="compilation" value="true" data-sampler>
+                Sampler (Various Artists)
             </label>
-            <label>Album
-                <input type="text" name="album" placeholder="z. B. Abbey Road">
-            </label>
-            <label data-alle-interpreten>Track-Künstler <small>(für alle Tracks)</small>
-                <div class="lookup-field"
-                     hx-post="/artist-match/{{ session_id }}"
-                     hx-trigger="click from:.lookup-button, keydown[key=='Enter'] from:input consume"
-                     hx-include="this"
-                     hx-vals='{"field":"artist"}'
-                     hx-target="#artist-match-artist-{{ session_id }}"
-                     hx-swap="innerHTML">
-                    <input type="text" name="artist" data-artist-field="artist" placeholder="z. B. Harmonic Brass">
-                    <input type="hidden" name="mb_artistids" data-artist-mbid="artist">
-                    <button type="button" class="button secondary lookup-button">🔎</button>
-                </div>
-                <small>Das ist der Künstler des einzelnen Tracks. Bei einem normalen Alligatoah-Album ohne Gast-Artists trägst du hier ebenfalls Alligatoah ein.</small>
-                <div id="artist-match-artist-{{ session_id }}" class="artist-match" data-artist-results="artist">
-                    <div class="hint">Noch kein MusicBrainz-Match ausgewählt.</div>
-                </div>
-            </label>
-            <label>Jahr
-                <input type="text" name="year" inputmode="numeric" placeholder="1969">
-            </label>
-            <label>Genre <small>(mehrere mit <span class="mono">;</span>)</small>
-                <input type="text"
-                       name="genre"
-                       placeholder="z. B. Jazz; Fusion"
-                       list="genre-vorschlaege-{{ session_id }}"
-                       autocomplete="off"
-                       data-genre-input>
-                <small>Beim Tippen erscheinen Vorschläge aus dem Projektkatalog; Freitext bleibt erlaubt.</small>
-            </label>
+            <p class="hint" data-sampler-hinweis hidden>
+                Das Feld „Track-Künstler für alle Tracks" ist jetzt deaktiviert; die
+                Track-Künstler bitte pro Track unten eintragen.
+            </p>
         </div>
-
-        <datalist id="genre-vorschlaege-{{ session_id }}" data-genre-vorschlaege>
-            {% for genre in genre_vorschlaege %}
-            <option value="{{ genre }}"></option>
-            {% endfor %}
-        </datalist>
-
-        <label class="checkbox">
-            <input type="checkbox" name="compilation" value="true" data-sampler>
-            Sampler (Various Artists)
-        </label>
-        <p class="hint" data-sampler-hinweis hidden>
-            Das Feld „Track-Künstler für alle Tracks" ist jetzt deaktiviert; die
-            Track-Künstler bitte pro Track unten eintragen.
-        </p>
 
         {% include "_manual_ocr.html" %}
 

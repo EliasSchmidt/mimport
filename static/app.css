@@ -419,7 +419,6 @@ td.name { word-break: break-all; }
     flex: 0 0 auto;
 }
 .manual-ocr { margin-top: 1rem; border-top: 1px solid var(--border); padding-top: 0.9rem; }
-.manual-ocr h4 { margin: 0 0 0.35rem; }
 .manual-ocr-text { display: block; margin-top: 0.75rem; font-size: 0.88rem; }
 .ocr-debug { margin-top: 0.9rem; }
 .ocr-debug > summary { cursor: pointer; font-size: 0.9rem; color: var(--text-dim); }
@@ -558,14 +557,152 @@ pre.output { max-height: 22rem; overflow-y: auto; }
 }
 
 /* Von Hand taggen -- zugeklappt, weil der Match der Normalfall ist. */
-.manuell, .je-track { margin-top: 1rem; }
-.manuell > summary, .je-track > summary {
+.manual > summary {
     cursor: pointer;
     font-size: 0.9rem;
     color: var(--text-dim);
 }
+.je-track { margin-top: 1rem; margin-bottom: 0.75rem; }
 .je-track input[type="text"] { width: 100%; }
-.je-track { margin-bottom: 0.75rem; }
+
+/* --- Tabs (Quelle wählen: Hochladen / Daten-CD / Audio-CD) ------------ */
+/* Ersetzt "alle Quellen gleichzeitig sichtbar" -- nur der geöffnete Reiter
+   zeigt seinen Inhalt, die anderen laden erst beim ersten Öffnen (siehe
+   bindTabs in index.js). Kein Backend-Endpunkt ändert sich dadurch. */
+
+.tab-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.3rem;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 1rem;
+}
+
+.tab {
+    padding: 0.5rem 0.8rem;
+    margin-bottom: -1px;
+    border: none;
+    border-bottom: 2px solid transparent;
+    background: none;
+    color: var(--text-dim);
+    font: inherit;
+    font-size: 0.92rem;
+    cursor: pointer;
+}
+
+.tab:hover { color: var(--text); }
+.tab.active { color: var(--text); font-weight: 600; border-bottom-color: var(--accent); }
+
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+
+/* Offene Sitzungen als schlichter Umschalter statt eines dauerhaft
+   sichtbaren Tabellenblocks -- ohne offene Sitzungen rendert der Server
+   gar nichts hierher, der Umschalter verschwindet dann von selbst. */
+.sessions-slot { margin-left: auto; }
+
+.sessions-dropdown { position: relative; }
+
+.sessions-dropdown > summary {
+    list-style: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.4rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    font-size: 0.82rem;
+    color: var(--text-dim);
+    background: var(--surface-alt);
+    cursor: pointer;
+}
+
+.sessions-dropdown > summary::-webkit-details-marker { display: none; }
+.sessions-dropdown > summary:hover { color: var(--text); border-color: var(--accent); }
+.sessions-dropdown[open] > summary { color: var(--text); }
+.sessions-dropdown[open] > summary .icon { transform: rotate(180deg); }
+.sessions-dropdown > summary .icon { transition: transform 0.15s ease; }
+
+.sessions-panel {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 0.4rem);
+    z-index: 5;
+    width: max(22rem, 100%);
+    max-width: min(28rem, 90vw);
+    padding: 0.9rem 1rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
+}
+
+.sessions-panel h3 { margin: 0 0 0.6rem; font-size: 0.92rem; }
+.sessions-panel .files td:last-child { text-align: right; white-space: nowrap; }
+
+@media (max-width: 40rem) {
+    .sessions-slot { margin-left: 0; width: 100%; }
+    .sessions-panel { position: static; width: auto; max-width: none; margin-top: 0.6rem; box-shadow: none; }
+}
+
+/* --- Zeilen-Menü (Hörbuch-Tabelle: "Mehr") ----------------------------- */
+/* Seltenere Aktionen (Dateien nachreichen, Cover) wandern hinter "Mehr",
+   die primäre Handlung der Zeile bleibt direkt klickbar. */
+
+.row-menu { position: relative; display: inline-block; }
+
+.row-menu > summary {
+    list-style: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+}
+
+.row-menu > summary::-webkit-details-marker { display: none; }
+
+.row-menu-panel {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 0.3rem);
+    z-index: 5;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    min-width: 11rem;
+    padding: 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
+}
+
+.row-menu-panel form,
+.row-menu-panel .button { width: 100%; }
+.row-menu-panel .button { text-align: left; }
+
+@media (max-width: 40rem) {
+    .row-menu-panel { position: static; box-shadow: none; margin-top: 0.4rem; }
+}
+
+.icon { width: 1em; height: 1em; flex: none; vertical-align: -0.15em; }
+.icon path, .icon line { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+
+/* --- Karten (Von Hand taggen: Metadaten / Titel je Track / OCR) -------- */
+/* Vorher ein einziger verschachtelter Block für drei verschiedene
+   Aufgaben; jetzt sichtbar getrennt, ohne dass sich an den Feldnamen oder
+   Endpunkten etwas ändert. */
+
+.card {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.9rem 1rem 1rem;
+    margin-bottom: 0.9rem;
+    background: var(--surface);
+}
+
+.card:last-child { margin-bottom: 0; }
+.card > h4 { margin: 0 0 0.6rem; font-size: 0.92rem; }
 
 /* --- Schmale Bildschirme ---------------------------------------------- */
 /*
@@ -633,6 +770,9 @@ pre.output { max-height: 22rem; overflow-y: auto; }
     .je-track tbody, .je-track tr, .je-track td { display: block; }
     .je-track tr { padding: 0.5rem 0; border-bottom: 1px solid var(--border); }
     .je-track td { border: none; padding: 0.15rem 0; }
+
+    .tab-bar { gap: 0.15rem; }
+    .tab { padding: 0.5rem 0.55rem; font-size: 0.88rem; }
 }
 
 /* Abgeschaltetes Feld: sichtbar, aber erkennbar außer Betrieb. */

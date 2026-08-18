@@ -8,64 +8,73 @@
 
 {% block inhalt %}
 <section class="step">
-    <h2><span class="step-num">1</span> Dateien auswählen</h2>
-    <p class="hint">
-        Am besten einen kompletten Albumordner wählen – beets erkennt ein Album
-        deutlich sicherer, wenn es alle Tracks auf einmal sieht.
-    </p>
+    <h2><span class="step-num">1</span> Quelle wählen</h2>
 
-    {# Der Upload läuft in index.js per fetch, nicht über htmx: nur so kommt
-       die Ordnerstruktur aus webkitRelativePath beim Server an. #}
-    <form id="upload-form"
-          data-upload-widget
-          data-upload-endpoint="/upload"
-          data-upload-target="#files"
-          data-upload-reveal="#files-step"
-          data-preflight-target="#preflight">
-        <div class="picker">
-            <label class="button" for="upload">Ordner wählen</label>
-            <input type="file" id="upload" name="files" hidden
-                   webkitdirectory directory multiple data-upload-folder>
+    {# Drei Wege zum selben Ziel (Schritt 2: Dateiliste), aber zu jedem
+       Zeitpunkt ist höchstens einer relevant -- vorher standen alle drei
+       gleichzeitig auf der Seite, CD-Sucher und Rip-Status eingeschlossen,
+       auch ganz ohne eingelegte CD. Daten-CD und Audio-CD laden ihren
+       Inhalt jetzt erst beim ersten Öffnen (siehe bindTabs in index.js);
+       an den Endpunkten selbst (/disc, /rip) ändert sich nichts. #}
+    <div data-tabs>
+        <div class="tab-bar" role="tablist">
+            <button type="button" class="tab active" data-tab="upload">Hochladen</button>
+            <button type="button" class="tab" data-tab="datencd" data-tab-lazy="/disc">Daten-CD</button>
+            <button type="button" class="tab" data-tab="audiocd" data-tab-lazy="/rip">Audio-CD rippen</button>
 
-            <label class="button secondary" for="upload-files">Einzelne Dateien</label>
-            <input type="file" id="upload-files" name="files" hidden multiple
-                   accept="audio/*,.flac,.wav,.aiff,.aif,.m4a,.mp3,.ogg,.opus,.wv,.ape"
-                   data-upload-files>
-
-            <button type="submit" id="upload-submit" class="button primary"
-                    data-upload-submit disabled>
-                Hochladen
-            </button>
-            <span id="upload-spinner" class="htmx-indicator spinner" data-upload-spinner>lädt …</span>
+            {# Was noch im Staging liegt. Ohne diesen Umschalter wäre ein
+               Upload nach einem Neuladen zwar noch auf der Platte, aber
+               nicht mehr erreichbar -- die Session-ID steht sonst nur im
+               ausgelieferten HTML. _sessions.html liefert den kompletten
+               Umschalter samt Summary selbst und bleibt leer, wenn nichts
+               offen ist -- dann ist hier nichts zu sehen. #}
+            <div id="sessions" class="sessions-slot" hx-get="/sessions" hx-trigger="load" hx-swap="innerHTML"></div>
         </div>
-    </form>
 
-    <!-- Vorprüfung im Browser: verrät schon vor dem Upload, ob die
-         Dateien verlustfrei sind. -->
-    <div id="preflight"></div>
+        <div class="tab-panel active" data-tab-panel="upload">
+            <p class="hint">
+                Am besten einen kompletten Albumordner wählen – beets erkennt
+                ein Album deutlich sicherer, wenn es alle Tracks auf einmal
+                sieht.
+            </p>
 
-    {# Was noch im Staging liegt. Ohne diese Liste wäre ein Upload nach
-       einem Neuladen zwar noch auf der Platte, aber nicht mehr
-       erreichbar -- die Session-ID steht sonst nur im ausgelieferten
-       HTML. #}
-    <div id="sessions" hx-get="/sessions" hx-trigger="load" hx-swap="innerHTML"></div>
+            {# Der Upload läuft in index.js per fetch, nicht über htmx: nur so
+               kommt die Ordnerstruktur aus webkitRelativePath beim Server an. #}
+            <form id="upload-form"
+                  data-upload-widget
+                  data-upload-endpoint="/upload"
+                  data-upload-target="#files"
+                  data-upload-reveal="#files-step"
+                  data-preflight-target="#preflight">
+                <div class="picker">
+                    <label class="button" for="upload">Ordner wählen</label>
+                    <input type="file" id="upload" name="files" hidden
+                           webkitdirectory directory multiple data-upload-folder>
 
-    {# Zweite Quelle für denselben Schritt: eine eingelegte Daten-CD.
-       Ab der Übernahme ist der Weg identisch mit dem Upload. Geladen wird
-       beim Seitenaufruf -- ohne CD kostet das nichts. #}
-    <div class="disc-source">
-        <h3>… oder von einer eingelegten Daten-CD</h3>
-        <div id="disc" hx-get="/disc" hx-trigger="load" hx-swap="innerHTML">
-            <p class="hint">suche nach einer CD …</p>
+                    <label class="button secondary" for="upload-files">Einzelne Dateien</label>
+                    <input type="file" id="upload-files" name="files" hidden multiple
+                           accept="audio/*,.flac,.wav,.aiff,.aif,.m4a,.mp3,.ogg,.opus,.wv,.ape"
+                           data-upload-files>
+
+                    <button type="submit" id="upload-submit" class="button primary"
+                            data-upload-submit disabled>
+                        Hochladen
+                    </button>
+                    <span id="upload-spinner" class="htmx-indicator spinner" data-upload-spinner>lädt …</span>
+                </div>
+            </form>
+
+            <!-- Vorprüfung im Browser: verrät schon vor dem Upload, ob die
+                 Dateien verlustfrei sind. -->
+            <div id="preflight"></div>
         </div>
-    </div>
 
-    {# Audio-CDs haben kein Dateisystem und müssen gelesen werden. Deshalb
-       getrennt von der Daten-CD, obwohl beide „CD" heißen. #}
-    <div class="disc-source">
-        <h3>… oder von einer Audio-CD (rippen)</h3>
-        <div id="rip" hx-get="/rip" hx-trigger="load" hx-swap="innerHTML">
-            <p class="hint">prüfe das Laufwerk …</p>
+        <div class="tab-panel" data-tab-panel="datencd" id="disc">
+            <p class="hint">wird geladen, sobald der Reiter geöffnet wird …</p>
+        </div>
+
+        <div class="tab-panel" data-tab-panel="audiocd" id="rip">
+            <p class="hint">wird geladen, sobald der Reiter geöffnet wird …</p>
         </div>
     </div>
 </section>

@@ -136,7 +136,9 @@ function render(results, target) {
         </p>
       </div>`;
   } else {
-    banner = '<div class="banner ok"><strong>Alles verlustfrei</strong></div>';
+    // Reine Bestätigung ohne Handlungsbedarf -- kein Kasten, sonst verliert
+    // Farbe als Signal ihre Bedeutung, sobald auch der Normalfall sie trägt.
+    banner = '<p class="hint">Alles verlustfrei.</p>';
   }
 
   const rows = results
@@ -239,6 +241,7 @@ function bindUploadWidget(form) {
       resultTarget.innerHTML = await response.text();
       if (window.htmx) window.htmx.process(resultTarget);
       bindUploadWidgets(resultTarget);
+      bindGenreInputs(resultTarget);
     } catch (error) {
       resultTarget.innerHTML =
         '<div class="banner error"><strong>Upload fehlgeschlagen</strong><p>' +
@@ -461,3 +464,34 @@ function bindGenreInput(input) {
 function bindGenreInputs(root = document) {
   root.querySelectorAll?.("[data-genre-input]").forEach(bindGenreInput);
 }
+
+/* ------------------------------------------------------------- Tabs ------
+ *
+ * Ersetzt "alle Quellen gleichzeitig sichtbar": nur der geöffnete Reiter
+ * zeigt seinen Inhalt. Ein Reiter mit [data-tab-lazy] lädt seinen Inhalt erst
+ * beim ersten Öffnen nach -- auf einer knappen Maschine soll niemand für
+ * eine eingelegte CD oder ein Laufwerk bezahlen, die er gar nicht ansieht.
+ * Delegiert am Dokument, weil die Tab-Leiste beim Seitenaufruf schon steht.
+ */
+document.body.addEventListener("click", (event) => {
+  const tab = event.target.closest("[data-tab]");
+  if (!tab) return;
+  const container = tab.closest("[data-tabs]");
+  if (!container) return;
+
+  container.querySelectorAll(":scope > .tab-bar > .tab").forEach((t) => {
+    t.classList.toggle("active", t === tab);
+  });
+  const panel = container.querySelector(
+    `[data-tab-panel="${tab.dataset.tab}"]`
+  );
+  container.querySelectorAll(":scope > .tab-panel").forEach((p) => {
+    p.classList.toggle("active", p === panel);
+  });
+
+  const url = tab.dataset.tabLazy;
+  if (url && panel && panel.dataset.tabLoaded !== "ja") {
+    panel.dataset.tabLoaded = "ja";
+    if (window.htmx) window.htmx.ajax("GET", url, { target: panel, swap: "innerHTML" });
+  }
+});

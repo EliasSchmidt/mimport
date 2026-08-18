@@ -1188,7 +1188,7 @@ async def ocr_parse(
 
 
 @router.post("/artist-match/{session_id}", response_class=HTMLResponse)
-def artist_match(
+async def artist_match(
     request: Request,
     session_id: str,
     field: str = Form(...),
@@ -1198,7 +1198,10 @@ def artist_match(
     if not session.audio_paths:
         return _fragment(request, "_error.html", message="In dieser Sitzung liegen keine Dateien.")
 
+    formular = await request.form()
     query = name.strip()
+    if not query and field in {"artist", "albumartist"}:
+        query = str(formular.get(field) or "").strip()
     matches = artist_ids.search(query) if query else ()
     exact_count = sum(1 for match in matches if match.exact)
     return _fragment(

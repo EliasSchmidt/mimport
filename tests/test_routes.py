@@ -1458,7 +1458,7 @@ class TestManuellTaggen:
 
         response = client.post(
             f"/artist-match/{session.session_id}",
-            data={"field": "artist", "name": "Alligatoah"},
+            data={"field": "artist", "artist": "Alligatoah"},
         )
         assert response.status_code == 200
         assert "Eindeutiger MusicBrainz-Treffer gefunden" in response.text

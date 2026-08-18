@@ -16,3 +16,4 @@ wheels/
 staging/
 data/
 *.db
+:memory:.ses

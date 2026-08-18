@@ -101,6 +101,10 @@ def _engine():
         try:
             rapidocr_module = importlib.import_module("rapidocr")
             rapid_ocr_class = rapidocr_module.RapidOCR
+            model_type_enum = rapidocr_module.ModelType
+            lang_det_enum = rapidocr_module.LangDet
+            lang_rec_enum = rapidocr_module.LangRec
+            ocr_version_enum = rapidocr_module.OCRVersion
         except Exception as exc:
             raise OcrError(
                 "RapidOCR ist nicht installiert. Bitte 'rapidocr' und 'onnxruntime' "
@@ -114,14 +118,22 @@ def _engine():
             "EngineConfig.onnxruntime.enable_cpu_mem_arena": False,
             "EngineConfig.onnxruntime.intra_op_num_threads": threads,
             "EngineConfig.onnxruntime.inter_op_num_threads": threads,
+            # RapidOCR >=3.9 nutzt für PP-OCRv6 die kleinen Stufen tiny/small/medium.
+            # Für europäische Tracklisten ist die lateinische Variante passender
+            # als reines Englisch. Bei RapidOCR ist sie für DET als 'la' und für
+            # REC als LATIN verfügbar.
+            "Det.model_type": model_type_enum.SMALL,
+            "Det.lang_type": "la",
+            "Det.ocr_version": ocr_version_enum.PPOCRV6,
+            "Rec.model_type": model_type_enum.SMALL,
+            "Rec.lang_type": lang_rec_enum.LATIN,
+            "Rec.ocr_version": ocr_version_enum.PPOCRV6,
         }
 
-        model_type = getattr(rapidocr_module, "ModelType", None)
-        mobile = getattr(model_type, "MOBILE", "mobile") if model_type is not None else "mobile"
-        params["Det.model_type"] = mobile
-        params["Rec.model_type"] = mobile
         if use_angle_cls:
-            params["Cls.model_type"] = mobile
+            params["Cls.model_type"] = getattr(model_type_enum, "MOBILE", "mobile")
+            params["Cls.lang_type"] = lang_det_enum.CH
+            params["Cls.ocr_version"] = ocr_version_enum.PPOCRV4
 
         _ocr_engine_cache = rapid_ocr_class(params=params)
         log.info("OCR-Engine geladen | engine=rapidocr")

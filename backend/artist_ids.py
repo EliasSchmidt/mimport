@@ -43,7 +43,10 @@ def _suche_roh(name: str, *, timeout: float = 5.0, limit: int = 10) -> list[dict
     try:
         antwort = requests.get(
             _MB_ARTIST_URL,
-            params={"query": f'artist:"{suchname}"', "fmt": "json", "limit": limit},
+            # Die normale MusicBrainz-Suche findet deutlich mehr Treffer als ein
+            # zu enges Feld-Query wie artist:"...". Die Exaktheit prüfen wir
+            # danach selbst über den zurückgegebenen Namen.
+            params={"query": suchname, "fmt": "json", "limit": limit},
             headers={"User-Agent": USER_AGENT},
             timeout=timeout,
         )

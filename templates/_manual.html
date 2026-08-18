@@ -23,11 +23,10 @@
                     <input type="hidden" name="mb_albumartistids" data-artist-mbid="albumartist">
                     <button type="button"
                             class="button secondary lookup-button"
-                            hx-post="/artist-match/{{ session_id }}"
-                            hx-include="[name='albumartist']"
-                            hx-vals='{"field":"albumartist"}'
-                            hx-target="#artist-match-albumartist-{{ session_id }}"
-                            hx-swap="innerHTML">🔎</button>
+                            data-artist-search
+                            data-field="albumartist"
+                            data-url="/artist-match/{{ session_id }}"
+                            data-target="#artist-match-albumartist-{{ session_id }}">🔎</button>
                 </div>
                 <small>Sorgt dafür, dass ein Album zusammenbleibt. Bei einem normalen Soloalbum ist das oft derselbe Name wie beim Track-Künstler.</small>
                 <div id="artist-match-albumartist-{{ session_id }}" class="artist-match" data-artist-results="albumartist">
@@ -43,11 +42,10 @@
                     <input type="hidden" name="mb_artistids" data-artist-mbid="artist">
                     <button type="button"
                             class="button secondary lookup-button"
-                            hx-post="/artist-match/{{ session_id }}"
-                            hx-include="[name='artist']"
-                            hx-vals='{"field":"artist"}'
-                            hx-target="#artist-match-artist-{{ session_id }}"
-                            hx-swap="innerHTML">🔎</button>
+                            data-artist-search
+                            data-field="artist"
+                            data-url="/artist-match/{{ session_id }}"
+                            data-target="#artist-match-artist-{{ session_id }}">🔎</button>
                 </div>
                 <small>Das ist der Künstler des einzelnen Tracks. Bei einem normalen Alligatoah-Album ohne Gast-Artists trägst du hier ebenfalls Alligatoah ein.</small>
                 <div id="artist-match-artist-{{ session_id }}" class="artist-match" data-artist-results="artist">

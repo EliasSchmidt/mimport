@@ -1373,7 +1373,8 @@ class TestManuellTaggen:
         assert 'mehrere mit <span class="mono">;</span>' in html
         assert 'Artist-ID in die Datei' in html
         assert 'Track-Künstler' in html
-        assert '/artist-match/' in html
+        assert 'data-artist-search' in html
+        assert 'data-url="/artist-match/' in html
         assert 'Noch kein MusicBrainz-Match ausgewählt.' in html
 
     def test_sampler_bekommt_je_track_einen_interpreten(self, client):

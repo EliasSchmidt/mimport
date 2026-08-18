@@ -351,7 +351,41 @@ function artistZielErgebnis(form, field) {
   return form.querySelector(`[data-artist-results="${field}"]`);
 }
 
+function artistSuche(button) {
+  const form = button.closest("form");
+  if (!form) return;
+
+  const field = String(button.dataset.field || "");
+  const url = String(button.dataset.url || "");
+  const target = String(button.dataset.target || "");
+  const input = artistZielFeld(form, field);
+  const mbid = artistZielMbid(form, field);
+  if (!field || !url || !target || !input || !window.htmx) return;
+
+  if (mbid) {
+    mbid.value = "";
+    delete mbid.dataset.selectedName;
+  }
+
+  window.htmx.ajax("POST", url, {
+    source: button,
+    target,
+    swap: "innerHTML",
+    values: {
+      field,
+      name: input.value.trim(),
+    },
+  });
+}
+
 document.body.addEventListener("click", (event) => {
+  const suchButton = event.target.closest("[data-artist-search]");
+  if (suchButton) {
+    event.preventDefault();
+    artistSuche(suchButton);
+    return;
+  }
+
   const button = event.target.closest("[data-artist-choose]");
   if (!button) return;
 
@@ -375,6 +409,18 @@ document.body.addEventListener("click", (event) => {
     `${label}: MusicBrainz-Match gewählt`,
     `${name} wird mit Artist-ID geschrieben.`,
   );
+});
+
+document.body.addEventListener("keydown", (event) => {
+  const input = event.target.closest("[data-artist-field]");
+  if (!input || event.key !== "Enter") return;
+
+  event.preventDefault();
+  const form = input.closest("form");
+  if (!form) return;
+  const field = String(input.dataset.artistField || "");
+  const suchButton = form.querySelector(`[data-artist-search][data-field="${field}"]`);
+  if (suchButton) artistSuche(suchButton);
 });
 
 document.body.addEventListener("input", (event) => {

@@ -127,9 +127,10 @@ def test_dateiliste_nach_upload_passt(browser, server):
         seite.wait_for_selector("#files-inner", timeout=20000)
         assert ueberlauf(seite) <= 0
 
-        # Auch mit aufgeklapptem Formular für das Taggen von Hand.
-        seite.click("details.manuell > summary")
-        seite.click("details.je-track > summary")
+        # Auch mit aufgeklapptem Formular für das Taggen von Hand -- die
+        # Tabelle "Titel je Track" steht darin als eigene Karte, ohne
+        # weiteres Aufklappen.
+        seite.click("details.manual > summary")
         seite.wait_for_timeout(200)
         assert ueberlauf(seite) <= 0
     finally:
@@ -199,10 +200,12 @@ def test_samplerhaken_stellt_die_felder_ein(browser, server):
         )
         seite.click("#upload-submit")
         seite.wait_for_selector("#files-inner", timeout=20000)
-        seite.click("details.manuell > summary")
+        seite.click("details.manual > summary")
 
         albumartist = seite.locator("[data-albumartist]")
-        interpret = seite.locator("[data-alle-interpreten] input")
+        # Das Feld liegt neben einem versteckten Eingang für die MusicBrainz-ID
+        # (Artist-Lookup) -- ohne den Typ wären es zwei Treffer im Strict Mode.
+        interpret = seite.locator("[data-alle-interpreten] input[type=text]")
         hinweis = seite.locator("[data-sampler-hinweis]")
 
         assert albumartist.input_value() == ""
@@ -234,7 +237,7 @@ def test_eigener_albumkuenstler_bleibt_stehen(browser, server):
         )
         seite.click("#upload-submit")
         seite.wait_for_selector("#files-inner", timeout=20000)
-        seite.click("details.manuell > summary")
+        seite.click("details.manual > summary")
 
         seite.fill("[data-albumartist]", "Deutsche Grammophon")
         seite.check("[data-sampler]")
@@ -257,7 +260,7 @@ def test_genre_vorschlaege_werden_beim_tippen_aktualisiert(browser, server):
         )
         seite.click("#upload-submit")
         seite.wait_for_selector("#files-inner", timeout=20000)
-        seite.click("details.manuell > summary")
+        seite.click("details.manual > summary")
 
         genre = seite.locator("[data-genre-input]")
         genre.fill("ja")
@@ -420,7 +423,9 @@ def test_beilaeufige_erlaubnis_aktualisiert_den_kasten(browser, server):
             """
         )
         seite.goto(server + "/musik", wait_until="networkidle")
-        # Ein anderer Knopf auf der Seite, nicht der im Kasten.
+        # Ein anderer Knopf auf der Seite, nicht der im Kasten -- der
+        # Daten-CD-Reiter lädt seinen Inhalt erst beim Öffnen nach.
+        seite.get_by_role("button", name="Daten-CD").click()
         seite.get_by_role("button", name="Neu einlesen").click()
         seite.locator("#benachrichtigung").get_by_text(
             "Browsereinstellungen"

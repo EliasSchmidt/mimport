@@ -19,10 +19,12 @@
         </details>
     </div>
     {% else %}
-    <div class="banner ok">
-        <strong>Alle {{ summary.total }}
-            {{ "Datei" if summary.total == 1 else "Dateien" }} verlustfrei</strong>
-    </div>
+    {# Reine Bestätigung ohne Handlungsbedarf -- kein Kasten, sonst verliert
+       Farbe als Signal ihre Bedeutung, sobald auch der Normalfall sie trägt. #}
+    <p class="hint">
+        Alle {{ summary.total }}
+        {{ "Datei" if summary.total == 1 else "Dateien" }} verlustfrei.
+    </p>
     {% endif %}
 
     {% if summary.unreadable %}

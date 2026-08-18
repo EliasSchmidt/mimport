@@ -44,7 +44,7 @@ class TestIndex:
     def test_musikseite_hat_den_ganzen_ablauf(self, client):
         response = client.get("/musik")
         assert response.status_code == 200
-        assert "Dateien auswählen" in response.text
+        assert "Quelle wählen" in response.text
         assert "Match auswählen" in response.text
         assert "upload-form" in response.text
 
@@ -609,7 +609,7 @@ class TestOffeneSitzungen:
 
         # Der Browser ist zu, die ID existiert nirgends mehr. Neue Seite:
         liste = client.get("/sessions")
-        assert "Unterbrochene Sitzungen" in liste.text
+        assert "offene Sitzung" in liste.text
         assert "Abbey Road" in liste.text
 
         # Über die Liste zurück in denselben Ablauf.
@@ -643,7 +643,7 @@ class TestOffeneSitzungen:
         assert zweite.session_id in response.text
         assert not erste.directory.exists()
         assert zweite.directory.is_dir()
-        assert "Unterbrochene Sitzungen" in response.text
+        assert "offene Sitzung" in response.text
 
     def test_cd_uebernahme_behaelt_den_ordnernamen(self, client, tmp_path, monkeypatch):
         """Sonst hieße die Sitzung später nur nach ihrer ersten Datei."""

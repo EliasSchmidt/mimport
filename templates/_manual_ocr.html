@@ -1,5 +1,31 @@
 <div id="manual-ocr-{{ session_id }}" class="manual-ocr">
-    <div class="manual-ocr-tools">
+    <div class="card je-track">
+        <h4>Titel je Track ({{ track_inputs | length }})</h4>
+        <table class="files">
+            <thead>
+                <tr><th>Datei</th><th>Nr.</th><th>Titel</th><th>Track-Künstler</th><th>Dauer</th></tr>
+            </thead>
+            <tbody>
+                {% for row in track_inputs %}
+                <tr>
+                    <td class="name small">{{ row.display }}</td>
+                    <td class="mono small">{{ row.track or "–" }}</td>
+                    <td><input type="text" name="titel:{{ row.key }}" value="{{ row.title }}"></td>
+                    <td><input type="text" name="interpret:{{ row.key }}" value="{{ row.artist }}"></td>
+                    <td class="mono small">{{ row.duration or "–" }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <p class="hint">
+            Mehrere Track-Künstler mit <span class="mono">;</span> oder
+            <span class="mono">feat.</span> trennen. „Text erkennen" unten füllt
+            diese Tabelle aus dem Backcover vor; sie bleibt danach vollständig
+            bearbeitbar.
+        </p>
+    </div>
+
+    <div class="card">
         <h4>Backcover-Text (OCR)</h4>
         <p class="hint">
             Foto hochladen oder mit dem Handy direkt aufnehmen. Das Ergebnis ist
@@ -64,8 +90,8 @@
         {% endif %}
 
         {% if ocr_overlay %}
-        <details class="ocr-debug" open>
-            <summary>OCR im Bild anzeigen ({{ ocr_overlay.detections | length }} Treffer)</summary>
+        <details class="ocr-debug">
+            <summary>Technische Details: OCR im Bild anzeigen ({{ ocr_overlay.detections | length }} Treffer)</summary>
             <p class="hint">
                 So sieht man direkt, welche Zeilen PaddleOCR wirklich im Backcover
                 gefunden hat — inklusive Lage im Bild.
@@ -89,28 +115,4 @@
         </details>
         {% endif %}
     </div>
-
-    <details class="je-track" open>
-        <summary>Titel und Track-Künstler je Track ({{ track_inputs | length }})</summary>
-        <table class="files">
-            <thead>
-                <tr><th>Datei</th><th>Nr.</th><th>Titel</th><th>Track-Künstler</th><th>Dauer</th></tr>
-            </thead>
-            <tbody>
-                {% for row in track_inputs %}
-                <tr>
-                    <td class="name small">{{ row.display }}</td>
-                    <td class="mono small">{{ row.track or "–" }}</td>
-                    <td><input type="text" name="titel:{{ row.key }}" value="{{ row.title }}"></td>
-                    <td><input type="text" name="interpret:{{ row.key }}" value="{{ row.artist }}"></td>
-                    <td class="mono small">{{ row.duration or "–" }}</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-        <p class="hint">
-            Mehrere Track-Künstler mit <span class="mono">;</span> oder
-            <span class="mono">feat.</span> trennen.
-        </p>
-    </details>
 </div>

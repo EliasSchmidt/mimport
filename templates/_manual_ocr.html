@@ -63,7 +63,7 @@
 
         {% if ocr_overlay %}
         <details class="ocr-debug" open>
-            <summary>OCR im Bild anzeigen ({{ ocr_overlay.items | length }} Treffer)</summary>
+            <summary>OCR im Bild anzeigen ({{ ocr_overlay.detections | length }} Treffer)</summary>
             <p class="hint">
                 So sieht man direkt, welche Zeilen PaddleOCR wirklich im Backcover
                 gefunden hat — inklusive Lage im Bild.
@@ -76,7 +76,7 @@
                     <image href="{{ ocr_overlay.image_url }}"
                            width="{{ ocr_overlay.image_width }}"
                            height="{{ ocr_overlay.image_height }}" />
-                    {% for item in ocr_overlay.items %}
+                    {% for item in ocr_overlay.detections %}
                     <polygon points="{{ item.points }}" class="ocr-poly"></polygon>
                     <text x="{{ item.x }}" y="{{ item.y - 4 if item.y > 8 else item.y + 14 }}" class="ocr-label">
                         {{ item.text }} · {{ item.score }} %

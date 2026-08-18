@@ -124,10 +124,10 @@ def _session_cover_version(session: sessions.StagingSession) -> str:
 
 
 def _ocr_overlay(result: ocr.OcrResult, image_url: str) -> dict[str, object]:
-    items: list[dict[str, object]] = []
+    detections: list[dict[str, object]] = []
     for detection in result.detections:
         points = " ".join(f"{x:.2f},{y:.2f}" for x, y in detection.box)
-        items.append(
+        detections.append(
             {
                 "points": points,
                 "text": detection.text,
@@ -140,7 +140,7 @@ def _ocr_overlay(result: ocr.OcrResult, image_url: str) -> dict[str, object]:
         "image_url": image_url,
         "image_width": result.image_width,
         "image_height": result.image_height,
-        "items": items,
+        "detections": detections,
     }
 
 

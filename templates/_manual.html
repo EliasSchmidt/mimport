@@ -1,10 +1,31 @@
 {# Handarbeit für den Fall, dass kein Vorschlag passt.
    OCR ist nur Vorbelegung: der Nutzer korrigiert anschließend in der Tabelle. #}
+{# Nicht jeder Aufrufer lädt einen Entwurf (z. B. der Match-Weg) -- "draft"
+   kann daher undefiniert sein. "or {}" prüft nur Wahrheitswert, keinen
+   Attributzugriff, und bricht deshalb nicht wie ein direktes draft.feld es
+   bei einem undefinierten draft täte. #}
+{% set draft = draft or {} %}
 <details class="manual">
     <summary>Tags selbst setzen (von Hand taggen)</summary>
     <div class="manual-form"
          data-manual-form
          hx-on::after-request="document.getElementById(&#39;result-step&#39;).hidden = false">
+        {# Sichert eingetippte Felder zwischendurch, damit eine unterbrochene
+           Sitzung (Browser zu, Gerät gewechselt) sie nicht kostet -- kein
+           Datei-Tag wird dadurch geschrieben. "from:closest" hängt den
+           Listener an dieses Formular, ausgelöst wird aber dieses (sonst
+           unsichtbare) Element, damit "Übernehmen"-Klicks in den
+           MusicBrainz-Ergebnissen (die selbst kein <input>/<select> sind)
+           nicht versehentlich mitzählen. stopPropagation verhindert, dass der
+           Autosave selbst wie ein Absenden aussieht und Schritt 4 aufdeckt. #}
+        <div hidden
+             data-draft-autosave
+             hx-post="/entwurf/{{ session_id }}"
+             hx-trigger="input changed delay:1500ms from:closest [data-manual-form]"
+             hx-include="closest [data-manual-form]"
+             hx-params="not bild"
+             hx-swap="none"
+             hx-on::after-request="event.stopPropagation()"></div>
         <div class="card">
             <h4>Metadaten</h4>
             <p class="hint">
@@ -25,8 +46,9 @@
                          hx-swap="innerHTML"
                          hx-indicator="#lookup-spinner-albumartist-{{ session_id }}">
                         <input type="text" name="albumartist" data-albumartist data-artist-field="albumartist"
-                               placeholder="z. B. The Beatles">
-                        <input type="hidden" name="mb_albumartistids" data-artist-mbid="albumartist">
+                               placeholder="z. B. The Beatles" value="{{ draft.albumartist or '' }}">
+                        <input type="hidden" name="mb_albumartistids" data-artist-mbid="albumartist"
+                               value="{{ draft.mb_albumartistids or '' }}">
                         <button type="button" class="button secondary lookup-button" aria-label="Bei MusicBrainz suchen">
                             <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M11 11l4 4M7.2 12.4a5.2 5.2 0 1 0 0-10.4 5.2 5.2 0 0 0 0 10.4z"/></svg>
                         </button>
@@ -39,7 +61,7 @@
                     </div>
                 </label>
                 <label>Album
-                    <input type="text" name="album" placeholder="z. B. Abbey Road">
+                    <input type="text" name="album" placeholder="z. B. Abbey Road" value="{{ draft.album or '' }}">
                 </label>
                 <label data-alle-interpreten>Track-Künstler <small>(für alle Tracks)</small>
                     <div class="lookup-field"
@@ -50,8 +72,10 @@
                          hx-target="#artist-match-artist-{{ session_id }}"
                          hx-swap="innerHTML"
                          hx-indicator="#lookup-spinner-artist-{{ session_id }}">
-                        <input type="text" name="artist" data-artist-field="artist" placeholder="z. B. Harmonic Brass">
-                        <input type="hidden" name="mb_artistids" data-artist-mbid="artist">
+                        <input type="text" name="artist" data-artist-field="artist" placeholder="z. B. Harmonic Brass"
+                               value="{{ draft.artist or '' }}">
+                        <input type="hidden" name="mb_artistids" data-artist-mbid="artist"
+                               value="{{ draft.mb_artistids or '' }}">
                         <button type="button" class="button secondary lookup-button" aria-label="Bei MusicBrainz suchen">
                             <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M11 11l4 4M7.2 12.4a5.2 5.2 0 1 0 0-10.4 5.2 5.2 0 0 0 0 10.4z"/></svg>
                         </button>
@@ -64,7 +88,7 @@
                     </div>
                 </label>
                 <label>Jahr
-                    <input type="text" name="year" inputmode="numeric" placeholder="1969">
+                    <input type="text" name="year" inputmode="numeric" placeholder="1969" value="{{ draft.year or '' }}">
                 </label>
                 <label>Genre <small>(mehrere mit <span class="mono">;</span>)</small>
                     <input type="text"
@@ -72,7 +96,8 @@
                            placeholder="z. B. Jazz; Fusion"
                            list="genre-vorschlaege-{{ session_id }}"
                            autocomplete="off"
-                           data-genre-input>
+                           data-genre-input
+                           value="{{ draft.genre or '' }}">
                     <small>Beim Tippen erscheinen Vorschläge aus dem Projektkatalog; Freitext bleibt erlaubt.</small>
                 </label>
             </div>
@@ -84,7 +109,7 @@
             </datalist>
 
             <label class="checkbox">
-                <input type="checkbox" name="compilation" value="true" data-sampler>
+                <input type="checkbox" name="compilation" value="true" data-sampler {% if draft.compilation %}checked{% endif %}>
                 Sampler (Various Artists)
             </label>
             <p class="hint" data-sampler-hinweis hidden>

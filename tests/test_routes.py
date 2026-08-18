@@ -1474,6 +1474,98 @@ class TestManuellTaggen:
         assert "kein Feld" in response.text
 
 
+class TestEntwurfWiederherstellen:
+    """Halb ausgefüllte Tagging-Felder überleben eine unterbrochene Sitzung.
+
+    Getestet wird die reine HTTP-Seite (Feldwerte im ausgelieferten HTML) --
+    dass ein Browser das Formular tatsächlich per Debounce zwischendurch
+    abschickt, prüft test_mobil.py mit einem echten Browser.
+    """
+
+    def _session_mit(self, namen):
+        from tests.flacfixture import write_flac
+
+        session = sessions.create_session()
+        for name in namen:
+            write_flac(session.directory / name, seconds=5)
+        return session
+
+    def test_gespeicherter_entwurf_taucht_beim_naechsten_laden_wieder_auf(self, client):
+        session = self._session_mit(["01.flac"])
+        client.post(
+            f"/entwurf/{session.session_id}",
+            data={
+                "albumartist": "Windsbacher Knabenchor",
+                "album": "Nun singet und seid froh",
+                "year": "1985",
+                "genre": "Chormusik",
+                "compilation": "true",
+                "titel:01.flac": "Stille Nacht",
+            },
+        )
+
+        html = client.get(f"/session/{session.session_id}").text
+        assert 'value="Windsbacher Knabenchor"' in html
+        assert 'value="Nun singet und seid froh"' in html
+        assert 'value="1985"' in html
+        assert 'value="Chormusik"' in html
+        assert 'name="compilation" value="true" data-sampler checked' in html
+        assert 'name="titel:01.flac" value="Stille Nacht"' in html
+
+    def test_ohne_entwurf_bleiben_die_felder_leer(self, client):
+        session = self._session_mit(["01.flac"])
+        html = client.get(f"/session/{session.session_id}").text
+        assert 'name="albumartist" data-albumartist data-artist-field="albumartist"' in html
+        assert 'value="Windsbacher' not in html
+
+    def test_geschriebene_tags_raeumen_den_entwurf_weg(self, client):
+        session = self._session_mit(["01.flac"])
+        client.post(f"/entwurf/{session.session_id}", data={"album": "Zwischenstand"})
+        assert sessions.load_draft(session) == {"album": "Zwischenstand"}
+
+        client.post(f"/manual/{session.session_id}", data={"album": "Endgültig"})
+        assert sessions.load_draft(session) == {}
+
+    def test_matches_suchen_wischt_den_entwurf_nicht_weg(self, client, monkeypatch):
+        """_candidates.html bindet _manual.html mit ein. Ohne den Entwurf beim
+        /match-Rendern wären die schon eingetippten Felder nach einem Klick
+        auf "Matches suchen" plötzlich leer -- und der nächste Autosave-Tick
+        hätte diese Leere sogar in den Entwurf zurückgeschrieben."""
+        from backend import matching
+
+        session = self._session_mit(["01.flac"])
+        client.post(
+            f"/entwurf/{session.session_id}",
+            data={"albumartist": "Windsbacher Knabenchor", "year": "1985"},
+        )
+
+        monkeypatch.setattr(
+            matching,
+            "find_candidates",
+            lambda *a, **k: matching.MatchResult(
+                current_artist="", current_album="", recommendation="none"
+            ),
+        )
+        html = client.post(f"/match/{session.session_id}", data={}).text
+
+        assert 'value="Windsbacher Knabenchor"' in html
+        assert 'value="1985"' in html
+
+    def test_datei_upload_wird_beim_entwurf_ignoriert(self, client):
+        """``hx-params=\"not bild\"`` verhindert, dass jeder Autosave-Tick das
+        OCR-Backcoverfoto erneut mitschickt -- diese Route soll trotzdem nicht
+        daran scheitern, falls ein Client es doch schickt."""
+        session = self._session_mit(["01.flac"])
+        response = client.post(
+            f"/entwurf/{session.session_id}",
+            data={"album": "Etwas"},
+            files={"bild": ("cover.jpg", b"\xff\xd8\xff", "image/jpeg")},
+        )
+        assert response.status_code == 200
+        draft = sessions.load_draft(session)
+        assert draft.get("album") == "Etwas"
+
+
 class TestAlbenCover:
     """Cover für ein bereits importiertes Album nachträglich ändern.
 

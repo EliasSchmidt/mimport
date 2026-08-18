@@ -121,6 +121,57 @@ class TestSessions:
         sessions.cleanup_if_empty(session)
         assert not session.directory.exists()
 
+    def test_aufraeumen_haengt_nicht_am_liegen_gebliebenen_entwurf(self):
+        """Ein Entwurf ist kein "echtes" Dateiüberbleibsel -- ohne den
+        expliziten delete_draft() in cleanup_if_empty() zählt ``remaining``
+        ihn aber mit, und der sonst leere Ordner bliebe für immer liegen."""
+        session = sessions.create_session()
+        (session.directory / "a.flac").write_bytes(b"x")
+        sessions.save_draft(session, {"albumartist": "Windsbacher Knabenchor"})
+
+        (session.directory / "a.flac").unlink()
+        sessions.cleanup_if_empty(session)
+        assert not session.directory.exists()
+
+
+class TestEntwurf:
+    """Halb ausgefüllte Tagging-Felder überleben eine unterbrochene Sitzung."""
+
+    def test_ohne_entwurf_kommt_ein_leeres_dict(self):
+        session = sessions.create_session()
+        assert sessions.load_draft(session) == {}
+
+    def test_gespeichertes_kommt_unverändert_zurück(self):
+        session = sessions.create_session()
+        felder = {"albumartist": "Windsbacher Knabenchor", "year": "1985"}
+        sessions.save_draft(session, felder)
+        assert sessions.load_draft(session) == felder
+
+    def test_erneutes_speichern_ersetzt_den_alten_stand(self):
+        session = sessions.create_session()
+        sessions.save_draft(session, {"album": "Erster Versuch"})
+        sessions.save_draft(session, {"album": "Zweiter Versuch"})
+        assert sessions.load_draft(session) == {"album": "Zweiter Versuch"}
+
+    def test_geloeschter_entwurf_kommt_leer_zurück(self):
+        session = sessions.create_session()
+        sessions.save_draft(session, {"album": "Etwas"})
+        sessions.delete_draft(session)
+        assert sessions.load_draft(session) == {}
+
+    def test_kaputte_datei_gilt_als_kein_entwurf(self):
+        """Ein defekter/leerer Entwurf darf die Sitzung nicht sprengen --
+        nur beim Wiederherstellen ist er dann eben leer."""
+        session = sessions.create_session()
+        (session.directory / ".mimport-entwurf.json").write_text("{kaputt")
+        assert sessions.load_draft(session) == {}
+
+    def test_der_entwurf_taucht_nicht_bei_den_audiodateien_auf(self):
+        session = sessions.create_session()
+        (session.directory / "a.flac").write_bytes(b"x")
+        sessions.save_draft(session, {"album": "Etwas"})
+        assert [p.name for p in session.audio_paths] == ["a.flac"]
+
 
 class TestUsageBytes:
     """Der Platzverbrauch über alle Sessions -- Grundlage des Gesamtbudgets."""

@@ -11,6 +11,7 @@ nur innerhalb des Session-Ordners landen.
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 import secrets
@@ -321,10 +322,51 @@ def sweep_expired(max_age_hours: int, keep: str | None = None) -> int:
     return removed
 
 
+#: Zwischenstand des Handtagging-Formulars -- kein Datei-Tag, nur Text, damit
+#: eine unterbrochene Sitzung (Browser zu, Gerät gewechselt) nicht auch noch
+#: die halb ausgefüllten Felder kostet. Führender Punkt: taucht dadurch nicht
+#: unter den Audiodateien auf (``audio_paths`` filtert ohnehin nach Endung).
+_DRAFT_DATEINAME = ".mimport-entwurf.json"
+
+
+def _draft_path(session: StagingSession) -> Path:
+    return session.directory / _DRAFT_DATEINAME
+
+
+def save_draft(session: StagingSession, felder: dict[str, str]) -> None:
+    """Sichert die aktuellen Formularwerte. Überschreibt den letzten Stand
+    komplett -- der Aufrufer schickt immer das ganze Formular, nicht nur ein
+    geändertes Feld."""
+    try:
+        _draft_path(session).write_text(json.dumps(felder, ensure_ascii=False), encoding="utf-8")
+    except OSError:
+        log.warning("Entwurf konnte nicht gespeichert werden: %s", session.session_id)
+
+
+def load_draft(session: StagingSession) -> dict[str, str]:
+    """Der zuletzt gesicherte Formularstand, oder leer, wenn es keinen gibt."""
+    try:
+        roh = _draft_path(session).read_text(encoding="utf-8")
+    except OSError:
+        return {}
+    try:
+        daten = json.loads(roh)
+    except ValueError:
+        return {}
+    return daten if isinstance(daten, dict) else {}
+
+
+def delete_draft(session: StagingSession) -> None:
+    _draft_path(session).unlink(missing_ok=True)
+
+
 def cleanup_if_empty(session: StagingSession) -> None:
     """Entfernt den Session-Ordner, wenn beets alle Dateien verschoben hat."""
     if not session.directory.is_dir():
         return
+    # Zuerst den Entwurf weg -- sonst zählt er unten als "noch was da" und der
+    # sonst leere Ordner bliebe für immer liegen.
+    delete_draft(session)
     remaining = [p for p in session.directory.rglob("*") if p.is_file()]
     if not remaining:
         shutil.rmtree(session.directory, ignore_errors=True)

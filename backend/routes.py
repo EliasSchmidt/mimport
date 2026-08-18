@@ -164,18 +164,32 @@ def _mbid_field(field: str) -> str:
 def _track_inputs(
     session: sessions.StagingSession,
     parsed: list[trackparse.ParsedTrack] | None = None,
+    draft: dict[str, str] | None = None,
 ) -> list[dict[str, str]]:
-    """Track-Eingaben fürs manuelle Formular, optional aus Parser vorbefüllt."""
+    """Track-Eingaben fürs manuelle Formular, optional aus Parser vorbefüllt.
+
+    Ein frischer Parser-Lauf (``parsed``) geht immer vor -- ein gesicherter
+    Entwurf (``draft``) füllt nur, was sonst leer bliebe. So gewinnt "Text
+    erkennen" gegen einen älteren Entwurf, statt von ihm überschrieben zu
+    werden.
+    """
     parsed = parsed or []
+    draft = draft or {}
     rows: list[dict[str, str]] = []
     for index, file in enumerate(_track_files(session)):
         row = parsed[index] if index < len(parsed) else None
+        title = (row.title if row else "").strip()
+        artist = (row.artist if row else "").strip()
+        if not title:
+            title = str(draft.get(f"titel:{file['key']}") or "").strip()
+        if not artist:
+            artist = str(draft.get(f"interpret:{file['key']}") or "").strip()
         rows.append(
             {
                 "key": file["key"],
                 "display": file["display"],
-                "title": (row.title if row else "").strip(),
-                "artist": (row.artist if row else "").strip(),
+                "title": title,
+                "artist": artist,
                 "track": (row.number if row else "").strip(),
                 "duration": (row.duration if row else "").strip(),
             }
@@ -194,6 +208,7 @@ def _files_fragment(request: Request, session: sessions.StagingSession) -> HTMLR
         audio.inspect_file(path, display_name=str(path.relative_to(session.directory)))
         for path in session.audio_paths
     ]
+    draft = sessions.load_draft(session)
     return _fragment(
         request,
         "_files.html",
@@ -202,10 +217,11 @@ def _files_fragment(request: Request, session: sessions.StagingSession) -> HTMLR
         summary=audio.summarize(infos),
         health=beets_env.health(),
         parse_modes=trackparse.modes(),
-        parse_mode=DEFAULT_PARSE_MODE,
-        ocr_text="",
+        parse_mode=str(draft.get("mode") or DEFAULT_PARSE_MODE),
+        ocr_text=str(draft.get("ocr_text") or ""),
         ocr_warnings=[],
-        track_inputs=_track_inputs(session),
+        track_inputs=_track_inputs(session, draft=draft),
+        draft=draft,
         genre_vorschlaege=genres.katalog(),
         cover_present=cover.vorhanden(session.directory),
         cover_version=_session_cover_version(session),
@@ -1012,6 +1028,11 @@ def match(
         artist=artist.strip() or None,
         album=album.strip() or None,
     )
+    # _candidates.html bindet _manual.html mit ein -- ohne den Entwurf hier
+    # würde ein Klick auf "Matches suchen" die schon eingetippten Handtagging-
+    # Felder unsichtbar machen (der nächste Autosave-Tick hätte sie dann auch
+    # im Entwurf überschrieben).
+    draft = sessions.load_draft(session)
     return _fragment(
         request,
         "_candidates.html",
@@ -1019,10 +1040,11 @@ def match(
         result=result,
         file_count=len(paths),
         parse_modes=trackparse.modes(),
-        parse_mode=DEFAULT_PARSE_MODE,
-        ocr_text="",
+        parse_mode=str(draft.get("mode") or DEFAULT_PARSE_MODE),
+        ocr_text=str(draft.get("ocr_text") or ""),
         ocr_warnings=[],
-        track_inputs=_track_inputs(session),
+        track_inputs=_track_inputs(session, draft=draft),
+        draft=draft,
         genre_vorschlaege=genres.katalog(),
         ocr_overlay=None,
     )
@@ -1226,6 +1248,28 @@ async def artist_match(
     )
 
 
+@router.post("/entwurf/{session_id}", response_class=HTMLResponse)
+async def entwurf_speichern(request: Request, session_id: str) -> HTMLResponse:
+    """Sichert das Handtagging-Formular zwischendurch, im Hintergrund.
+
+    Schreibt keinen Datei-Tag -- nur Klartext in einen Sitzungs-Ordner, damit
+    eine unterbrochene Sitzung die halb ausgefüllten Felder nicht kostet.
+    Antwortet absichtlich leer (``hx-swap="none"``); ein Fehler hier soll das
+    Tippen nicht stören.
+    """
+    session = _session_or_404(session_id)
+    formular = await request.form()
+    # "not bild" in hx-params hält Dateifelder normalerweise schon draußen;
+    # nur Text landet im Entwurf -- ein Upload wird nicht zwischengesichert.
+    felder = {
+        str(schluessel): wert.strip()
+        for schluessel, wert in formular.items()
+        if isinstance(wert, str) and wert.strip()
+    }
+    sessions.save_draft(session, felder)
+    return HTMLResponse("")
+
+
 @router.post("/manual/{session_id}", response_class=HTMLResponse)
 async def manual(
     request: Request,
@@ -1281,6 +1325,9 @@ async def manual(
             "_error.html",
             message="Es wurde kein Feld ausgefüllt -- nichts zu schreiben.",
         )
+    # Die Felder stehen jetzt als echte Datei-Tags fest -- der Entwurf hat
+    # seinen Zweck erfüllt und würde beim nächsten Öffnen nur noch verwirren.
+    sessions.delete_draft(session)
     return _fragment(
         request,
         "_applied.html",

@@ -271,6 +271,7 @@ bindGenreInputs();
 document.body.addEventListener("htmx:afterSwap", (event) => {
   bindUploadWidgets(event.detail.target);
   bindGenreInputs(event.detail.target);
+  initSamplerZustand(event.detail.target);
 
   const reveal = { candidates: "match-step", result: "result-step" };
   const stepId = reveal[event.detail.target.id];
@@ -335,6 +336,14 @@ function samplerUmschalten(haken) {
 document.body.addEventListener("change", (event) => {
   if (event.target.matches("[data-sampler]")) samplerUmschalten(event.target);
 });
+
+/** Ein aus einem Entwurf wiederhergestelltes, schon angehaktes Häkchen
+ * bekommt sonst nie das "change"-Ereignis, das Feld für den Track-Künstler
+ * bliebe also fälschlich aktiv. */
+function initSamplerZustand(root = document) {
+  root.querySelectorAll?.("[data-sampler]:checked").forEach(samplerUmschalten);
+}
+initSamplerZustand();
 
 /* ------------------------------------------ MusicBrainz-Künstlerwahl -----
  *

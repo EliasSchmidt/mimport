@@ -161,8 +161,7 @@ main, .page-head, .page-foot { max-width: 62rem; margin: 0 auto; }
 
 .open-sessions .files td:last-child { text-align: right; white-space: nowrap; }
 
-/* Fortschritt beim Rippen -- der einzige Vorgang, der lange genug dauert, um
-   eine Anzeige zu rechtfertigen. */
+/* Fortschritt beim Rippen und für längere Import-Schritte. */
 .progress {
     height: 0.5rem;
     margin: 0.6rem 0 0;
@@ -175,6 +174,17 @@ main, .page-head, .page-foot { max-width: 62rem; margin: 0 auto; }
     height: 100%;
     background: var(--accent);
     transition: width 0.4s ease;
+}
+
+.progress-indeterminate .progress-bar {
+    width: 35%;
+    animation: progress-indeterminate 1.2s ease-in-out infinite;
+}
+
+@keyframes progress-indeterminate {
+    0% { transform: translateX(-120%); }
+    50% { transform: translateX(90%); }
+    100% { transform: translateX(240%); }
 }
 
 .fields {

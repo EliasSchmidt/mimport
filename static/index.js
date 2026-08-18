@@ -163,6 +163,15 @@ function optionalTarget(selector) {
   return selector ? document.querySelector(selector) : null;
 }
 
+function renderBusy(text) {
+  return `
+    <div class="banner info">
+      <strong>${escapeHtml(text)}</strong>
+      <p>Je nach Größe und Laufwerk kann das etwas dauern.</p>
+      <div class="progress progress-indeterminate"><div class="progress-bar"></div></div>
+    </div>`;
+}
+
 function bindUploadWidget(form) {
   if (!form || form.dataset.uploadBound === "ja") return;
   form.dataset.uploadBound = "ja";
@@ -216,10 +225,14 @@ function bindUploadWidget(form) {
       });
     }
 
-    if (submitButton) submitButton.disabled = true;
+    const buttons = Array.from(form.querySelectorAll("button"));
+    const vorherDisabled = new Map(buttons.map((button) => [button, button.disabled]));
+    buttons.forEach((button) => {
+      button.disabled = true;
+    });
     form.classList.add("busy");
     if (revealTarget) revealTarget.hidden = false;
-    resultTarget.innerHTML = `<p class="hint">${escapeHtml(progressText)}</p>`;
+    resultTarget.innerHTML = renderBusy(progressText);
 
     try {
       const response = await fetch(action, { method: "POST", body: payload });
@@ -232,7 +245,9 @@ function bindUploadWidget(form) {
         escapeHtml(String(error)) +
         "</p></div>";
     } finally {
-      if (submitButton) submitButton.disabled = false;
+      buttons.forEach((button) => {
+        button.disabled = vorherDisabled.get(button) ?? false;
+      });
       form.classList.remove("busy");
     }
   }

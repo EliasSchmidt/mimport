@@ -147,6 +147,7 @@ class TestAudiobookUpload:
         assert response.status_code == 200
         assert "audiobook-upload-form" in response.text
         assert "Dateien übernehmen" in response.text
+        assert 'id="audiobook-loading"' in response.text
 
     def test_ordnerstruktur_wird_im_buch_erhalten(self, client, isolierte_hoerbuecher):
         response = client.post(
@@ -816,6 +817,7 @@ class TestHoerbuchFortsetzen:
         assert ">Nächste CD</button>" in response.text
         assert "Dateien hinzufügen" in response.text
         assert 'value="Astrid Lindgren/Ronja"' in response.text
+        assert 'hx-indicator="#audiobook-loading"' in response.text
 
     def test_fortsetzen_ueber_den_buchpfad(self, client, bibliothek, tmp_path, monkeypatch):
         """Ohne Autor und Titel, allein über den Pfad des Buchs."""

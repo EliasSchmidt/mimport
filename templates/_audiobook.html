@@ -29,6 +29,12 @@
     </div>
     {% endif %}
 
+    <div id="audiobook-loading" class="htmx-indicator banner info" aria-live="polite">
+        <strong>Übernehme die CD …</strong>
+        <p>Das Kopieren einer Daten-CD oder der Start eines Audio-CD-Rips kann etwas dauern.</p>
+        <div class="progress progress-indeterminate"><div class="progress-bar"></div></div>
+    </div></strong></p>
+
     {# ---------------------------------------------------------- läuft gerade #}
     {% if job and job.laeuft %}
     <div hx-get="/audiobook" hx-trigger="every 2s" hx-target="#audiobook"
@@ -218,7 +224,9 @@
                        nicht erneut entschärft werden. #}
                     {% if not b.has_m4b %}
                     <form hx-post="/audiobook/rip" hx-target="#audiobook"
-                          hx-swap="innerHTML">
+                          hx-swap="innerHTML"
+                          hx-indicator="#audiobook-loading"
+                          hx-disabled-elt="button">
                         <input type="hidden" name="buch" value="{{ b.relative }}">
                         <button type="submit" class="button">Nächste CD</button>
                     </form>
@@ -286,6 +294,8 @@
                        m4b wird dabei beiseite gelegt, nicht gelöscht. #}
                     <form hx-post="/audiobook/rip" hx-target="#audiobook"
                           hx-swap="innerHTML"
+                          hx-indicator="#audiobook-loading"
+                          hx-disabled-elt="button"
                           hx-confirm="Von vorn einlesen? Die fertige m4b wird beiseite gelegt (nicht gelöscht) und danach als „.ersetzt“ nicht mehr als Hörbuch erkannt.">
                         <input type="hidden" name="buch" value="{{ b.relative }}">
                         <input type="hidden" name="von_vorn" value="true">

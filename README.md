@@ -210,6 +210,12 @@ Daten-Volume unter <span class="mono">/data/.paddleocr</span> abgelegt. Danach
 bleiben sie über Neustarts hinweg erhalten. Zusätzliche Pakete auf dem Debian-
 Host braucht der CPU-Betrieb nicht; alles Nötige steckt im Container-Image.
 
+Wichtig für kleine Server: Der **erste** OCR-Lauf braucht deutlich mehr RAM als
+spätere Läufe, weil dabei Modelle heruntergeladen und geladen werden. Mit 1 GB
+Container-Limit wurde der Prozess in der Praxis vom Kernel beendet (Exit 137).
+Darum setzt `docker-compose.yml` für die OCR-Dienste 2 GB an und lässt den
+Winkel-Klassifikator standardmäßig aus.
+
 ### In der Liste
 
 Jedes Buch zeigt sein Cover als kleine Kachel, Bücher ohne bekommen einen

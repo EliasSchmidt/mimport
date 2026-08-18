@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import importlib
 import logging
+import os
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -33,6 +34,13 @@ _ocr_engine_cache = None
 _OCR_LOCK = Lock()
 
 
+def _env_bool(name: str, default: bool) -> bool:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _engine():
     global _ocr_engine_cache
     if _ocr_engine_cache is not None:
@@ -41,6 +49,13 @@ def _engine():
     with _OCR_LOCK:
         if _ocr_engine_cache is not None:
             return _ocr_engine_cache
+        use_angle_cls = _env_bool("MIMPORT_OCR_ANGLE_CLS", False)
+        base_dir = os.environ.get("PADDLE_OCR_BASE_DIR") or str(Path.home() / ".paddleocr")
+        log.info(
+            "OCR-Engine wird geladen | angle_cls=%s | basis=%s",
+            "an" if use_angle_cls else "aus",
+            base_dir,
+        )
         try:
             paddleocr_module = importlib.import_module("paddleocr")
             paddle_ocr_class = getattr(paddleocr_module, "PaddleOCR")
@@ -52,11 +67,12 @@ def _engine():
 
         # Das "mobile" Modell ist das Standardmodell von PaddleOCR und klein.
         _ocr_engine_cache = paddle_ocr_class(
-            use_angle_cls=True,
+            use_angle_cls=use_angle_cls,
             lang="en",
             show_log=False,
             use_gpu=False,
         )
+        log.info("OCR-Engine geladen")
         return _ocr_engine_cache
 
 
@@ -106,9 +122,16 @@ def recognize(image_bytes: bytes, *, suffix: str = ".jpg") -> OcrResult:
             tmp.write(image_bytes)
             tmp_path = Path(tmp.name)
 
+        log.info(
+            "OCR startet | datei=%s | groesse_kb=%d",
+            tmp_path.suffix or suffix,
+            len(image_bytes) // 1024,
+        )
         engine = _engine()
-        raw = engine.ocr(str(tmp_path), cls=True)
+        log.info("OCR-Inferenz beginnt | cls=%s | pfad=%s", "an" if _env_bool("MIMPORT_OCR_ANGLE_CLS", False) else "aus", tmp_path)
+        raw = engine.ocr(str(tmp_path), cls=_env_bool("MIMPORT_OCR_ANGLE_CLS", False))
         lines = _extract_lines(raw)
+        log.info("OCR-Inferenz fertig | zeilen=%d", len(lines))
 
         warnings: list[str] = []
         if not lines:

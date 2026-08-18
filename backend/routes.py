@@ -1050,8 +1050,16 @@ async def ocr_backcover(
         )
 
     suffix = Path(bild.filename or "bild.jpg").suffix or ".jpg"
+    payload = await bild.read()
+    log.info(
+        "Backcover-OCR angefordert | session=%s | datei=%s | groesse_kb=%d | parser=%s",
+        session_id,
+        bild.filename or "bild.jpg",
+        len(payload) // 1024,
+        selected_mode,
+    )
     try:
-        result = ocr.recognize(await bild.read(), suffix=suffix)
+        result = ocr.recognize(payload, suffix=suffix)
     except ocr.OcrError as exc:
         warnings.append(str(exc))
         return _fragment(
@@ -1066,6 +1074,12 @@ async def ocr_backcover(
         )
 
     parsed = trackparse.parse_text(result.text, selected_mode)
+    log.info(
+        "Backcover-OCR fertig | session=%s | textzeilen=%d | parser_tracks=%d",
+        session_id,
+        len(result.lines),
+        len(parsed),
+    )
     warnings.extend(result.warnings)
     if len(parsed) != len(session.audio_paths):
         warnings.append(

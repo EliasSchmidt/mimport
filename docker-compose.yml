@@ -63,6 +63,9 @@ services:
       # einmal herunter; danach bleiben sie im Daten-Volume erhalten.
       HOME: /data
       PADDLE_OCR_BASE_DIR: /data/.paddleocr
+      # Der Winkel-Klassifikator lädt ein zusätzliches Modell und kostet spürbar
+      # Speicher; für gerade fotografierte Backcover bringt er wenig.
+      MIMPORT_OCR_ANGLE_CLS: "0"
 
     restart: unless-stopped
 
@@ -73,12 +76,13 @@ services:
     cap_drop:
       - ALL
 
-    # Ein alter Laptop als Server soll nicht durch einen einzelnen Upload
-    # lahmgelegt werden.
+    # OCR braucht beim ersten Laden deutlich mehr Luft als der Rest der App.
+    # 1 GB reichte in der Praxis nicht und endete im OOM-Kill (Exit 137).
+    mem_limit: 2g
     deploy:
       resources:
         limits:
-          memory: 1g
+          memory: 2g
 
   # Derselbe Dienst für Daten-CDs -- MP3-Sammlungen, die man nicht rippen muss.
   # Eine Audio-CD ohne Dateisystem kann dieser Weg nicht, die müsste erst
@@ -137,6 +141,7 @@ services:
       # behalten.
       HOME: /data
       PADDLE_OCR_BASE_DIR: /data/.paddleocr
+      MIMPORT_OCR_ANGLE_CLS: "0"
 
     restart: unless-stopped
 
@@ -145,10 +150,11 @@ services:
     cap_drop:
       - ALL
 
+    mem_limit: 2g
     deploy:
       resources:
         limits:
-          memory: 1g
+          memory: 2g
 
 volumes:
   mimport-data:

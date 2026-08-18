@@ -88,6 +88,10 @@
             <span id="match-spinner" class="htmx-indicator spinner">
                 frage MusicBrainz …
             </span>
+            <button type="button" class="button"
+                    onclick="coverAufnehmen('/cover/session/{{ session_id }}', 'files', 'Cover für diesen Upload')">
+                {{ "Cover neu fotografieren" if cover_present else "Cover fotografieren" }}
+            </button>
             <button type="button" class="button danger"
                     hx-delete="/session/{{ session_id }}"
                     hx-target="#files"
@@ -97,29 +101,24 @@
             </button>
         </div>
     </form>
+
+    {% if cover_present %}
+    <div class="session-cover-box">
+        <img class="session-cover-preview"
+             src="/cover/session/{{ session_id }}?v={{ cover_version }}"
+             alt="Cover dieser Upload-Session">
+        <p class="hint">
+            <strong>Cover vorhanden.</strong> Es liegt als <span class="mono">cover.jpg</span>
+            in dieser Upload-Session und wird beim Import von beets übernommen.
+        </p>
+    </div>
+    {% else %}
+    <p class="hint">
+        Ein Cover kannst du schon jetzt fotografieren; es bleibt in der
+        Staging-Session und wird beim Import mit übernommen.
+    </p>
+    {% endif %}
 
     {# Von Hand taggen, inklusive OCR-Vorbelegung aus dem Backcover. #}
     {% include "_manual.html" %}
-
-    <form hidden>
-        <div class="fields">
-        </div>
-        <div class="actions">
-            <button type="submit" class="button primary">Matches suchen</button>
-            <span id="match-spinner" class="htmx-indicator spinner">
-                frage MusicBrainz …
-            </span>
-            <button type="button" class="button"
-                    onclick="coverAufnehmen('/cover/session/{{ session_id }}', 'files', 'Cover für diesen Upload')">
-                Cover fotografieren
-            </button>
-            <button type="button" class="button danger"
-                    hx-delete="/session/{{ session_id }}"
-                    hx-target="#files"
-                    hx-swap="innerHTML"
-                    hx-confirm="Upload samt Dateien verwerfen?">
-                Verwerfen
-            </button>
-        </div>
-    </form>
 </div>

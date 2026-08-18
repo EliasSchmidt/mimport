@@ -1285,6 +1285,36 @@ class TestCoverEntgegennehmen:
         # beets zieht genau diesen Namen über fetchart heran.
         assert (session.directory / "cover.jpg").read_bytes() == self.JPEG
 
+    def test_musikseite_bietet_cover_knopf_fuer_die_session(self, client):
+        session = sessions.create_session()
+        (session.directory / "01.flac").write_bytes(b"fLaC\x00\x00\x00\x22")
+
+        html = client.get(f"/session/{session.session_id}").text
+        assert "coverAufnehmen(" in html
+        assert f"/cover/session/{session.session_id}" in html
+        assert "Cover fotografieren" in html
+
+    def test_cover_wird_fuer_die_session_vorschau_ausgeliefert(self, client):
+        session = sessions.create_session()
+        (session.directory / "01.flac").write_bytes(b"fLaC\x00\x00\x00\x22")
+        (session.directory / "cover.jpg").write_bytes(self.JPEG)
+
+        antwort = client.get(f"/cover/session/{session.session_id}?v=123")
+        assert antwort.status_code == 200
+        assert antwort.content == self.JPEG
+        assert "immutable" in antwort.headers["cache-control"]
+
+    def test_musikseite_zeigt_cover_vorschau_mit_cache_schluessel(self, client):
+        session = sessions.create_session()
+        (session.directory / "01.flac").write_bytes(b"fLaC\x00\x00\x00\x22")
+        (session.directory / "cover.jpg").write_bytes(self.JPEG)
+
+        html = client.get(f"/session/{session.session_id}").text
+        assert f"/cover/session/{session.session_id}" in html
+        assert "Cover neu fotografieren" in html
+        import re
+        assert re.search(rf"/cover/session/{session.session_id}\?v=\d{{9,}}", html), html
+
     def test_kein_bild_wird_abgelehnt(self, client, bibliothek):
         buch = bibliothek / "Autor" / "Buch"
         buch.mkdir(parents=True)

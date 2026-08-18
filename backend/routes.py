@@ -108,6 +108,20 @@ def _track_files(session: sessions.StagingSession) -> list[dict[str, str]]:
     return files
 
 
+def _session_cover_path(session: sessions.StagingSession) -> Path:
+    return session.directory / cover.COVER_DATEI
+
+
+def _session_cover_version(session: sessions.StagingSession) -> str:
+    bild = _session_cover_path(session)
+    if not bild.is_file():
+        return ""
+    try:
+        return str(int(bild.stat().st_mtime_ns))
+    except OSError:
+        return ""
+
+
 def _track_inputs(
     session: sessions.StagingSession,
     parsed: list[trackparse.ParsedTrack] | None = None,
@@ -153,6 +167,8 @@ def _files_fragment(request: Request, session: sessions.StagingSession) -> HTMLR
         ocr_text="",
         ocr_warnings=[],
         track_inputs=_track_inputs(session),
+        cover_present=cover.vorhanden(session.directory),
+        cover_version=_session_cover_version(session),
     )
 
 
@@ -885,6 +901,24 @@ def audiobook_cover(buch: str = "", v: str = "") -> FileResponse:
     if bild is None:
         raise HTTPException(status_code=404, detail="Für dieses Buch gibt es kein Cover.")
 
+    return FileResponse(
+        bild,
+        headers={"Cache-Control": "public, max-age=31536000, immutable"},
+    )
+
+
+@router.get("/cover/session/{session_id}")
+def session_cover(session_id: str, v: str = "") -> FileResponse:
+    """Liefert das Coverbild einer Upload-Session aus.
+
+    ``v`` trägt die Änderungszeit in der Adresse, damit der Browser ein neu
+    fotografiertes Cover sofort neu lädt und das alte sonst aggressiv cachen
+    darf.
+    """
+    session = _session_or_404(session_id)
+    bild = _session_cover_path(session)
+    if not bild.is_file():
+        raise HTTPException(status_code=404, detail="Für diese Sitzung gibt es kein Cover.")
     return FileResponse(
         bild,
         headers={"Cache-Control": "public, max-age=31536000, immutable"},

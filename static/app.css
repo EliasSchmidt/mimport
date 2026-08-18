@@ -387,6 +387,26 @@ td.name { word-break: break-all; }
 .candidate-actions form { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; }
 
 .manual { margin-top: 1rem; }
+.session-cover-box {
+    display: flex;
+    gap: 0.9rem;
+    align-items: center;
+    margin: 0.85rem 0;
+    padding: 0.75rem 0.9rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface-alt);
+}
+.session-cover-preview {
+    display: block;
+    width: 5rem;
+    height: 5rem;
+    object-fit: cover;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    flex: 0 0 auto;
+}
 .manual-ocr { margin-top: 1rem; border-top: 1px solid var(--border); padding-top: 0.9rem; }
 .manual-ocr h4 { margin: 0 0 0.35rem; }
 .manual-ocr-text { display: block; margin-top: 0.75rem; font-size: 0.88rem; }
@@ -535,6 +555,8 @@ pre.output { max-height: 22rem; overflow-y: auto; }
     .open-sessions .files td:last-child { white-space: normal; }
     .actions { gap: 0.5rem; }
     .actions .button, .actions form { flex: 1 1 auto; }
+    .session-cover-box { align-items: flex-start; }
+    .session-cover-preview { width: 4.25rem; height: 4.25rem; }
 
     .stapelbar thead { display: none; }
     .stapelbar, .stapelbar tbody, .stapelbar tr, .stapelbar td { display: block; }

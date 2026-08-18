@@ -197,6 +197,16 @@ main, .page-head, .page-foot { max-width: 62rem; margin: 0 auto; }
 .fields label { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.88rem; }
 .fields label.wide { grid-column: 1 / -1; }
 .fields small { color: var(--text-dim); font-weight: 400; }
+.lookup-field { display: flex; gap: 0.45rem; align-items: stretch; }
+.lookup-field input[type="text"] { flex: 1 1 auto; min-width: 0; }
+.lookup-button { flex: 0 0 auto; min-width: 2.8rem; padding-inline: 0.7rem; }
+.artist-match { margin-top: 0.15rem; }
+.artist-match-banner { margin-bottom: 0.45rem; }
+.artist-match-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.45rem; }
+.artist-match-item { display: flex; justify-content: space-between; gap: 0.75rem; align-items: flex-start; padding: 0.6rem; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); }
+.artist-match-item.exact { border-color: var(--ok); }
+.artist-match-copy { min-width: 0; }
+.artist-match-copy .mono { word-break: break-all; }
 
 input[type="text"],
 select,
@@ -277,6 +287,7 @@ td.name { word-break: break-all; }
 .badge.lossless { background: var(--ok-bg); color: var(--ok); }
 .badge.lossy { background: var(--warn-bg); color: var(--warn); }
 .badge.unknown { background: var(--surface-alt); color: var(--text-dim); }
+.badge.strong { background: var(--ok-bg); color: var(--ok); }
 
 /* --- Kandidaten ------------------------------------------------------- */
 

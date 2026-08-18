@@ -89,10 +89,10 @@
     </div>
 
     <details class="je-track" open>
-        <summary>Titel und Interpret je Track ({{ track_inputs | length }})</summary>
+        <summary>Titel und Track-Künstler je Track ({{ track_inputs | length }})</summary>
         <table class="files">
             <thead>
-                <tr><th>Datei</th><th>Nr.</th><th>Titel</th><th>Interpret</th><th>Dauer</th></tr>
+                <tr><th>Datei</th><th>Nr.</th><th>Titel</th><th>Track-Künstler</th><th>Dauer</th></tr>
             </thead>
             <tbody>
                 {% for row in track_inputs %}
@@ -107,7 +107,7 @@
             </tbody>
         </table>
         <p class="hint">
-            Mehrere Interpreten mit <span class="mono">;</span> oder
+            Mehrere Track-Künstler mit <span class="mono">;</span> oder
             <span class="mono">feat.</span> trennen.
         </p>
     </details>

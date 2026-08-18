@@ -329,6 +329,77 @@ document.body.addEventListener("change", (event) => {
   if (event.target.matches("[data-sampler]")) samplerUmschalten(event.target);
 });
 
+/* ------------------------------------------ MusicBrainz-Künstlerwahl -----
+ *
+ * Die Suche liefert nur Vorschläge. Erst mit „Übernehmen“ wird klar, welcher
+ * Treffer gemeint ist, und genau dann merken wir uns die MBID im versteckten
+ * Feld. Wird der Name danach wieder geändert, verwerfen wir die gemerkte ID.
+ */
+function artistStatusHtml(kind, title, text) {
+  return `<div class="banner ${kind} artist-match-banner"><strong>${escapeHtml(title)}</strong><p>${escapeHtml(text)}</p></div>`;
+}
+
+function artistZielFeld(form, field) {
+  return form.querySelector(`[data-artist-field="${field}"]`);
+}
+
+function artistZielMbid(form, field) {
+  return form.querySelector(`[data-artist-mbid="${field}"]`);
+}
+
+function artistZielErgebnis(form, field) {
+  return form.querySelector(`[data-artist-results="${field}"]`);
+}
+
+document.body.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-artist-choose]");
+  if (!button) return;
+
+  const form = button.closest("form");
+  if (!form) return;
+
+  const field = button.dataset.field || "";
+  const input = artistZielFeld(form, field);
+  const mbid = artistZielMbid(form, field);
+  const result = artistZielErgebnis(form, field);
+  const name = String(button.dataset.name || "").trim();
+  const value = String(button.dataset.mbid || "").trim();
+  const label = String(button.dataset.fieldLabel || field || "Künstler");
+  if (!input || !mbid || !result || !name || !value) return;
+
+  input.value = name;
+  mbid.value = value;
+  mbid.dataset.selectedName = name;
+  result.innerHTML = artistStatusHtml(
+    "ok",
+    `${label}: MusicBrainz-Match gewählt`,
+    `${name} wird mit Artist-ID geschrieben.`,
+  );
+});
+
+document.body.addEventListener("input", (event) => {
+  const input = event.target.closest("[data-artist-field]");
+  if (!input) return;
+
+  const form = input.closest("form");
+  const field = input.dataset.artistField || "";
+  const mbid = artistZielMbid(form, field);
+  const result = artistZielErgebnis(form, field);
+  if (!mbid || !result) return;
+
+  const selected = String(mbid.dataset.selectedName || "").trim();
+  if (!selected) return;
+  if (input.value.trim() === selected) return;
+
+  mbid.value = "";
+  delete mbid.dataset.selectedName;
+  result.innerHTML = artistStatusHtml(
+    "warn",
+    "Name geändert – Match bitte neu prüfen",
+    "Der zuletzt gewählte MusicBrainz-Treffer passt jetzt möglicherweise nicht mehr.",
+  );
+});
+
 /* ------------------------------------------------ Genre-Vorschläge -------
  *
  * Das Feld erlaubt mehrere Genres per Semikolon. Ein normales <datalist>

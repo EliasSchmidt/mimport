@@ -21,6 +21,7 @@ from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse
 
 from backend import (
+    artist_ids,
     audio,
     audiobook,
     beets_env,
@@ -143,6 +144,20 @@ def _ocr_overlay(result: ocr.OcrResult, image_url: str) -> dict[str, object]:
         "image_height": result.image_height,
         "detections": detections,
     }
+
+
+def _field_label(field: str) -> str:
+    return {
+        "albumartist": "Albumkünstler",
+        "artist": "Track-Künstler",
+    }.get(field, field)
+
+
+def _mbid_field(field: str) -> str:
+    return {
+        "albumartist": "mb_albumartistids",
+        "artist": "mb_artistids",
+    }.get(field, "")
 
 
 def _track_inputs(
@@ -1172,6 +1187,33 @@ async def ocr_parse(
     )
 
 
+@router.post("/artist-match/{session_id}", response_class=HTMLResponse)
+def artist_match(
+    request: Request,
+    session_id: str,
+    field: str = Form(...),
+    name: str = Form(default=""),
+) -> HTMLResponse:
+    session = _session_or_404(session_id)
+    if not session.audio_paths:
+        return _fragment(request, "_error.html", message="In dieser Sitzung liegen keine Dateien.")
+
+    query = name.strip()
+    matches = artist_ids.search(query) if query else ()
+    exact_count = sum(1 for match in matches if match.exact)
+    return _fragment(
+        request,
+        "_artist_matches.html",
+        field=field,
+        field_label=_field_label(field),
+        mbid_field=_mbid_field(field),
+        query=query,
+        matches=matches,
+        exact_count=exact_count,
+        invalid_field=field not in {"albumartist", "artist"},
+    )
+
+
 @router.post("/manual/{session_id}", response_class=HTMLResponse)
 async def manual(
     request: Request,
@@ -1208,8 +1250,10 @@ async def manual(
         paths,
         {
             "albumartist": albumartist,
+            "mb_albumartistids": str(formular.get("mb_albumartistids") or "").strip(),
             "album": album,
             "artists": artist,
+            "mb_artistids": str(formular.get("mb_artistids") or "").strip(),
             "year": year,
             # In beets 2.x heißt das Feld "genres"; als "genre" gesetzt landete
             # es früher nur als flexibles Attribut und nie in der Datei.

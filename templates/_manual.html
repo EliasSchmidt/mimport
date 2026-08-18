@@ -17,16 +17,42 @@
 
         <div class="fields">
             <label>Albumkünstler <small>(für das ganze Album)</small>
-                <input type="text" name="albumartist" data-albumartist
-                       placeholder="z. B. The Beatles">
-                <small>Sorgt dafür, dass ein Album zusammenbleibt, auch wenn Tracks unterschiedliche Interpreten haben.</small>
+                <div class="lookup-field">
+                    <input type="text" name="albumartist" data-albumartist data-artist-field="albumartist"
+                           placeholder="z. B. The Beatles">
+                    <input type="hidden" name="mb_albumartistids" data-artist-mbid="albumartist">
+                    <button type="button"
+                            class="button secondary lookup-button"
+                            hx-post="/artist-match/{{ session_id }}"
+                            hx-include="[name='albumartist']"
+                            hx-vals='{"field":"albumartist"}'
+                            hx-target="#artist-match-albumartist-{{ session_id }}"
+                            hx-swap="innerHTML">🔎</button>
+                </div>
+                <small>Sorgt dafür, dass ein Album zusammenbleibt. Bei einem normalen Soloalbum ist das oft derselbe Name wie beim Track-Künstler.</small>
+                <div id="artist-match-albumartist-{{ session_id }}" class="artist-match" data-artist-results="albumartist">
+                    <div class="hint">Noch kein MusicBrainz-Match ausgewählt.</div>
+                </div>
             </label>
             <label>Album
                 <input type="text" name="album" placeholder="z. B. Abbey Road">
             </label>
-            <label data-alle-interpreten>Interpret <small>(für alle Tracks)</small>
-                <input type="text" name="artist" placeholder="z. B. Harmonic Brass">
-                <small>Der ausübende Künstler des Tracks; bei Samplern bitte unten pro Track setzen.</small>
+            <label data-alle-interpreten>Track-Künstler <small>(für alle Tracks)</small>
+                <div class="lookup-field">
+                    <input type="text" name="artist" data-artist-field="artist" placeholder="z. B. Harmonic Brass">
+                    <input type="hidden" name="mb_artistids" data-artist-mbid="artist">
+                    <button type="button"
+                            class="button secondary lookup-button"
+                            hx-post="/artist-match/{{ session_id }}"
+                            hx-include="[name='artist']"
+                            hx-vals='{"field":"artist"}'
+                            hx-target="#artist-match-artist-{{ session_id }}"
+                            hx-swap="innerHTML">🔎</button>
+                </div>
+                <small>Das ist der Künstler des einzelnen Tracks. Bei einem normalen Alligatoah-Album ohne Gast-Artists trägst du hier ebenfalls Alligatoah ein.</small>
+                <div id="artist-match-artist-{{ session_id }}" class="artist-match" data-artist-results="artist">
+                    <div class="hint">Noch kein MusicBrainz-Match ausgewählt.</div>
+                </div>
             </label>
             <label>Jahr
                 <input type="text" name="year" inputmode="numeric" placeholder="1969">
@@ -53,8 +79,8 @@
             Sampler (Various Artists)
         </label>
         <p class="hint" data-sampler-hinweis hidden>
-            Das Feld „Interpret für alle Tracks" ist jetzt deaktiviert; Interpreten
-            bitte pro Track unten eintragen.
+            Das Feld „Track-Künstler für alle Tracks" ist jetzt deaktiviert; die
+            Track-Künstler bitte pro Track unten eintragen.
         </p>
 
         {% include "_manual_ocr.html" %}

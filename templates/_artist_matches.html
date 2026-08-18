@@ -1,0 +1,53 @@
+{% if invalid_field %}
+<div class="banner error">
+    <strong>Unbekanntes Feld</strong>
+</div>
+{% elif not query %}
+<div class="banner info artist-match-banner">
+    <strong>Noch kein MusicBrainz-Match gesucht</strong>
+    <p>Gib erst einen Namen ein und starte dann die Suche.</p>
+</div>
+{% elif not matches %}
+<div class="banner warn artist-match-banner">
+    <strong>Kein MusicBrainz-Treffer für „{{ query }}“</strong>
+    <p>Der Name bleibt trotzdem als Klartext im Tag erhalten; eine Artist-ID setzen wir dann nicht.</p>
+</div>
+{% else %}
+<div class="banner {% if exact_count == 1 %}ok{% elif exact_count > 1 %}warn{% else %}info{% endif %} artist-match-banner">
+    {% if exact_count == 1 %}
+    <strong>Eindeutiger MusicBrainz-Treffer gefunden</strong>
+    <p>Mit „Übernehmen“ werden Name und Artist-ID für {{ field_label|lower }} gespeichert.</p>
+    {% elif exact_count > 1 %}
+    <strong>Mehrere gleichnamige Treffer gefunden</strong>
+    <p>Bitte den passenden Eintrag bewusst auswählen; erst dann ist klar, welche Artist-ID geschrieben wird.</p>
+    {% else %}
+    <strong>Mögliche MusicBrainz-Treffer</strong>
+    <p>Es gibt Vorschläge, aber keinen eindeutigen Exakt-Treffer. Bitte bewusst auswählen.</p>
+    {% endif %}
+</div>
+<ul class="artist-match-list">
+    {% for match in matches %}
+    <li class="artist-match-item{% if match.exact %} exact{% endif %}">
+        <div class="artist-match-copy">
+            <div>
+                <strong>{{ match.name }}</strong>
+                {% if match.exact %}<span class="badge strong">exakt</span>{% endif %}
+                {% if match.kind %}<span class="small">· {{ match.kind }}</span>{% endif %}
+                {% if match.area %}<span class="small">· {{ match.area }}</span>{% endif %}
+            </div>
+            {% if match.disambiguation %}
+            <div class="small">{{ match.disambiguation }}</div>
+            {% endif %}
+            <div class="mono small">{{ match.mbid }}</div>
+        </div>
+        <button type="button"
+                class="button secondary"
+                data-artist-choose
+                data-field="{{ field }}"
+                data-name="{{ match.name }}"
+                data-mbid="{{ match.mbid }}"
+                data-field-label="{{ field_label }}">Übernehmen</button>
+    </li>
+    {% endfor %}
+</ul>
+{% endif %}

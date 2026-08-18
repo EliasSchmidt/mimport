@@ -1372,6 +1372,9 @@ class TestManuellTaggen:
         assert 'list="genre-vorschlaege-' in html
         assert 'mehrere mit <span class="mono">;</span>' in html
         assert 'Artist-ID in die Datei' in html
+        assert 'Track-Künstler' in html
+        assert '/artist-match/' in html
+        assert 'Noch kein MusicBrainz-Match ausgewählt.' in html
 
     def test_sampler_bekommt_je_track_einen_interpreten(self, client):
         import mediafile
@@ -1411,6 +1414,57 @@ class TestManuellTaggen:
         # die eigentliche Mehrfachliste steht in ``genres``.
         assert medien.genre == "Krautrock"
         assert medien.genres == ["Krautrock", "Psychedelic Rock"]
+
+    def test_manuell_gewaehlte_artist_ids_werden_uebernommen(self, client):
+        import mediafile
+
+        session = self._session_mit(["01.flac"])
+        client.post(
+            f"/manual/{session.session_id}",
+            data={
+                "albumartist": "Alligatoah",
+                "mb_albumartistids": "bde41239-2535-4b28-b6e5-1074f990a14a",
+                "artist": "Alligatoah",
+                "mb_artistids": "bde41239-2535-4b28-b6e5-1074f990a14a",
+                "album": "Mein lokales Album",
+            },
+        )
+
+        medien = mediafile.MediaFile(session.directory / "01.flac")
+        assert medien.albumartist == "Alligatoah"
+        assert medien.artist == "Alligatoah"
+        assert medien.mb_albumartistids == ["bde41239-2535-4b28-b6e5-1074f990a14a"]
+        assert medien.mb_artistids == ["bde41239-2535-4b28-b6e5-1074f990a14a"]
+
+    def test_artist_match_liefert_vorschlaege(self, client, monkeypatch):
+        from backend import routes
+        from backend.artist_ids import ArtistMatch
+
+        session = self._session_mit(["01.flac"])
+        monkeypatch.setattr(
+            routes.artist_ids,
+            "search",
+            lambda name: (
+                ArtistMatch(
+                    name="Alligatoah",
+                    mbid="bde41239-2535-4b28-b6e5-1074f990a14a",
+                    disambiguation="Rapper aus Deutschland",
+                    area="Deutschland",
+                    kind="Person",
+                    exact=True,
+                ),
+            ),
+        )
+
+        response = client.post(
+            f"/artist-match/{session.session_id}",
+            data={"field": "artist", "name": "Alligatoah"},
+        )
+        assert response.status_code == 200
+        assert "Eindeutiger MusicBrainz-Treffer gefunden" in response.text
+        assert "Alligatoah" in response.text
+        assert "bde41239-2535-4b28-b6e5-1074f990a14a" in response.text
+        assert 'data-artist-choose' in response.text
 
     def test_ohne_eingabe_wird_nichts_geschrieben(self, client):
         session = self._session_mit(["01.flac"])

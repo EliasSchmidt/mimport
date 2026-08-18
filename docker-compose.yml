@@ -3,90 +3,14 @@
 # Nach außen führen nur zwei Dinge: der Port für die Weboberfläche und das
 # Musikverzeichnis, in dem das fertige Ergebnis landet.
 #
-# Zwei Dienste aus demselben Image:
-#
-#   mimport     Uploads, nur über localhost erreichbar.
-#   mimport-cd  Daten-CDs, im Heimnetz erreichbar.
-#
-# Der Unterschied ist allein die Bindung und das eingehängte CD-Verzeichnis --
-# es gibt keinen Schalter für das CD-Feature. Ob unter /disc etwas liegt, ist
-# der Schalter. Beide teilen sich die library.db; damit sich zwei gleichzeitige
-# Importe nicht in die Quere kommen, serialisiert mimport sie über ein Dateilock
-# neben der Datenbank.
+# Für diesen Stand läuft bewusst **nur ein einziger Dienst**: der bisherige
+# ``mimport-cd``. Er ist im Heimnetz erreichbar und deckt Upload, Daten-CD,
+# Audio-CD-Rip und OCR ab.
 
 services:
-  mimport:
-    build: .
-    # Auf dem Server bewusst nur an localhost binden. Wer die Oberfläche von
-    # außen erreichbar machen will, stellt einen Reverse-Proxy mit
-    # Authentifizierung davor -- die Anwendung selbst hat keine.
-    ports:
-      - "127.0.0.1:8000:8000"
-
-    volumes:
-      # Hier kommt das fertige Ergebnis raus: von beets getaggt, umbenannt und
-      # nach dem Schema aus beets/config.yaml einsortiert.
-      - /srv/music:/music
-
-      # Hörbücher liegen getrennt von der Musik -- sie gehen nicht durch beets.
-      # Von hier liest Audiobookshelf.
-      - /srv/audiobooks:/audiobooks
-
-      # Datenbank und Staging bleiben im Container-Umfeld. Named Volumes, damit
-      # ein Neustart laufende Uploads nicht verliert.
-      - mimport-data:/data
-      - mimport-staging:/staging
-
-      # Die beets-Konfiguration liegt im Image. Zum Anpassen ohne Neubau hier
-      # einhängen:
-      # - ./beets/config.yaml:/config/config.yaml:ro
-
-    environment:
-      # Verlustbehaftete Uploads nur bemängeln, nicht ablehnen.
-      MIMPORT_MAX_UPLOAD_BYTES: "6442450944"  # 6 GB
-      MIMPORT_MAX_FILES: "500"
-
-      # Damit die Anwendung das Dateisystem nicht vollschreiben kann. Staging
-      # und Datenbank sind beides Named Volumes und teilen sich die Platte --
-      # ein volles Staging träfe also auch die library.db. Auf einem kleinen
-      # Server beide Werte nach unten korrigieren.
-      MIMPORT_MIN_FREE_BYTES: "2147483648"    # 2 GB Sicherheitsabstand
-      MIMPORT_MAX_STAGING_BYTES: "21474836480"  # 20 GB für alle Uploads zusammen
-      # Nach dieser Frist gelten nicht importierte Uploads als vergessen.
-      MIMPORT_SESSION_TTL_HOURS: "24"
-
-      # AcoustID-Fingerprinting. Braucht zusätzlich das chroma-Plugin in
-      # beets/config.yaml sowie fpcalc im Image -- siehe README.
-      MIMPORT_FINGERPRINT: "0"
-
-      # PaddleOCR legt seine Modelle hier ab. Der erste OCR-Aufruf lädt sie
-      # einmal herunter; danach bleiben sie im Daten-Volume erhalten.
-      HOME: /data
-      PADDLE_OCR_BASE_DIR: /data/.paddleocr
-      # Der Winkel-Klassifikator lädt ein zusätzliches Modell und kostet spürbar
-      # Speicher; für gerade fotografierte Backcover bringt er wenig.
-      MIMPORT_OCR_ANGLE_CLS: "0"
-
-    restart: unless-stopped
-
-    # Abschottung: hochgeladene Dateien werden von Audio-Parsern gelesen, die
-    # auf nicht vertrauenswürdigen Bytes arbeiten.
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-
-    # OCR braucht beim ersten Laden deutlich mehr Luft als der Rest der App.
-    # 1 GB reichte in der Praxis nicht und endete im OOM-Kill (Exit 137).
-    mem_limit: 2g
-    deploy:
-      resources:
-        limits:
-          memory: 2g
-
-  # Derselbe Dienst für Daten-CDs -- MP3-Sammlungen, die man nicht rippen muss.
-  # Eine Audio-CD ohne Dateisystem kann dieser Weg nicht, die müsste erst
-  # gerippt werden.
+  # MP3-Sammlungen von Daten-CDs, Audio-CD-Rips, normale Uploads und OCR.
+  # Eine Audio-CD ohne Dateisystem kann dieser Weg ebenfalls, weil das Gerät
+  # direkt hereingereicht wird.
   mimport-cd:
     build: .
 
@@ -150,13 +74,12 @@ services:
     cap_drop:
       - ALL
 
-    mem_limit: 2g
+    mem_limit: 4g
     deploy:
       resources:
         limits:
-          memory: 2g
+          memory: 4g
 
 volumes:
   mimport-data:
-  mimport-staging:
   mimport-cd-staging:

@@ -294,7 +294,7 @@ function ziehenStart(event) {
     event.preventDefault();
 
     zustand.lupe.style.display = "block";
-    lupePositionieren(event);
+    lupePositionieren();
     lupeZeichnen();
   }
 }
@@ -311,7 +311,6 @@ function ziehen(event) {
   ];
   zeichnen();
   lupeZeichnen();
-  lupePositionieren(event);
 }
 
 const ziehenEnde = () => {
@@ -326,28 +325,24 @@ const ziehenEnde = () => {
 };
 
 
-function lupePositionieren(event) {
-  const quelle = event.touches?.[0] ?? event;
-  const lupe = zustand.lupe;
+function lupePositionieren() {
+  const { canvas, lupe } = zustand;
 
-  const abstand = 20;
+  const abstand = 12;
   const breite = lupe.offsetWidth;
   const hoehe = lupe.offsetHeight;
 
-  // Horizontal über dem Zeiger zentriert statt seitlich versetzt: Hand oder
-  // Finger kommen beim Ziehen von unten, egal ob links- oder rechtshändig
-  // und egal auf welcher Bildschirmseite gezogen wird -- eine seitliche
-  // Position gerät je nach Seite unter die eigene Hand.
-  let x = quelle.clientX - breite / 2;
-  let y = quelle.clientY - hoehe - abstand;
-
-  // Am linken/rechten Rand innerhalb des Fensters halten.
-  x = Math.min(Math.max(x, 0), window.innerWidth - breite);
-
-  // Falls oben kein Platz ist: unterhalb des Fingers/Mauszeigers.
-  if (y < 0) {
-    y = quelle.clientY + abstand;
-  }
+  // Fest über dem Bild verankert statt dem Finger zu folgen: Der Daumen
+  // kommt beim Ziehen mit einer Hand immer von unten rechts, egal wo im
+  // Bild man gerade zieht -- eine Position relativ zum Zeiger gerät ihm
+  // deshalb je nach Ecke immer wieder in die Quere. Es ist in Ordnung,
+  // wenn die Lupe dabei über den Rahmen des Bilds hinausragt.
+  const rahmen = canvas.getBoundingClientRect();
+  const x = Math.min(
+    Math.max(rahmen.left + rahmen.width / 2 - breite / 2, 0),
+    window.innerWidth - breite
+  );
+  const y = Math.max(rahmen.top - hoehe - abstand, 0);
 
   lupe.style.left = `${x}px`;
   lupe.style.top = `${y}px`;

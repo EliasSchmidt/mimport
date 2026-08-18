@@ -14,23 +14,37 @@
         </p>
 
         <div class="fields">
-            <label>Albumkünstler
+            <label>Albumkünstler <small>(für das ganze Album)</small>
                 <input type="text" name="albumartist" data-albumartist
                        placeholder="z. B. The Beatles">
+                <small>Sorgt dafür, dass ein Album zusammenbleibt, auch wenn Tracks unterschiedliche Interpreten haben.</small>
             </label>
             <label>Album
                 <input type="text" name="album" placeholder="z. B. Abbey Road">
             </label>
             <label data-alle-interpreten>Interpret <small>(für alle Tracks)</small>
-                <input type="text" name="artist">
+                <input type="text" name="artist" placeholder="z. B. Harmonic Brass">
+                <small>Der ausübende Künstler des Tracks; bei Samplern bitte unten pro Track setzen.</small>
             </label>
             <label>Jahr
                 <input type="text" name="year" inputmode="numeric" placeholder="1969">
             </label>
-            <label>Genre
-                <input type="text" name="genre" placeholder="Rock">
+            <label>Genre <small>(mehrere mit <span class="mono">;</span>)</small>
+                <input type="text"
+                       name="genre"
+                       placeholder="z. B. Jazz; Fusion"
+                       list="genre-vorschlaege-{{ session_id }}"
+                       autocomplete="off"
+                       data-genre-input>
+                <small>Beim Tippen erscheinen Vorschläge aus dem Projektkatalog; Freitext bleibt erlaubt.</small>
             </label>
         </div>
+
+        <datalist id="genre-vorschlaege-{{ session_id }}" data-genre-vorschlaege>
+            {% for genre in genre_vorschlaege %}
+            <option value="{{ genre }}"></option>
+            {% endfor %}
+        </datalist>
 
         <label class="checkbox">
             <input type="checkbox" name="compilation" value="true" data-sampler>

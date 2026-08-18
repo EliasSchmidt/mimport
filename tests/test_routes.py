@@ -1369,6 +1369,8 @@ class TestManuellTaggen:
         assert 'name="titel:01.flac"' in html
         assert 'name="interpret:02.flac"' in html
         assert 'name="compilation"' in html
+        assert 'list="genre-vorschlaege-' in html
+        assert 'mehrere mit <span class="mono">;</span>' in html
 
     def test_sampler_bekommt_je_track_einen_interpreten(self, client):
         import mediafile
@@ -1396,16 +1398,18 @@ class TestManuellTaggen:
         assert erste.albumartist == "Various Artists"
         assert erste.comp is True
 
-    def test_genre_kommt_jetzt_an(self, client):
+    def test_genre_kommt_jetzt_auch_mehrfach_an(self, client):
         """Vorher verschwand es: beets 2.x kennt nur 'genres'."""
         import mediafile
 
         session = self._session_mit(["01.flac"])
-        client.post(f"/manual/{session.session_id}", data={"genre": "Krautrock"})
+        client.post(f"/manual/{session.session_id}", data={"genre": "Krautrock; Psychedelic Rock"})
 
         medien = mediafile.MediaFile(session.directory / "01.flac")
+        # mediafile liefert im einfachen Feld nur den ersten Eintrag zurück;
+        # die eigentliche Mehrfachliste steht in ``genres``.
         assert medien.genre == "Krautrock"
-        assert medien.genres == ["Krautrock"]
+        assert medien.genres == ["Krautrock", "Psychedelic Rock"]
 
     def test_ohne_eingabe_wird_nichts_geschrieben(self, client):
         session = self._session_mit(["01.flac"])

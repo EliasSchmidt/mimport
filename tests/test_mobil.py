@@ -245,6 +245,36 @@ def test_eigener_albumkuenstler_bleibt_stehen(browser, server):
         seite.close()
 
 
+def test_genre_vorschlaege_werden_beim_tippen_aktualisiert(browser, server):
+    """Auch nach einem ersten Genre sollen sinnvolle Vorschläge übrig bleiben."""
+    seite = browser.new_page(viewport={"width": 900, "height": 800})
+    try:
+        seite.goto(server + "/musik", wait_until="networkidle")
+        seite.set_input_files(
+            "#upload-files",
+            [{"name": "01 Stück.flac", "mimeType": "audio/flac",
+              "buffer": b"fLaC\x00\x00\x00\x22" + b"\x00" * 34}],
+        )
+        seite.click("#upload-submit")
+        seite.wait_for_selector("#files-inner", timeout=20000)
+        seite.click("details.manuell > summary")
+
+        genre = seite.locator("[data-genre-input]")
+        genre.fill("ja")
+        vorschlaege = seite.evaluate(
+            "Array.from(document.querySelector('[data-genre-vorschlaege]').options).map((o) => o.value)",
+        )
+        assert "Jazz" in vorschlaege
+
+        genre.fill("Jazz; cl")
+        vorschlaege = seite.evaluate(
+            "Array.from(document.querySelector('[data-genre-vorschlaege]').options).map((o) => o.value)",
+        )
+        assert "Jazz; Classical" in vorschlaege
+    finally:
+        seite.close()
+
+
 # --------------------------------------------------- Benachrichtigungen ---
 #
 # Getestet wird die Verzweigung in notify.js, nicht das Erlaubnismodell von

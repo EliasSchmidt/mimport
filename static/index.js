@@ -262,10 +262,12 @@ function bindUploadWidgets(root = document) {
 }
 
 bindUploadWidgets();
+bindGenreInputs();
 
 // Die Abschnitte 3 und 4 tauchen erst auf, wenn dort etwas landet.
 document.body.addEventListener("htmx:afterSwap", (event) => {
   bindUploadWidgets(event.detail.target);
+  bindGenreInputs(event.detail.target);
 
   const reveal = { candidates: "match-step", result: "result-step" };
   const stepId = reveal[event.detail.target.id];
@@ -326,3 +328,61 @@ function samplerUmschalten(haken) {
 document.body.addEventListener("change", (event) => {
   if (event.target.matches("[data-sampler]")) samplerUmschalten(event.target);
 });
+
+/* ------------------------------------------------ Genre-Vorschläge -------
+ *
+ * Das Feld erlaubt mehrere Genres per Semikolon. Ein normales <datalist>
+ * würde aber immer nur den gesamten Feldwert vorschlagen; nach dem ersten
+ * Eintrag wäre das unhandlich. Deshalb bauen wir die Vorschläge beim Tippen
+ * aus dem letzten Teilstück neu zusammen.
+ */
+const GENRE_LIMIT = 12;
+
+function genreVorschlaegeAktualisieren(input, datalist) {
+  const katalog = datalist._genreKatalog || [];
+  const teile = String(input.value || "").split(";");
+  const letzterRohwert = teile.pop() || "";
+  const prefix = teile.map((teil) => teil.trim()).filter(Boolean).join("; ");
+  const basis = prefix ? `${prefix}; ` : "";
+  const suchwort = letzterRohwert.trim().toLocaleLowerCase();
+
+  let treffer = katalog;
+  if (suchwort) {
+    const beginntMit = katalog.filter((genre) => genre.toLocaleLowerCase().startsWith(suchwort));
+    const enthaelt = katalog.filter(
+      (genre) => !genre.toLocaleLowerCase().startsWith(suchwort)
+        && genre.toLocaleLowerCase().includes(suchwort),
+    );
+    treffer = [...beginntMit, ...enthaelt];
+  }
+
+  datalist.replaceChildren(
+    ...treffer.slice(0, GENRE_LIMIT).map((genre) => {
+      const option = document.createElement("option");
+      option.value = `${basis}${genre}`;
+      return option;
+    }),
+  );
+}
+
+function bindGenreInput(input) {
+  if (input.dataset.genreBound === "ja") return;
+  const listId = input.getAttribute("list");
+  if (!listId) return;
+  const datalist = document.getElementById(listId);
+  if (!datalist) return;
+
+  datalist._genreKatalog = Array.from(datalist.options)
+    .map((option) => option.value.trim())
+    .filter(Boolean);
+
+  const aktualisieren = () => genreVorschlaegeAktualisieren(input, datalist);
+  input.addEventListener("focus", aktualisieren);
+  input.addEventListener("input", aktualisieren);
+  input.dataset.genreBound = "ja";
+  aktualisieren();
+}
+
+function bindGenreInputs(root = document) {
+  root.querySelectorAll?.("[data-genre-input]").forEach(bindGenreInput);
+}

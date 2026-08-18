@@ -346,7 +346,21 @@ class TestMehrwertigeTags:
     def test_trennzeichen_wie_bei_navidrome(self, eingabe, erwartet):
         from backend import tagging
 
-        assert tagging._werte(eingabe) == erwartet
+        assert tagging._kuenstlerwerte(eingabe) == erwartet
+
+    @pytest.mark.parametrize(
+        "eingabe,erwartet",
+        [
+            ("Jazz", ["Jazz"]),
+            ("Jazz; Fusion", ["Jazz", "Fusion"]),
+            ("R&B/Soul", ["R&B/Soul"]),
+            ("Folk, World, & Country", ["Folk, World, & Country"]),
+        ],
+    )
+    def test_genres_werden_nur_am_semikolon_getrennt(self, eingabe, erwartet):
+        from backend import tagging
+
+        assert tagging._genrewerte(eingabe) == erwartet
 
     def test_sampler_bekommt_je_track_einen_kuenstler(self, tmp_path):
         """Der Fall Various Artists: Albumkünstler gleich, Interpret je Track."""

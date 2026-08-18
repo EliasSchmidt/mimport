@@ -1,0 +1,55 @@
+# Gängige Musikgenres für Vorschläge im manuellen Tagging.
+# Freitext bleibt weiterhin erlaubt; die Liste dient nur der Eingabehilfe.
+
+Alternative
+Blues
+Brass
+Children's Music
+Classical
+Country
+Dance
+Disco
+Drum & Bass
+Dub
+Dubstep
+Electronic
+Experimental
+Folk
+Folk, World, & Country
+Funk
+Fusion
+Gospel
+Hip-Hop
+House
+Indie
+Industrial
+Instrumental
+Jazz
+K-Pop
+Latin
+Lo-Fi
+Metal
+Modern Classical
+New Age
+Noise
+Opera
+Pop
+Post-Punk
+Post-Rock
+Progressive Rock
+Punk
+R&B/Soul
+Rap
+Reggae
+Rock
+Shoegaze
+Singer/Songwriter
+Ska
+Soul
+Soundtrack
+Swing
+Synthpop
+Techno
+Trance
+Trip-Hop
+World

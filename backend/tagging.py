@@ -78,7 +78,13 @@ _MEHRWERTIG = {"genres": "genre", "artists": "artist", "albumartists": "albumart
 #: Ausdruck "AC/DC" in zwei Künstler -- nachgeprüft, zusammen mit
 #: "Simon & Garfunkel" und "Crosby, Stills & Nash", die ebenfalls
 #: zusammenbleiben müssen.
-_TRENNER = re.compile(r"\s+/\s+|\s+feat\b\.?\s+|\s+ft\b\.?\s+|;\s*", re.IGNORECASE)
+_KUENSTLER_TRENNER = re.compile(
+    r"\s+/\s+|\s+feat\b\.?\s+|\s+ft\b\.?\s+|;\s*", re.IGNORECASE
+)
+
+#: Für Genres ist das absichtlich strenger als bei Künstlern: nur Semikolon.
+#: So bleiben Einträge wie "R&B/Soul" oder "Folk, World, & Country" ganz.
+_GENRE_TRENNER = re.compile(r";\s*")
 
 
 def sampler_name() -> str:
@@ -96,9 +102,14 @@ def sampler_name() -> str:
         return "Various Artists"
 
 
-def _werte(value: object) -> list[str]:
+def _kuenstlerwerte(value: object) -> list[str]:
     """Zerlegt eine Eingabe wie ``A feat. B`` in einzelne Namen."""
-    return [teil.strip() for teil in _TRENNER.split(str(value)) if teil.strip()]
+    return [teil.strip() for teil in _KUENSTLER_TRENNER.split(str(value)) if teil.strip()]
+
+
+def _genrewerte(value: object) -> list[str]:
+    """Zerlegt Genres über Semikolon, sonst nichts."""
+    return [teil.strip() for teil in _GENRE_TRENNER.split(str(value)) if teil.strip()]
 
 
 def _setzen(item: Any, key: str, value: object) -> None:
@@ -113,7 +124,7 @@ def _setzen(item: Any, key: str, value: object) -> None:
         item.comp = bool(value)
         return
     if key in _MEHRWERTIG:
-        teile = _werte(value)
+        teile = _genrewerte(value) if key == "genres" else _kuenstlerwerte(value)
         if not teile:
             return
         item[key] = teile

@@ -26,6 +26,7 @@ from backend import (
     beets_env,
     cover,
     disc,
+    genres,
     importer,
     matching,
     ocr,
@@ -189,6 +190,7 @@ def _files_fragment(request: Request, session: sessions.StagingSession) -> HTMLR
         ocr_text="",
         ocr_warnings=[],
         track_inputs=_track_inputs(session),
+        genre_vorschlaege=genres.katalog(),
         cover_present=cover.vorhanden(session.directory),
         cover_version=_session_cover_version(session),
         ocr_overlay=None,
@@ -1005,6 +1007,7 @@ def match(
         ocr_text="",
         ocr_warnings=[],
         track_inputs=_track_inputs(session),
+        genre_vorschlaege=genres.katalog(),
         ocr_overlay=None,
     )
 

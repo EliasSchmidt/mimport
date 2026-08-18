@@ -120,13 +120,13 @@ def _engine():
             "EngineConfig.onnxruntime.inter_op_num_threads": threads,
             # RapidOCR >=3.9 nutzt für PP-OCRv6 die kleinen Stufen tiny/small/medium.
             # Für europäische Tracklisten ist die lateinische Variante passender
-            # als reines Englisch. Bei RapidOCR ist sie für DET als 'la' und für
-            # REC als LATIN verfügbar.
+            # als reines Englisch. In dieser RapidOCR-Version wird sie hier
+            # praktisch über den Sprachcode 'la' adressiert.
             "Det.model_type": model_type_enum.SMALL,
             "Det.lang_type": "la",
             "Det.ocr_version": ocr_version_enum.PPOCRV6,
             "Rec.model_type": model_type_enum.SMALL,
-            "Rec.lang_type": lang_rec_enum.LATIN,
+            "Rec.lang_type": "la",
             "Rec.ocr_version": ocr_version_enum.PPOCRV6,
         }
 

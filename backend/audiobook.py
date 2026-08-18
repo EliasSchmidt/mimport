@@ -176,6 +176,25 @@ def _natural_key(pfad: Path) -> list[object]:
     return [int(t) if t.isdigit() else t for t in teile]
 
 
+def _buch_mtime(buch: Path) -> float:
+    """Jüngste Änderung innerhalb eines Buchordners.
+
+    Maßgeblich ist nicht nur der Ordner selbst: neue Dateien in bestehenden
+    Unterordnern ändern dessen mtime nicht zuverlässig genug für die Frage,
+    welches Buch zuletzt bearbeitet wurde.
+    """
+    try:
+        neueste = buch.stat().st_mtime
+    except OSError:
+        return 0.0
+    for pfad in buch.rglob("*"):
+        try:
+            neueste = max(neueste, pfad.stat().st_mtime)
+        except OSError:
+            continue
+    return neueste
+
+
 def next_disc_dir(buch: Path, *, ist_datencd: bool = False) -> Path:
     """Wohin die nächste Disc kommt.
 
@@ -251,6 +270,10 @@ class BookState:
     has_cover: bool = False
     lossy: bool = False
 
+    #: Letzte Änderung irgendwo im Buchordner. Grundlage für die Sortierung in
+    #: der Oberfläche: was gerade bearbeitet wurde, gehört nach oben.
+    modified_at: float = 0.0
+
     #: Änderungszeit des Coverbilds, als Cache-Schlüssel in der Bildadresse.
     #: Damit darf der Browser das Bild dauerhaft behalten -- und sieht ein neu
     #: fotografiertes trotzdem sofort, weil sich die Adresse mitändert.
@@ -317,8 +340,8 @@ def state(buch: Path) -> BookState:
         except OSError:
             continue
     discs = sorted(
-        (k.name for k in (buch.iterdir() if buch.is_dir() else []) if _DISC_RE.match(k.name)),
-        key=_natural_key,
+        [k.name for k in (buch.iterdir() if buch.is_dir() else []) if _DISC_RE.match(k.name)],
+        key=lambda name: _natural_key(Path(name)),
     )
     try:
         m4b_groesse = m4b.stat().st_size if m4b.is_file() else 0
@@ -335,13 +358,18 @@ def state(buch: Path) -> BookState:
         m4b_bytes=m4b_groesse,
         has_m4b=m4b.is_file(),
         has_cover=cover_pfad(buch) is not None,
+        modified_at=_buch_mtime(buch),
         cover_mtime=_cover_mtime(buch),
         lossy=any(p.suffix.lower() in LOSSY_EXTENSIONS for p in quellen),
     )
 
 
 def list_books() -> list[BookState]:
-    """Alle angefangenen Bücher der Bibliothek."""
+    """Alle angefangenen Bücher der Bibliothek.
+
+    Neueste Änderungen zuerst: wer gerade Dateien ergänzt oder ein Buch gebaut
+    hat, sucht es anschließend oben in der Liste.
+    """
     root = settings.audiobook_root
     if not root.is_dir():
         return []
@@ -353,7 +381,11 @@ def list_books() -> list[BookState]:
             zustand = state(buch)
             if zustand.file_count or zustand.has_m4b:
                 buecher.append(zustand)
-    return buecher
+    return sorted(
+        buecher,
+        key=lambda b: (b.modified_at, b.autor.casefold(), b.titel.casefold()),
+        reverse=True,
+    )
 
 
 # --------------------------------------------------------------- m4b bauen
@@ -720,34 +752,22 @@ def _eingebettetes_cover(datei: Path) -> bool:
     )
 
 
-def cover_aus_m4b_holen(buch: Path) -> bool:
-    """Legt das eingebettete Cover einer m4b als Datei daneben.
+def _cover_aus_datei_holen(buch: Path, quelle: Path, *, temp_name: str) -> bool:
+    """Schreibt ein eingebettetes Cover aus einer Audiodatei als ``cover.jpg``.
 
-    Für Bücher, die nicht über mimport kamen: dort steckt das Bild oft nur in
-    der m4b, und die Liste zeigte deshalb einen Platzhalter, obwohl ein Cover
-    vorhanden ist.
-
-    Geschrieben wird immer JPEG, auch wenn das eingebettete Bild ein PNG ist.
-    Ein ``-c copy`` wäre verlustfrei und schneller, legte dann aber ein PNG
-    unter dem Namen ``cover.jpg`` ab -- Browser kommen damit klar, die eigene
-    Formatprüfung beim Hochladen nicht. Ein Einzelbild neu zu encodieren kostet
-    neben den 25 ms für die Abfrage ohnehin nichts.
+    Geschrieben wird immer JPEG, auch wenn die Quelle ein PNG trägt. Damit ist
+    das Ergebnis für Browser, Audiobookshelf und die eigene Bildprüfung eine
+    ganz normale Datei im Buchordner.
     """
-    if cover_pfad(buch) is not None:
-        return False
-    m4b = m4b_pfad(buch)
-    if not m4b.is_file() or not _eingebettetes_cover(m4b):
+    if cover_pfad(buch) is not None or not _eingebettetes_cover(quelle):
         return False
 
     ziel = buch / "cover.jpg"
-    # Erst danebenschreiben, dann umbenennen: ein abgebrochener ffmpeg soll
-    # keine halbe Datei hinterlassen, die als „hat Cover" durchgeht und in der
-    # Liste als kaputtes Bild erscheint.
-    vorlaeufig = buch / ".cover-aus-m4b.neu"
+    vorlaeufig = buch / temp_name
     try:
         ergebnis = subprocess.run(
             [settings.ffmpeg_bin, "-hide_banner", "-loglevel", "error", "-nostdin",
-             "-y", "-i", str(m4b), "-map", "0:v:0", "-frames:v", "1",
+             "-y", "-i", str(quelle), "-map", "0:v:0", "-frames:v", "1",
              "-f", "mjpeg", "-q:v", "2", str(vorlaeufig)],
             capture_output=True,
             text=True,
@@ -760,36 +780,66 @@ def cover_aus_m4b_holen(buch: Path) -> bool:
             return False
         vorlaeufig.replace(ziel)
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as exc:
-        log.warning("Cover aus %s nicht lesbar: %s", m4b.name, exc)
+        log.warning("Cover aus %s nicht lesbar: %s", quelle.name, exc)
         return False
     finally:
         vorlaeufig.unlink(missing_ok=True)
     return True
 
 
+def cover_aus_m4b_holen(buch: Path) -> bool:
+    """Legt das eingebettete Cover einer m4b als Datei daneben.
+
+    Für Bücher, die nicht über mimport kamen: dort steckt das Bild oft nur in
+    der m4b, und die Liste zeigte deshalb einen Platzhalter, obwohl ein Cover
+    vorhanden ist.
+    """
+    m4b = m4b_pfad(buch)
+    return m4b.is_file() and _cover_aus_datei_holen(buch, m4b, temp_name=".cover-aus-m4b.neu")
+
+
+def cover_aus_audio_holen(buch: Path) -> bool:
+    """Versucht ein Cover aus den Quelldateien eines Buchs zu holen.
+
+    Relevant für direkt übernommene MP3-/M4A-Hörbücher: Audiobookshelf liest
+    das eingebettete Bild, die mimport-Liste aber nur Dateien im Buchordner.
+    """
+    if cover_pfad(buch) is not None:
+        return False
+    for quelle in audio_files(buch):
+        if quelle == m4b_pfad(buch):
+            continue
+        if _cover_aus_datei_holen(buch, quelle, temp_name=".cover-aus-audio.neu"):
+            return True
+    return False
+
+
+def cover_nachziehen_buch(buch: Path) -> bool:
+    """Holt ein fehlendes Cover für genau ein Buch nach."""
+    if cover_pfad(buch) is not None:
+        return False
+    return cover_aus_m4b_holen(buch) or cover_aus_audio_holen(buch)
+
+
 def cover_nachziehen() -> int:
-    """Holt die Cover aller m4bs, die noch keine Bilddatei danebenliegen haben.
+    """Holt fehlende Cover aus m4bs oder Quelldateien in den Buchordner.
 
     Läuft einmal beim Start. Danach ist die Frage „hat dieses Buch ein Cover"
     wieder eine reine Dateisystemabfrage -- deshalb hier und nicht beim
     Auflisten: ein ffprobe je Buch bei jedem Seitenaufruf wäre auf dem
     Zielrechner spürbar, einmal beim Start ist es das nicht.
-
-    Bücher ohne eingebettetes Bild kosten bei jedem Start erneut eine Abfrage
-    (gemessen 25 ms). Das ist der Preis dafür, ein später hinzugefügtes Cover
-    ohne weiteres Zutun zu finden.
     """
     geholt = 0
     for zustand in list_books():
-        if zustand.has_cover or not zustand.has_m4b:
+        if zustand.has_cover:
             continue
         try:
-            if cover_aus_m4b_holen(zustand.path):
+            if cover_nachziehen_buch(zustand.path):
                 geholt += 1
         except Exception:  # noqa: BLE001 -- ein Buch darf den Lauf nicht beenden
             log.exception("Cover aus %s fehlgeschlagen", zustand.path)
     if geholt:
-        log.info("%d Cover aus m4bs geholt", geholt)
+        log.info("%d Cover aus Hörbüchern geholt", geholt)
     return geholt
 
 

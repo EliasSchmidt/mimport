@@ -159,6 +159,10 @@ function render(results, target) {
     <p class="hint">${results.length} Dateien, ${humanBytes(totalSize)} insgesamt</p>`;
 }
 
+function optionalTarget(selector) {
+  return selector ? document.querySelector(selector) : null;
+}
+
 function bindUploadWidget(form) {
   if (!form || form.dataset.uploadBound === "ja") return;
   form.dataset.uploadBound = "ja";
@@ -166,9 +170,9 @@ function bindUploadWidget(form) {
   const folderInput = form.querySelector("[data-upload-folder]");
   const fileInput = form.querySelector("[data-upload-files]");
   const submitButton = form.querySelector("[data-upload-submit]");
-  const preflightTarget = document.querySelector(form.dataset.preflightTarget || "");
-  const resultTarget = document.querySelector(form.dataset.uploadTarget || "");
-  const revealTarget = document.querySelector(form.dataset.uploadReveal || "");
+  const preflightTarget = optionalTarget(form.dataset.preflightTarget);
+  const resultTarget = optionalTarget(form.dataset.uploadTarget);
+  const revealTarget = optionalTarget(form.dataset.uploadReveal);
   const endpoint = form.dataset.uploadEndpoint || "/upload";
   const autoSubmit = form.dataset.uploadAutosubmit === "true";
 

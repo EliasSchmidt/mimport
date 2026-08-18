@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -108,6 +109,29 @@ class TestNatuerlicheSortierung:
 
         namen = [p.name for p in audiobook.audio_files(buch)]
         assert namen == ["1 Track.flac", "2 Track.flac", "10 Track.flac"]
+
+
+class TestBuchliste:
+    def test_zuletzt_geaendertes_buch_steht_oben(self, bibliothek):
+        import os
+
+        alt = audiobook.book_dir("Autor", "Alt")
+        neu = audiobook.book_dir("Autor", "Neu")
+        alt.mkdir(parents=True)
+        neu.mkdir(parents=True)
+        (alt / "01.mp3").write_bytes(b"\xff\xfb")
+        (neu / "01.mp3").write_bytes(b"\xff\xfb")
+
+        os.utime(alt / "01.mp3", (1, 1))
+        os.utime(alt, (1, 1))
+        os.utime(neu / "01.mp3", (2, 2))
+        os.utime(neu, (2, 2))
+
+        buecher = audiobook.list_books()
+        assert [(b.autor, b.titel) for b in buecher[:2]] == [
+            ("Autor", "Neu"),
+            ("Autor", "Alt"),
+        ]
 
 
 class TestQuellenAufraeumen:
@@ -1232,6 +1256,22 @@ class TestCoverAusM4bHolen:
         subprocess.run(befehl, check=True, capture_output=True)
         return buch
 
+    def _mp3(self, buch: Path, *, bild: bool = True):
+        buch.mkdir(parents=True, exist_ok=True)
+        ziel = buch / "01 Kapitel.mp3"
+        befehl = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+                  "-f", "lavfi", "-i", "sine=f=440:d=3"]
+        if bild:
+            befehl += ["-f", "lavfi", "-i", "testsrc=s=200x200:d=1",
+                       "-map", "0:a", "-map", "1:v", "-c:v", "mjpeg",
+                       "-id3v2_version", "3", "-metadata:s:v", "title=Album cover",
+                       "-metadata:s:v", "comment=Cover (front)"]
+        else:
+            befehl += ["-map", "0:a"]
+        befehl += ["-c:a", "libmp3lame", str(ziel)]
+        subprocess.run(befehl, check=True, capture_output=True)
+        return buch
+
     def test_eingebettetes_cover_wird_zur_datei(self, tmp_path, monkeypatch):
         monkeypatch.setattr(audiobook.settings, "audiobook_root", tmp_path)
         buch = self._m4b(tmp_path / "Autor" / "Fremdes Buch")
@@ -1274,6 +1314,22 @@ class TestCoverAusM4bHolen:
         monkeypatch.setattr(audiobook.settings, "audiobook_root", tmp_path)
         self._m4b(tmp_path / "Autor" / "Eins")
         self._m4b(tmp_path / "Autor" / "Zwei", bild=None)
+
+        assert audiobook.cover_nachziehen() == 1
+        assert audiobook.cover_nachziehen() == 0
+
+    def test_eingebettetes_cover_aus_mp3_wird_zur_datei(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(audiobook.settings, "audiobook_root", tmp_path)
+        buch = self._mp3(tmp_path / "Autor" / "MP3-Buch")
+
+        assert audiobook.cover_aus_audio_holen(buch) is True
+        assert (buch / "cover.jpg").is_file()
+        assert audiobook.state(buch).has_cover
+
+    def test_cover_nachziehen_nimmt_auch_quellen(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(audiobook.settings, "audiobook_root", tmp_path)
+        self._mp3(tmp_path / "Autor" / "Mit MP3-Cover")
+        self._mp3(tmp_path / "Autor" / "Ohne MP3-Cover", bild=False)
 
         assert audiobook.cover_nachziehen() == 1
         assert audiobook.cover_nachziehen() == 0

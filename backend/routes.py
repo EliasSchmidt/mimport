@@ -585,6 +585,7 @@ async def audiobook_upload(
             ordner = audiobook.fertigstellen(arbeit, buchpfad)
         else:
             ordner = _einsortieren(arbeit, ordner)
+        audiobook.cover_nachziehen_buch(buchpfad)
     except BaseException:
         shutil.rmtree(arbeit, ignore_errors=True)
         raise
@@ -714,6 +715,7 @@ def _audiobook_datencd(
             ordner = audiobook.fertigstellen(arbeit, buch)
         else:
             ordner = _einsortieren(arbeit, ordner)
+        audiobook.cover_nachziehen_buch(buch)
     except (disc.DiscError, audiobook.AudiobookError) as exc:
         shutil.rmtree(arbeit, ignore_errors=True)
         return _audiobook_fragment(request, fehler=str(exc))

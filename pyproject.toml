@@ -21,6 +21,10 @@ dependencies = [
     # zieht sie nicht zuverlässig mit.
     "paddleocr>=2.10,<3",
     "paddlepaddle>=2.6.2,<3",
+    # Paddle importiert zur Laufzeit Teile seiner C++-Extension-Helfer, die
+    # ``setuptools`` brauchen. In schlanken venvs ist das sonst nicht mehr
+    # automatisch da.
+    "setuptools>=70",
 ]
 
 [dependency-groups]

@@ -108,7 +108,7 @@ services:
       #
       # Auf dem Host je nach Automount-Pfad anpassen, z. B.:
       #   /media/cdrom, /media/<nutzer>/<CD-Name> oder /mnt/cdrom
-      - /media/cdrom:/disc:ro
+      - /media/cdrom0:/disc:ro
 
     # Für Audio-CDs. Die haben kein Dateisystem, ihre Sektoren müssen direkt
     # aus dem Gerät gelesen werden -- ein Mount vom Host hilft hier nicht.

@@ -814,6 +814,7 @@ class TestHoerbuchFortsetzen:
 
         response = client.get("/audiobook")
         assert ">Nächste CD</button>" in response.text
+        assert "Dateien hinzufügen" in response.text
         assert 'value="Astrid Lindgren/Ronja"' in response.text
 
     def test_fortsetzen_ueber_den_buchpfad(self, client, bibliothek, tmp_path, monkeypatch):
@@ -851,6 +852,7 @@ class TestHoerbuchFortsetzen:
 
         response = client.get("/audiobook")
         assert ">Nächste CD</button>" not in response.text
+        assert "Dateien hinzufügen" not in response.text
 
 
 class TestVonVornUeberDieOberflaeche:

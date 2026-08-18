@@ -222,6 +222,18 @@
                         <input type="hidden" name="buch" value="{{ b.relative }}">
                         <button type="submit" class="button">Nächste CD</button>
                     </form>
+
+                    <form data-upload-widget data-upload-autosubmit="true"
+                          data-upload-endpoint="/audiobook/upload"
+                          data-upload-target="#audiobook">
+                        <input type="hidden" name="buch" value="{{ b.relative }}">
+                        <label class="button secondary" for="audiobook-add-{{ loop.index }}">
+                            Dateien hinzufügen
+                        </label>
+                        <input type="file" id="audiobook-add-{{ loop.index }}" name="files" hidden
+                               webkitdirectory directory multiple data-upload-folder>
+                        <button type="submit" hidden data-upload-submit></button>
+                    </form>
                     {% endif %}
 
                     {# Cover abfotografieren -- vor **und** nach dem Bündeln.

@@ -170,6 +170,7 @@ function bindUploadWidget(form) {
   const resultTarget = document.querySelector(form.dataset.uploadTarget || "");
   const revealTarget = document.querySelector(form.dataset.uploadReveal || "");
   const endpoint = form.dataset.uploadEndpoint || "/upload";
+  const autoSubmit = form.dataset.uploadAutosubmit === "true";
 
   selections.set(form, []);
 
@@ -185,6 +186,9 @@ function bindUploadWidget(form) {
     selections.set(form, selection);
     render(selection, preflightTarget);
     if (submitButton) submitButton.disabled = selection.length === 0;
+    if (autoSubmit && selection.length) {
+      form.requestSubmit(submitButton || undefined);
+    }
   }
 
   async function onSubmit(event) {

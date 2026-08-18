@@ -30,7 +30,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
-from backend import audiobook, beets_env, sessions
+from backend import audiobook, beets_env, ocr, sessions
 from backend.config import settings
 from backend.routes import router
 
@@ -78,7 +78,12 @@ async def lifespan(app: FastAPI):
         except Exception:  # noqa: BLE001
             log.exception("Cover aus m4bs holen fehlgeschlagen")
 
+    def _ocr_vorladen() -> None:
+        ocr.preload()
+
     threading.Thread(target=_cover_nachziehen, daemon=True).start()
+    threading.Thread(target=_ocr_vorladen, name="ocr-preload", daemon=True).start()
+    log.info("OCR-Preload im Hintergrund gestartet")
 
     log.info(
         "Staging-Ordner: %s | belegt %.1f GB von %.1f GB | frei auf dem "

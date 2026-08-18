@@ -10,6 +10,7 @@ import importlib
 import logging
 import os
 import tempfile
+import time
 from dataclasses import dataclass, field
 from io import BytesIO
 from pathlib import Path
@@ -138,6 +139,18 @@ def _image_size(image_bytes: bytes) -> tuple[int, int]:
             return int(image.width), int(image.height)
     except Exception:
         return 0, 0
+
+
+def preload() -> None:
+    """Lädt die OCR-Engine vorab und protokolliert Dauer/Fehler."""
+    start = time.perf_counter()
+    try:
+        _engine()
+    except Exception:
+        log.exception("OCR-Preload fehlgeschlagen")
+        return
+
+    log.info("OCR-Preload abgeschlossen | dauer_s=%.2f", time.perf_counter() - start)
 
 
 def recognize(image_bytes: bytes, *, suffix: str = ".jpg") -> OcrResult:

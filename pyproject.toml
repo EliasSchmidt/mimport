@@ -16,15 +16,13 @@ dependencies = [
     # Für die DiscID-Abfrage bei MusicBrainz. Kommt ohnehin mit beets, wird
     # hier aber direkt benutzt und deshalb auch direkt genannt.
     "requests>=2.32",
-    # OCR für Backcover-Text; bewusst auf der 2.x-API, die mimport direkt
-    # benutzt. Die Inference-Engine kommt explizit dazu -- paddleocr allein
-    # zieht sie nicht zuverlässig mit.
-    "paddleocr>=2.10,<3",
-    "paddlepaddle>=2.6.2,<3",
-    # Paddle importiert zur Laufzeit Teile seiner C++-Extension-Helfer, die
-    # ``setuptools`` brauchen. In schlanken venvs ist das sonst nicht mehr
-    # automatisch da.
-    "setuptools>=70",
+    # OCR für Backcover-Text: RapidOCR nutzt ONNX Runtime auf CPU und ist für
+    # diesen Server-Anwendungsfall deutlich leichter als der Paddle-Stack.
+    "rapidocr>=3.3,<4",
+    "onnxruntime>=1.20,<2",
+    # Pillow wird direkt für Downscaling und EXIF-Rotation der Backcover-Fotos
+    # verwendet.
+    "pillow>=10,<13",
 ]
 
 [dependency-groups]

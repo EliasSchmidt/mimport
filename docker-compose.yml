@@ -61,11 +61,14 @@ services:
       MIMPORT_MAX_STAGING_BYTES: "21474836480"
       MIMPORT_SESSION_TTL_HOURS: "24"
 
-      # Wie beim Upload-Dienst: OCR-Modelle einmalig laden und im Daten-Volume
-      # behalten.
+      # OCR-Modelle einmalig laden und im Daten-Volume behalten. RapidOCR läuft
+      # auf CPU deutlich sparsamer als der Paddle-Stack; die Bildkante wird vor
+      # der Inferenz begrenzt, um RAM-Spitzen zu drücken.
       HOME: /data
-      PADDLE_OCR_BASE_DIR: /data/.paddleocr
+      MIMPORT_OCR_MODEL_DIR: /data/.rapidocr
       MIMPORT_OCR_ANGLE_CLS: "0"
+      MIMPORT_OCR_MAX_IMAGE_SIDE: "1400"
+      MIMPORT_OCR_THREADS: "2"
 
     restart: unless-stopped
 
@@ -74,11 +77,11 @@ services:
     cap_drop:
       - ALL
 
-    mem_limit: 4g
+    mem_limit: 2g
     deploy:
       resources:
         limits:
-          memory: 4g
+          memory: 2g
 
 volumes:
   mimport-data:

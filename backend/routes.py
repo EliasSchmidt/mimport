@@ -1100,12 +1100,13 @@ async def ocr_backcover(
         )
 
     parsed = trackparse.parse_text(result.text, selected_mode)
-    image_type = (
+    image_bytes = result.preview_bytes or payload
+    image_type = result.preview_content_type or (
         bild.content_type
         if bild.content_type and bild.content_type.startswith("image/")
         else "image/jpeg"
     )
-    image_url = f"data:{image_type};base64,{base64.b64encode(payload).decode('ascii')}"
+    image_url = f"data:{image_type};base64,{base64.b64encode(image_bytes).decode('ascii')}"
     overlay = _ocr_overlay(result, image_url)
     log.info(
         "Backcover-OCR fertig | session=%s | textzeilen=%d | parser_tracks=%d",

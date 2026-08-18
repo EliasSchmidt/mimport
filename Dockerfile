@@ -18,9 +18,9 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 # Kapiteln. Es ist das mit Abstand größte Paket hier (mit den libav*-Dekodern
 # grob 200 MB) -- ohne m4b-Bau kann man die beiden Zeilen streichen.
 #
-# Für PaddleOCR auf CPU kommen drei kleine Laufzeitbibliotheken dazu:
+# Für RapidOCR/ONNX auf CPU kommen kleine Laufzeitbibliotheken dazu:
 # * libgl1 / libglib2.0-0 für OpenCV
-# * libgomp1 für OpenMP in Paddle
+# * libgomp1 für ONNX/OpenMP
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
     cdparanoia \
@@ -71,14 +71,14 @@ COPY beets/config.yaml /config/config.yaml
 # ein Volume -- nicht dieses chown erweitert.
 RUN groupadd --gid 1000 mimport \
  && useradd --uid 1000 --gid 1000 --no-create-home mimport \
- && mkdir -p /music /data/.paddleocr /staging /config /disc /audiobooks \
+ && mkdir -p /music /data/.rapidocr /staging /config /disc /audiobooks \
  && chown -R mimport:mimport /music /data /staging /config /disc /audiobooks
 
 USER mimport
 
 ENV HOME=/data \
-    # Modelle und sonstige PaddleOCR-Ressourcen im persistenten Daten-Volume.
-    PADDLE_OCR_BASE_DIR=/data/.paddleocr \
+    # Modelle und sonstige OCR-Ressourcen im persistenten Daten-Volume.
+    MIMPORT_OCR_MODEL_DIR=/data/.rapidocr \
     MIMPORT_STAGING=/staging \
     # Hier taucht eine eingelegte Daten-CD auf. Gemountet wird auf dem Host,
     # hereingereicht wird nur der fertige Mount -- der Container braucht

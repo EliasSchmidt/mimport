@@ -200,21 +200,20 @@ Deshalb heißt die Datei in beiden Fällen genau so.
 ## Backcover-Text (OCR)
 
 Für das **manuelle Taggen** kann mimport zusätzlich den Text eines
-CD-Backcovers lesen. Dafür läuft `PaddleOCR` **serverseitig im Container**;
+CD-Backcovers lesen. Dafür läuft `RapidOCR` **serverseitig im Container**;
 der Browser lädt nur das Foto hoch. Das Ergebnis erscheint als Rohtext in der
 Oberfläche und lässt sich dort mit einfachen Parsern (etwa `01 Titel 3:45`
 oder `Artist - Titel`) in eine **weiter bearbeitbare** Trackliste vorfüllen.
 
-Die OCR-Modelle werden beim **ersten OCR-Aufruf** einmal heruntergeladen und im
-Daten-Volume unter <span class="mono">/data/.paddleocr</span> abgelegt. Danach
-bleiben sie über Neustarts hinweg erhalten. Zusätzliche Pakete auf dem Debian-
-Host braucht der CPU-Betrieb nicht; alles Nötige steckt im Container-Image.
+Die OCR-Modelle werden beim Serverstart vorab geladen und im Daten-Volume unter
+<span class="mono">/data/.rapidocr</span> abgelegt. Danach bleiben sie über
+Neustarts hinweg erhalten. Zusätzliche Pakete auf dem Debian-Host braucht der
+CPU-Betrieb nicht; alles Nötige steckt im Container-Image.
 
-Wichtig für kleine Server: Der **erste** OCR-Lauf braucht deutlich mehr RAM als
-spätere Läufe, weil dabei Modelle heruntergeladen und geladen werden. Mit 1 GB
-Container-Limit wurde der Prozess in der Praxis vom Kernel beendet (Exit 137).
-Darum setzt `docker-compose.yml` für die OCR-Dienste 2 GB an und lässt den
-Winkel-Klassifikator standardmäßig aus.
+Für kleine Server begrenzt mimport das Backcover vor der Inferenz auf eine
+maximale Bildkante und nutzt `RapidOCR` mit `onnxruntime` auf CPU. Das senkt
+den RAM-Bedarf deutlich gegenüber dem bisherigen Paddle-Stack; der
+Winkel-Klassifikator bleibt standardmäßig aus.
 
 ### In der Liste
 

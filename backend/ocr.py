@@ -11,6 +11,7 @@ import logging
 import os
 import tempfile
 from dataclasses import dataclass, field
+from io import BytesIO
 from pathlib import Path
 from threading import Lock
 
@@ -22,11 +23,23 @@ class OcrError(RuntimeError):
 
 
 @dataclass
+class OcrDetection:
+    """Eine einzelne erkannte Textbox."""
+
+    box: list[tuple[float, float]]
+    text: str
+    score: float
+
+
+@dataclass
 class OcrResult:
     """Erkanntes OCR-Ergebnis."""
 
     text: str
     lines: list[str]
+    detections: list[OcrDetection] = field(default_factory=list)
+    image_width: int = 0
+    image_height: int = 0
     warnings: list[str] = field(default_factory=list)
 
 
@@ -81,34 +94,50 @@ def _normalize_lines(lines: list[str]) -> list[str]:
     return [line for line in normalized if line]
 
 
-def _extract_lines(raw: object) -> list[str]:
-    """Extrahiert Textzeilen aus den unterschiedlichen PaddleOCR-Rückgaben."""
+def _extract_detections(raw: object) -> list[OcrDetection]:
+    """Extrahiert Boxen, Text und Score aus der PaddleOCR-Rückgabe."""
+    detections: list[OcrDetection] = []
 
-    lines: list[str] = []
+    if not isinstance(raw, list):
+        return detections
 
-    # Typisch: [ [ [box], (text, score) ], ... ]
-    if isinstance(raw, list):
-        for entry in raw:
-            if isinstance(entry, list):
-                # Ebene einer Seite oder einer Detection-Liste.
-                for item in entry:
-                    if (
-                        isinstance(item, list)
-                        and len(item) >= 2
-                        and isinstance(item[1], (list, tuple))
-                        and item[1]
-                    ):
-                        lines.append(str(item[1][0]))
-                # Manche Versionen liefern schon direkt line-Items in entry.
-                if (
-                    isinstance(entry, list)
-                    and len(entry) >= 2
-                    and isinstance(entry[1], (list, tuple))
-                    and entry[1]
-                ):
-                    lines.append(str(entry[1][0]))
+    for entry in raw:
+        if not isinstance(entry, list):
+            continue
+        for item in entry:
+            if not (
+                isinstance(item, list)
+                and len(item) >= 2
+                and isinstance(item[0], list)
+                and isinstance(item[1], (list, tuple))
+                and item[1]
+            ):
+                continue
 
-    return _normalize_lines(lines)
+            try:
+                box = [
+                    (float(point[0]), float(point[1]))
+                    for point in item[0]
+                    if isinstance(point, (list, tuple)) and len(point) >= 2
+                ]
+                text = str(item[1][0])
+                score = float(item[1][1]) if len(item[1]) > 1 else 0.0
+            except Exception:
+                continue
+            if len(box) == 4 and text.strip():
+                detections.append(OcrDetection(box=box, text=text.strip(), score=score))
+
+    return detections
+
+
+def _image_size(image_bytes: bytes) -> tuple[int, int]:
+    try:
+        from PIL import Image
+
+        with Image.open(BytesIO(image_bytes)) as image:
+            return int(image.width), int(image.height)
+    except Exception:
+        return 0, 0
 
 
 def recognize(image_bytes: bytes, *, suffix: str = ".jpg") -> OcrResult:
@@ -130,14 +159,23 @@ def recognize(image_bytes: bytes, *, suffix: str = ".jpg") -> OcrResult:
         engine = _engine()
         log.info("OCR-Inferenz beginnt | cls=%s | pfad=%s", "an" if _env_bool("MIMPORT_OCR_ANGLE_CLS", False) else "aus", tmp_path)
         raw = engine.ocr(str(tmp_path), cls=_env_bool("MIMPORT_OCR_ANGLE_CLS", False))
-        lines = _extract_lines(raw)
-        log.info("OCR-Inferenz fertig | zeilen=%d", len(lines))
+        detections = _extract_detections(raw)
+        lines = _normalize_lines([item.text for item in detections])
+        width, height = _image_size(image_bytes)
+        log.info("OCR-Inferenz fertig | zeilen=%d | boxen=%d", len(lines), len(detections))
 
         warnings: list[str] = []
         if not lines:
             warnings.append("Kein Text erkannt. Bitte anderes Foto (schärfer/gerader/heller).")
 
-        return OcrResult(text="\n".join(lines), lines=lines, warnings=warnings)
+        return OcrResult(
+            text="\n".join(lines),
+            lines=lines,
+            detections=detections,
+            image_width=width,
+            image_height=height,
+            warnings=warnings,
+        )
     except OcrError:
         raise
     except Exception as exc:  # noqa: BLE001

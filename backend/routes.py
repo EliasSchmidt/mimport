@@ -12,6 +12,7 @@ FastAPI führt ``def``-Endpunkte dagegen in einem Threadpool aus.
 
 from __future__ import annotations
 
+import base64
 import logging
 import shutil
 from pathlib import Path
@@ -122,6 +123,27 @@ def _session_cover_version(session: sessions.StagingSession) -> str:
         return ""
 
 
+def _ocr_overlay(result: ocr.OcrResult, image_url: str) -> dict[str, object]:
+    items: list[dict[str, object]] = []
+    for detection in result.detections:
+        points = " ".join(f"{x:.2f},{y:.2f}" for x, y in detection.box)
+        items.append(
+            {
+                "points": points,
+                "text": detection.text,
+                "score": f"{detection.score * 100:.0f}",
+                "x": min(point[0] for point in detection.box),
+                "y": min(point[1] for point in detection.box),
+            }
+        )
+    return {
+        "image_url": image_url,
+        "image_width": result.image_width,
+        "image_height": result.image_height,
+        "items": items,
+    }
+
+
 def _track_inputs(
     session: sessions.StagingSession,
     parsed: list[trackparse.ParsedTrack] | None = None,
@@ -169,6 +191,7 @@ def _files_fragment(request: Request, session: sessions.StagingSession) -> HTMLR
         track_inputs=_track_inputs(session),
         cover_present=cover.vorhanden(session.directory),
         cover_version=_session_cover_version(session),
+        ocr_overlay=None,
     )
 
 
@@ -982,6 +1005,7 @@ def match(
         ocr_text="",
         ocr_warnings=[],
         track_inputs=_track_inputs(session),
+        ocr_overlay=None,
     )
 
 
@@ -1047,6 +1071,7 @@ async def ocr_backcover(
             ocr_text="",
             ocr_warnings=warnings,
             track_inputs=_track_inputs(session),
+            ocr_overlay=None,
         )
 
     suffix = Path(bild.filename or "bild.jpg").suffix or ".jpg"
@@ -1071,9 +1096,17 @@ async def ocr_backcover(
             ocr_text="",
             ocr_warnings=warnings,
             track_inputs=_track_inputs(session),
+            ocr_overlay=None,
         )
 
     parsed = trackparse.parse_text(result.text, selected_mode)
+    image_type = (
+        bild.content_type
+        if bild.content_type and bild.content_type.startswith("image/")
+        else "image/jpeg"
+    )
+    image_url = f"data:{image_type};base64,{base64.b64encode(payload).decode('ascii')}"
+    overlay = _ocr_overlay(result, image_url)
     log.info(
         "Backcover-OCR fertig | session=%s | textzeilen=%d | parser_tracks=%d",
         session_id,
@@ -1096,6 +1129,7 @@ async def ocr_backcover(
         ocr_text=result.text,
         ocr_warnings=warnings,
         track_inputs=_track_inputs(session, parsed),
+        ocr_overlay=overlay,
     )
 
 
@@ -1130,6 +1164,7 @@ async def ocr_parse(
         ocr_text=text,
         ocr_warnings=warnings,
         track_inputs=_track_inputs(session, parsed),
+        ocr_overlay=None,
     )
 
 

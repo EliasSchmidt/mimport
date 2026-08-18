@@ -60,6 +60,32 @@
             </ul>
         </div>
         {% endif %}
+
+        {% if ocr_overlay %}
+        <details class="ocr-debug" open>
+            <summary>OCR im Bild anzeigen ({{ ocr_overlay.items | length }} Treffer)</summary>
+            <p class="hint">
+                So sieht man direkt, welche Zeilen PaddleOCR wirklich im Backcover
+                gefunden hat — inklusive Lage im Bild.
+            </p>
+            <div class="ocr-overlay-box">
+                <svg class="ocr-overlay"
+                     viewBox="0 0 {{ ocr_overlay.image_width }} {{ ocr_overlay.image_height }}"
+                     role="img"
+                     aria-label="Erkannte OCR-Bereiche im Backcover">
+                    <image href="{{ ocr_overlay.image_url }}"
+                           width="{{ ocr_overlay.image_width }}"
+                           height="{{ ocr_overlay.image_height }}" />
+                    {% for item in ocr_overlay.items %}
+                    <polygon points="{{ item.points }}" class="ocr-poly"></polygon>
+                    <text x="{{ item.x }}" y="{{ item.y - 4 if item.y > 8 else item.y + 14 }}" class="ocr-label">
+                        {{ item.text }} · {{ item.score }} %
+                    </text>
+                    {% endfor %}
+                </svg>
+            </div>
+        </details>
+        {% endif %}
     </div>
 
     <details class="je-track" open>

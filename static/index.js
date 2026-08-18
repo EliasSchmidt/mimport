@@ -292,8 +292,12 @@ document.body.addEventListener("htmx:afterSwap", (event) => {
  */
 const SAMPLER_NAME = "Various Artists";
 
+function manualContainer(von) {
+  return von.closest("[data-manual-form]");
+}
+
 function samplerUmschalten(haken) {
-  const formular = haken.closest("form");
+  const formular = manualContainer(haken);
   if (!formular) return;
   const albumartist = formular.querySelector("[data-albumartist]");
   const alleInterpreten = formular.querySelector("[data-alle-interpreten]");
@@ -340,56 +344,22 @@ function artistStatusHtml(kind, title, text) {
 }
 
 function artistZielFeld(form, field) {
-  return form.querySelector(`[data-artist-field="${field}"]`);
+  return form?.querySelector(`[data-artist-field="${field}"]`);
 }
 
 function artistZielMbid(form, field) {
-  return form.querySelector(`[data-artist-mbid="${field}"]`);
+  return form?.querySelector(`[data-artist-mbid="${field}"]`);
 }
 
 function artistZielErgebnis(form, field) {
-  return form.querySelector(`[data-artist-results="${field}"]`);
-}
-
-function artistSuche(button) {
-  const form = button.closest("form");
-  if (!form) return;
-
-  const field = String(button.dataset.field || "");
-  const url = String(button.dataset.url || "");
-  const target = String(button.dataset.target || "");
-  const input = artistZielFeld(form, field);
-  const mbid = artistZielMbid(form, field);
-  if (!field || !url || !target || !input || !window.htmx) return;
-
-  if (mbid) {
-    mbid.value = "";
-    delete mbid.dataset.selectedName;
-  }
-
-  window.htmx.ajax("POST", url, {
-    source: button,
-    target,
-    swap: "innerHTML",
-    values: {
-      field,
-      name: input.value.trim(),
-    },
-  });
+  return form?.querySelector(`[data-artist-results="${field}"]`);
 }
 
 document.body.addEventListener("click", (event) => {
-  const suchButton = event.target.closest("[data-artist-search]");
-  if (suchButton) {
-    event.preventDefault();
-    artistSuche(suchButton);
-    return;
-  }
-
   const button = event.target.closest("[data-artist-choose]");
   if (!button) return;
 
-  const form = button.closest("form");
+  const form = manualContainer(button);
   if (!form) return;
 
   const field = button.dataset.field || "";
@@ -411,23 +381,11 @@ document.body.addEventListener("click", (event) => {
   );
 });
 
-document.body.addEventListener("keydown", (event) => {
-  const input = event.target.closest("[data-artist-field]");
-  if (!input || event.key !== "Enter") return;
-
-  event.preventDefault();
-  const form = input.closest("form");
-  if (!form) return;
-  const field = String(input.dataset.artistField || "");
-  const suchButton = form.querySelector(`[data-artist-search][data-field="${field}"]`);
-  if (suchButton) artistSuche(suchButton);
-});
-
 document.body.addEventListener("input", (event) => {
   const input = event.target.closest("[data-artist-field]");
   if (!input) return;
 
-  const form = input.closest("form");
+  const form = manualContainer(input);
   const field = input.dataset.artistField || "";
   const mbid = artistZielMbid(form, field);
   const result = artistZielErgebnis(form, field);

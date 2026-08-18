@@ -2,11 +2,9 @@
    OCR ist nur Vorbelegung: der Nutzer korrigiert anschließend in der Tabelle. #}
 <details class="manual">
     <summary>Tags selbst setzen (von Hand taggen)</summary>
-    <form hx-post="/manual/{{ session_id }}"
-          hx-target="#result"
-          hx-swap="innerHTML"
-          hx-indicator="#manual-spinner-{{ session_id }}"
-          hx-on::after-request="document.getElementById(&#39;result-step&#39;).hidden = false">
+    <div class="manual-form"
+         data-manual-form
+         hx-on::after-request="document.getElementById(&#39;result-step&#39;).hidden = false">
         <p class="hint">
             Nur ausgefüllte Felder werden geschrieben. Mit „Text erkennen" wird die
             Trackliste aus dem Backcover vorbefüllt und bleibt danach vollständig
@@ -17,16 +15,17 @@
 
         <div class="fields">
             <label>Albumkünstler <small>(für das ganze Album)</small>
-                <div class="lookup-field">
+                <div class="lookup-field"
+                     hx-post="/artist-match/{{ session_id }}"
+                     hx-trigger="click from:.lookup-button, keydown[key=='Enter'] from:input consume"
+                     hx-include="this"
+                     hx-vals='{"field":"albumartist"}'
+                     hx-target="#artist-match-albumartist-{{ session_id }}"
+                     hx-swap="innerHTML">
                     <input type="text" name="albumartist" data-albumartist data-artist-field="albumartist"
                            placeholder="z. B. The Beatles">
                     <input type="hidden" name="mb_albumartistids" data-artist-mbid="albumartist">
-                    <button type="button"
-                            class="button secondary lookup-button"
-                            data-artist-search
-                            data-field="albumartist"
-                            data-url="/artist-match/{{ session_id }}"
-                            data-target="#artist-match-albumartist-{{ session_id }}">🔎</button>
+                    <button type="button" class="button secondary lookup-button">🔎</button>
                 </div>
                 <small>Sorgt dafür, dass ein Album zusammenbleibt. Bei einem normalen Soloalbum ist das oft derselbe Name wie beim Track-Künstler.</small>
                 <div id="artist-match-albumartist-{{ session_id }}" class="artist-match" data-artist-results="albumartist">
@@ -37,15 +36,16 @@
                 <input type="text" name="album" placeholder="z. B. Abbey Road">
             </label>
             <label data-alle-interpreten>Track-Künstler <small>(für alle Tracks)</small>
-                <div class="lookup-field">
+                <div class="lookup-field"
+                     hx-post="/artist-match/{{ session_id }}"
+                     hx-trigger="click from:.lookup-button, keydown[key=='Enter'] from:input consume"
+                     hx-include="this"
+                     hx-vals='{"field":"artist"}'
+                     hx-target="#artist-match-artist-{{ session_id }}"
+                     hx-swap="innerHTML">
                     <input type="text" name="artist" data-artist-field="artist" placeholder="z. B. Harmonic Brass">
                     <input type="hidden" name="mb_artistids" data-artist-mbid="artist">
-                    <button type="button"
-                            class="button secondary lookup-button"
-                            data-artist-search
-                            data-field="artist"
-                            data-url="/artist-match/{{ session_id }}"
-                            data-target="#artist-match-artist-{{ session_id }}">🔎</button>
+                    <button type="button" class="button secondary lookup-button">🔎</button>
                 </div>
                 <small>Das ist der Künstler des einzelnen Tracks. Bei einem normalen Alligatoah-Album ohne Gast-Artists trägst du hier ebenfalls Alligatoah ein.</small>
                 <div id="artist-match-artist-{{ session_id }}" class="artist-match" data-artist-results="artist">
@@ -84,8 +84,14 @@
         {% include "_manual_ocr.html" %}
 
         <div class="actions">
-            <button type="submit" class="button">Tags schreiben</button>
+            <button type="button"
+                    class="button"
+                    hx-post="/manual/{{ session_id }}"
+                    hx-include="closest [data-manual-form]"
+                    hx-target="#result"
+                    hx-swap="innerHTML"
+                    hx-indicator="#manual-spinner-{{ session_id }}">Tags schreiben</button>
             <span id="manual-spinner-{{ session_id }}" class="htmx-indicator spinner">schreibe …</span>
         </div>
-    </form>
+    </div>
 </details>

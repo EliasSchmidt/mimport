@@ -1373,8 +1373,9 @@ class TestManuellTaggen:
         assert 'mehrere mit <span class="mono">;</span>' in html
         assert 'Artist-ID in die Datei' in html
         assert 'Track-Künstler' in html
-        assert 'data-artist-search' in html
-        assert 'data-url="/artist-match/' in html
+        assert 'hx-post="/artist-match/' in html
+        assert "keydown[key==&#39;Enter&#39;]" in html or "keydown[key=='Enter']" in html
+        assert 'hx-include="closest [data-manual-form]"' in html
         assert 'Noch kein MusicBrainz-Match ausgewählt.' in html
 
     def test_sampler_bekommt_je_track_einen_interpreten(self, client):

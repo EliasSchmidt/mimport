@@ -16,6 +16,7 @@
             <button type="button"
                     class="button"
                     hx-post="/ocr/{{ session_id }}"
+                    hx-include="closest [data-manual-form]"
                     hx-target="#manual-ocr-{{ session_id }}"
                     hx-swap="outerHTML"
                     hx-encoding="multipart/form-data"
@@ -46,6 +47,7 @@
             <button type="button"
                     class="button"
                     hx-post="/ocr/parse/{{ session_id }}"
+                    hx-include="closest [data-manual-form]"
                     hx-target="#manual-ocr-{{ session_id }}"
                     hx-swap="outerHTML">
                 Parser anwenden

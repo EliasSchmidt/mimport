@@ -363,6 +363,26 @@ async def upload(request: Request, files: list[UploadFile]) -> HTMLResponse:
     return _files_fragment(request, session)
 
 
+def _sessions_fragment(request: Request) -> HTMLResponse:
+    """Die Liste offener Sitzungen, samt Auskunft, ob sich eine weitere Disc
+    dazu rippen lässt.
+
+    Bewusst nicht an den Ursprung der Sitzung geknüpft (Upload, Daten-CD oder
+    Rip): auch wer Disc 1 eines Albums hochgeladen hat, kann für Disc 2 nur
+    noch die physische CD haben. "Weitere Disc rippen" hängt deshalb an der
+    Sitzung, nicht am flüchtigen Rip-Auftrag -- der wäre nach einem
+    fehlgeschlagenen Versuch oder einfach beim Verlassen der Seite wieder weg,
+    die Sitzung nicht.
+    """
+    return _fragment(
+        request,
+        "_sessions.html",
+        offen=sessions.list_open(),
+        ttl=settings.session_ttl_hours,
+        tools=rip.tools_available(),
+    )
+
+
 @router.get("/sessions", response_class=HTMLResponse)
 def open_sessions(request: Request) -> HTMLResponse:
     """Was im Staging liegt und noch nicht importiert ist.
@@ -371,12 +391,7 @@ def open_sessions(request: Request) -> HTMLResponse:
     Tab oder ein leerer Akku kostete sonst den ganzen Upload, obwohl die
     Dateien noch da sind.
     """
-    return _fragment(
-        request,
-        "_sessions.html",
-        offen=sessions.list_open(),
-        ttl=settings.session_ttl_hours,
-    )
+    return _sessions_fragment(request)
 
 
 @router.delete("/sessions/{session_id}", response_class=HTMLResponse)
@@ -388,12 +403,7 @@ def discard_from_list(request: Request, session_id: str) -> HTMLResponse:
     stehen und zeigt danach den neuen Stand.
     """
     sessions.delete_session(session_id)
-    return _fragment(
-        request,
-        "_sessions.html",
-        offen=sessions.list_open(),
-        ttl=settings.session_ttl_hours,
-    )
+    return _sessions_fragment(request)
 
 
 @router.get("/session/{session_id}", response_class=HTMLResponse)

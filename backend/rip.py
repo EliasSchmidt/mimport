@@ -442,24 +442,16 @@ def start(*, allowance: int, session_id: str | None = None) -> RipJob:
     halbe Alben statt eines) oder überschriebe die erste, weil beide bei
     "01 Track 1.flac" anfangen.
     """
-    job, toc = _vorbereiten(allowance)
+    job, toc, session = _vorbereiten(allowance, session_id=session_id)
 
-    if session_id:
-        try:
-            session = sessions.get_session(session_id)
-        except sessions.SessionError as exc:
-            job.zustand = "fehler"
-            job.fehler = str(exc)
-            job.meldung = "Sitzung nicht gefunden."
-            raise RipError(job.fehler) from exc
-        job.neue_session = False
+    if session is not None:
         zielordner = _naechste_disc(session.directory)
         job.disc_ordner = str(zielordner)
     else:
         session = sessions.create_session()
+        job.session_id = session.session_id
         zielordner = session.directory
 
-    job.session_id = session.session_id
     job.meldung = f"Lese {toc.track_count} Tracks …"
 
     _starten(
@@ -514,12 +506,19 @@ def _naechste_disc(session_dir: Path) -> Path:
     return ziel
 
 
-def _vorbereiten(allowance: int) -> tuple[RipJob, discid.Toc]:
-    """Auftrag anlegen, Inhaltsverzeichnis lesen, Platz prüfen.
+def _vorbereiten(
+    allowance: int, *, session_id: str | None = None
+) -> tuple[RipJob, discid.Toc, sessions.StagingSession | None]:
+    """Auftrag anlegen, Session klären, Inhaltsverzeichnis lesen, Platz prüfen.
 
-    Der Teil, den beide Betriebsarten gemeinsam haben. Danach unterscheiden
-    sie sich nur noch darin, wohin geschrieben und was im Fehlerfall
-    aufgeräumt wird.
+    Der Teil, den beide Betriebsarten gemeinsam haben. ``session_id`` wird
+    schon hier aufgelöst und im Auftrag vermerkt -- *bevor* das Laufwerk
+    überhaupt angefasst wird. Stünde das erst in ``start()`` nach einem
+    erfolgreichen TOC-Read, verlöre ein fehlgeschlagener "weitere Disc"-Versuch
+    (Laufwerk leer, Disc verkratzt, ...) sofort den Bezug zur Session: der
+    Auftrag sähe aus wie der einer ganz neuen, eigenen Session, und die
+    Oberfläche böte weder den richtigen Wiederholen-Knopf noch ließe sich die
+    bereits gelesene erste Disc vor versehentlichem Löschen schützen.
     """
     global _job
 
@@ -528,6 +527,18 @@ def _vorbereiten(allowance: int) -> tuple[RipJob, discid.Toc]:
             raise RipError("Es läuft bereits ein Rip. Es gibt nur ein Laufwerk.")
         job = RipJob()
         _job = job
+
+    session: sessions.StagingSession | None = None
+    if session_id:
+        job.neue_session = False
+        job.session_id = session_id
+        try:
+            session = sessions.get_session(session_id)
+        except sessions.SessionError as exc:
+            job.zustand = "fehler"
+            job.fehler = str(exc)
+            job.meldung = "Sitzung nicht gefunden."
+            raise RipError(job.fehler) from exc
 
     try:
         toc = read_toc()
@@ -548,7 +559,7 @@ def _vorbereiten(allowance: int) -> tuple[RipJob, discid.Toc]:
 
     job.disc_id = discid.calculate(toc)
     job.tracks_gesamt = toc.track_count
-    return job, toc
+    return job, toc, session
 
 
 def _session_verwerfen(job: RipJob) -> None:
@@ -592,7 +603,7 @@ def start_audiobook(*, allowance: int, buch: Path, disc_ordner: Path) -> RipJob:
     """
     from backend import audiobook
 
-    job, toc = _vorbereiten(allowance)
+    job, toc, _ = _vorbereiten(allowance)
     job.modus = "hoerbuch"
     job.buch = str(buch)
     job.disc_ordner = str(disc_ordner)

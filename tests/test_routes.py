@@ -752,6 +752,59 @@ class TestOffeneSitzungen:
         response = client.get("/session/AAAAAAAAAAAAAAAAAA")
         assert response.status_code == 404
 
+    def test_weitere_disc_haengt_ohne_laufenden_rip_job_an(self, client, monkeypatch):
+        """Der eigentliche Fall aus dem Feedback: keine laufende Rip-Anzeige
+        (Server neu gestartet, Job zurückgesetzt, ganz anderer Auftrag) -- die
+        Sitzung selbst reicht, um eine weitere Disc anzuhängen."""
+        from backend import discid, rip, sessions
+        from tests.test_discid import CDPARANOIA_AUSGABE
+        from tests.test_rip import _FakeThread
+
+        monkeypatch.setattr(
+            rip,
+            "tools_available",
+            lambda: {"cdparanoia": True, "flac": True, "device": True},
+        )
+        monkeypatch.setattr(
+            rip, "read_toc", lambda: discid.parse_cdparanoia_toc(CDPARANOIA_AUSGABE)
+        )
+        monkeypatch.setattr(rip.threading, "Thread", _FakeThread)
+
+        session = sessions.create_session()
+        (session.directory / "01 Track 1.flac").write_bytes(self.FLAC)
+        # Kein Job -- weder laufend noch fertig, unabhängig davon, was ein
+        # zuvor gelaufener Test hinterlassen hat.
+        monkeypatch.setattr(rip, "_job", None)
+
+        liste = client.get("/sessions")
+        assert "Weitere Disc rippen" in liste.text
+        assert f'value="{session.session_id}"' in liste.text
+
+        response = client.post("/rip", data={"session_id": session.session_id})
+        assert response.status_code == 200
+
+        job = rip.current()
+        assert job is not None
+        assert job.session_id == session.session_id
+        assert job.neue_session is False
+        assert (session.directory / "CD 2").is_dir()
+
+    def test_ohne_laufwerk_fehlt_der_knopf(self, client, monkeypatch):
+        from backend import rip, sessions
+
+        monkeypatch.setattr(
+            rip,
+            "tools_available",
+            lambda: {"cdparanoia": True, "flac": True, "device": False},
+        )
+
+        session = sessions.create_session()
+        (session.directory / "01 Track 1.flac").write_bytes(self.FLAC)
+
+        liste = client.get("/sessions")
+        assert "Weitere Disc rippen" not in liste.text
+        assert "Fortsetzen" in liste.text
+
     def test_verwerfen_aus_der_liste_zeigt_den_neuen_stand(self, client):
         from backend import sessions
 

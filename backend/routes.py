@@ -186,18 +186,20 @@ def _track_inputs(
         row = parsed[index] if index < len(parsed) else None
         title = (row.title if row else "").strip()
         artist = (row.artist if row else "").strip()
+        track = (row.number if row else "").strip()
         if not title:
             title = str(draft.get(f"titel:{file['key']}") or "").strip()
         if not artist:
             artist = str(draft.get(f"interpret:{file['key']}") or "").strip()
+        if not track:
+            track = str(draft.get(f"nr:{file['key']}") or "").strip()
         rows.append(
             {
                 "key": file["key"],
                 "display": file["display"],
                 "title": title,
                 "artist": artist,
-                "track": (row.number if row else "").strip(),
-                "duration": (row.duration if row else "").strip(),
+                "track": track,
             }
         )
     return rows
@@ -363,6 +365,26 @@ async def upload(request: Request, files: list[UploadFile]) -> HTMLResponse:
     return _files_fragment(request, session)
 
 
+def _sessions_fragment(request: Request) -> HTMLResponse:
+    """Die Liste offener Sitzungen, samt Auskunft, ob sich eine weitere Disc
+    dazu rippen lässt.
+
+    Bewusst nicht an den Ursprung der Sitzung geknüpft (Upload, Daten-CD oder
+    Rip): auch wer Disc 1 eines Albums hochgeladen hat, kann für Disc 2 nur
+    noch die physische CD haben. "Weitere Disc rippen" hängt deshalb an der
+    Sitzung, nicht am flüchtigen Rip-Auftrag -- der wäre nach einem
+    fehlgeschlagenen Versuch oder einfach beim Verlassen der Seite wieder weg,
+    die Sitzung nicht.
+    """
+    return _fragment(
+        request,
+        "_sessions.html",
+        offen=sessions.list_open(),
+        ttl=settings.session_ttl_hours,
+        tools=rip.tools_available(),
+    )
+
+
 @router.get("/sessions", response_class=HTMLResponse)
 def open_sessions(request: Request) -> HTMLResponse:
     """Was im Staging liegt und noch nicht importiert ist.
@@ -371,12 +393,7 @@ def open_sessions(request: Request) -> HTMLResponse:
     Tab oder ein leerer Akku kostete sonst den ganzen Upload, obwohl die
     Dateien noch da sind.
     """
-    return _fragment(
-        request,
-        "_sessions.html",
-        offen=sessions.list_open(),
-        ttl=settings.session_ttl_hours,
-    )
+    return _sessions_fragment(request)
 
 
 @router.delete("/sessions/{session_id}", response_class=HTMLResponse)
@@ -388,12 +405,7 @@ def discard_from_list(request: Request, session_id: str) -> HTMLResponse:
     stehen und zeigt danach den neuen Stand.
     """
     sessions.delete_session(session_id)
-    return _fragment(
-        request,
-        "_sessions.html",
-        offen=sessions.list_open(),
-        ttl=settings.session_ttl_hours,
-    )
+    return _sessions_fragment(request)
 
 
 @router.get("/session/{session_id}", response_class=HTMLResponse)
@@ -1369,11 +1381,13 @@ async def manual(
 ) -> HTMLResponse:
     """Schreibt selbst eingetragene Tags, wenn kein Match passt.
 
-    Neben den albumweiten Feldern kommen Titel und Interpret je Datei an --
-    als ``titel:<Dateiname>`` und ``artist:<Dateiname>``. Eine Sampler-CD
-    braucht das: dort hat jeder Track einen anderen Interpreten, während der
-    Albumkünstler „Various Artists" bleibt und das Compilation-Flag die Tracks
-    zusammenhält.
+    Neben den albumweiten Feldern kommen Titel, Interpret und Tracknummer je
+    Datei an -- als ``titel:<Dateiname>``, ``interpret:<Dateiname>`` und
+    ``nr:<Dateiname>``. Eine Sampler-CD braucht Titel/Interpret je Zeile:
+    dort hat jeder Track einen anderen Interpreten, während der
+    Albumkünstler „Various Artists" bleibt und das Compilation-Flag die
+    Tracks zusammenhält. Die Tracknummer korrigiert eine falsch erkannte
+    Reihenfolge, statt sich auf die Position in der Dateiliste zu verlassen.
     """
     session = _session_or_404(session_id)
     paths = session.audio_paths
@@ -1384,7 +1398,7 @@ async def manual(
     je_track: dict[str, dict[str, str]] = {}
     for schluessel, wert in formular.items():
         praefix, _, dateiname = str(schluessel).partition(":")
-        feld = {"titel": "title", "interpret": "artists"}.get(praefix)
+        feld = {"titel": "title", "interpret": "artists", "nr": "track"}.get(praefix)
         if feld and dateiname and str(wert).strip():
             je_track.setdefault(dateiname, {})[feld] = str(wert)
 
@@ -1543,6 +1557,7 @@ def _album_detail_fragment(
         album=album,
         tracks=tracks,
         fehler=fehler or listen_fehler,
+        genre_vorschlaege=genres.katalog(),
     )
 
 
@@ -1551,7 +1566,13 @@ def album_detail(request: Request, album_id: int) -> HTMLResponse:
     """Ein einzelnes Album: alle gesetzten Tags, alle Titel, Cover ändern."""
     album, tracks, fehler = _album_mit_tracks(album_id)
     return _seite(
-        request, "album_detail.html", "alben", album=album, tracks=tracks, fehler=fehler
+        request,
+        "album_detail.html",
+        "alben",
+        album=album,
+        tracks=tracks,
+        fehler=fehler,
+        genre_vorschlaege=genres.katalog(),
     )
 
 
@@ -1642,6 +1663,45 @@ def album_artist_apply(
     return _album_detail_fragment(request, album_id)
 
 
+@router.post("/albums/{album_id}/edit", response_class=HTMLResponse)
+def album_edit(
+    request: Request,
+    album_id: int,
+    albumartist: str = Form(default=""),
+    album: str = Form(default=""),
+    year: str = Form(default=""),
+    genre: str = Form(default=""),
+) -> HTMLResponse:
+    """Ändert Albumkünstler, Albumtitel, Jahr oder Genre nachträglich.
+
+    Leere Felder werden übersprungen, damit ein leeres Formularfeld nichts
+    überschreibt -- dieselbe Regel wie beim manuellen Taggen vor dem Import.
+    """
+    alb = albums.get_album(album_id)
+    if alb is None:
+        raise HTTPException(status_code=404, detail="Album nicht gefunden.")
+    felder = {
+        key: wert.strip()
+        for key, wert in {
+            "albumartist": albumartist,
+            "album": album,
+            "year": year,
+        }.items()
+        if wert.strip()
+    }
+    # "genre" und "genres" teilen sich beim Schreiben ins Datei-Tag denselben
+    # Speicherplatz -- derselbe Stolperstein wie bei mb_albumartistid/-ids
+    # (siehe Moduldoc), deshalb immer beide zusammen setzen.
+    if genre.strip():
+        felder["genre"] = genre.strip()
+        felder["genres"] = genre.strip()
+    try:
+        albums.update_album_fields(alb, felder)
+    except albums.AlbumError as exc:
+        return _album_detail_fragment(request, album_id, fehler=str(exc))
+    return _album_detail_fragment(request, album_id)
+
+
 @router.post(
     "/albums/{album_id}/tracks/{track_id}/artist-lookup", response_class=HTMLResponse
 )
@@ -1666,6 +1726,29 @@ def track_artist_apply(
     """Verknüpft den Interpreten eines einzelnen Titels mit der gewählten MBID."""
     try:
         albums.set_track_artist_mbid(track_id, mbid)
+    except albums.AlbumError as exc:
+        return _album_detail_fragment(request, album_id, fehler=str(exc))
+    return _album_detail_fragment(request, album_id)
+
+
+@router.post(
+    "/albums/{album_id}/tracks/{track_id}/edit", response_class=HTMLResponse
+)
+def track_edit(
+    request: Request,
+    album_id: int,
+    track_id: int,
+    title: str = Form(default=""),
+    artist: str = Form(default=""),
+) -> HTMLResponse:
+    """Ändert Titel oder Interpret eines einzelnen Titels nachträglich."""
+    felder = {
+        key: wert.strip()
+        for key, wert in {"title": title, "artist": artist}.items()
+        if wert.strip()
+    }
+    try:
+        albums.update_track_fields(track_id, felder)
     except albums.AlbumError as exc:
         return _album_detail_fragment(request, album_id, fehler=str(exc))
     return _album_detail_fragment(request, album_id)

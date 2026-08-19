@@ -97,6 +97,15 @@
                 <li><span class="pen-weight">−{{ weight }}</span> {{ label }}</li>
                 {% endfor %}
             </ul>
+            {% if candidate.titel_fehlen_komplett %}
+            <p class="hint">
+                Die Dateien tragen keine Titel-Tags (typisch für einen frisch
+                gerippten Rohling) -- beets kann sie dann nicht mit den
+                Titeln des Releases vergleichen und zieht dafür ab. Das ist
+                hier <strong>kein Warnzeichen</strong>: entscheidend bleiben
+                Tracklänge und -anzahl.
+            </p>
+            {% endif %}
         </div>
         {% endif %}
 

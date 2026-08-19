@@ -121,6 +121,11 @@ class Candidate:
     #: Hochgeladene Dateien, die zu keinem Track passen.
     unmatched_files: list[str] = field(default_factory=list)
     pairings: list[TrackPairing] = field(default_factory=list)
+    #: Zieht der "Tracktitel weichen ab"-Abzug daher, dass die Dateien schlicht
+    #: keine Titel-Tags tragen (typisch für einen Rip) -- nicht daher, dass
+    #: vorhandene Titel nicht passen. Nur dann ist die Erklärung "kein
+    #: Warnzeichen" zutreffend.
+    titel_fehlen_komplett: bool = False
 
     @property
     def confidence_class(self) -> str:
@@ -173,14 +178,30 @@ def _build_pairings(match: Any) -> list[TrackPairing]:
     return pairings
 
 
+def _titel_fehlen_komplett(match: Any) -> bool:
+    """Tragen die hochgeladenen Dateien überhaupt Titel-Tags?
+
+    Entscheidet, was ein "Tracktitel weichen ab"-Abzug bedeutet: bei einem
+    Rip (keine Datei hat einen Titel) ist er unvermeidlich und kein
+    Warnzeichen: beets kann nichts vergleichen, was nicht da ist. Bei einem
+    Upload mit echten, nur falschen Titeln bedeutet derselbe Abzug dagegen
+    tatsächlich, dass der Kandidat nicht passt -- die Erklärung wäre dort
+    irreführend.
+    """
+    return not any((item.title or "").strip() for item in match.mapping)
+
+
 def serialize_candidate(match: Any, index: int) -> Candidate:
     """Übersetzt einen ``AlbumMatch`` in ein anzeigefertiges Objekt."""
     info = match.info
     distance = match.distance
 
     penalties: list[tuple[str, float]] = []
+    hat_titel_abzug = False
     for raw_key, value in distance.items():
         key = str(raw_key)
+        if key == "track_title":
+            hat_titel_abzug = True
         label = PENALTY_LABELS.get(key, key.replace("_", " "))
         penalties.append((label, round(float(value) * 100, 1)))
     penalties.sort(key=lambda pair: pair[1], reverse=True)
@@ -217,6 +238,7 @@ def serialize_candidate(match: Any, index: int) -> Candidate:
             for i in match.extra_items
         ],
         pairings=_build_pairings(match),
+        titel_fehlen_komplett=hat_titel_abzug and _titel_fehlen_komplett(match),
     )
 
 

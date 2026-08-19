@@ -109,6 +109,36 @@ class TestStart:
         assert (session.directory / "CD 1" / "01 Track 1.flac").is_file()
         assert not (session.directory / "01 Track 1.flac").exists()
 
+    def test_gescheiterter_toc_read_bei_weiterer_disc_behaelt_session_bezug(
+        self, monkeypatch
+    ):
+        """Der Kern des Bugs: Laufwerk leer/verkratzt beim zweiten Rip-Versuch
+        darf den Bezug zur Session nicht verlieren -- sonst zeigt die
+        Oberfläche den Fehler einer *neuen* Session an, und "Nochmal
+        versuchen" würde beim Zurücksetzen fälschlich die ganze Session löschen
+        wollen (nur dass sie mangels ``session_id`` dann gar nicht gefunden
+        würde -- der Nutzer verliert trotzdem jeden Zugriff darüber)."""
+
+        def kaputt():
+            raise rip.RipError("Im Laufwerk wurde keine Audio-CD erkannt.")
+
+        monkeypatch.setattr(rip, "read_toc", kaputt)
+
+        session = sessions.create_session()
+        (session.directory / "01 Track 1.flac").write_bytes(b"fLaC")
+
+        with pytest.raises(rip.RipError):
+            rip.start(allowance=10**12, session_id=session.session_id)
+
+        job = rip.current()
+        assert job is not None
+        assert job.zustand == "fehler"
+        assert job.session_id == session.session_id
+        assert job.neue_session is False
+        # Die Session selbst ist unangetastet -- nichts wurde umgeräumt oder
+        # gelöscht, nur weil das Laufwerk nicht mitspielte.
+        assert (session.directory / "01 Track 1.flac").is_file()
+
     def test_weitere_disc_mit_unbekannter_session(self, monkeypatch, toc):
         monkeypatch.setattr(rip, "read_toc", lambda: toc)
         monkeypatch.setattr(rip.threading, "Thread", _FakeThread)

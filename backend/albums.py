@@ -1,4 +1,4 @@
-"""Bereits importierte Alben ansehen und nachträglich ihr Cover ändern.
+"""Bereits importierte Alben ansehen und nachträglich Cover oder Metadaten ändern.
 
 Anders als beim Import (``backend.importer``) und beim Matching
 (``backend.beets_env``) muss dieses Modul die **gefüllte** Library lesen --
@@ -74,6 +74,16 @@ class Album:
     mb_albumartistid: str = ""
     genres: str = ""
     label: str = ""
+
+    @property
+    def year_editierbar(self) -> str:
+        """Das Jahr fürs Bearbeiten-Formular.
+
+        '0000' ist beets' Sentinel für "kein Jahr bekannt", keine echte
+        Jahreszahl -- vorausgefüllt stünde sonst eine falsche Zahl im Feld,
+        die beim Speichern anschließend wörtlich zurückgeschrieben würde.
+        """
+        return self.year if self.year and self.year != "0000" else ""
 
     @property
     def cover_path(self) -> Path:
@@ -283,3 +293,30 @@ def set_track_artist_mbid(track_id: int, mbid: str) -> None:
     """
     with library_lock():
         _modify([], f"id:{track_id}", {"mb_artistid": mbid, "mb_artistids": mbid}, timeout=60)
+
+
+def update_album_fields(album: Album, felder: dict[str, str]) -> None:
+    """Ändert Albumkünstler, Albumtitel, Jahr oder Genre nachträglich.
+
+    Dasselbe zweistufige Muster wie bei ``set_album_artist_mbid``: erst die
+    Titel über ``album_id:`` -- das schreibt Datenbank *und* Datei --, danach
+    die Album-Zeile selbst über ``id:`` mit ``-a``, nur für die eigene
+    Anzeige.
+    """
+    if not felder:
+        return
+    with library_lock():
+        _modify([], f"album_id:{album.id}", felder, timeout=120)
+        _modify(["-a", "-W", "-I"], f"id:{album.id}", felder, timeout=30)
+
+
+def update_track_fields(track_id: int, felder: dict[str, str]) -> None:
+    """Ändert Titel oder Interpret eines einzelnen Titels nachträglich.
+
+    Wie ``set_track_artist_mbid``: ``id:`` trifft direkt den Titel, ein
+    Aufruf genügt für Datenbank und Datei.
+    """
+    if not felder:
+        return
+    with library_lock():
+        _modify([], f"id:{track_id}", felder, timeout=60)

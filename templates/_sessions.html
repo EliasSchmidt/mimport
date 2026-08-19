@@ -41,6 +41,18 @@
                         <span id="resume-spinner-{{ eintrag.session_id }}" class="htmx-indicator spinner">
                             <span class="spinner-ring" aria-hidden="true"></span> lade …
                         </span>
+                        {# Unabhängig vom Ursprung der Sitzung (Upload,
+                           Daten-CD oder Rip) und unabhängig vom flüchtigen
+                           Rip-Auftrag -- diese Sitzung existiert, egal was
+                           beim letzten Rip-Versuch passiert ist. #}
+                        {% if tools.device and tools.cdparanoia and tools.flac %}
+                        <form hx-post="/rip" hx-target="#rip" hx-swap="innerHTML"
+                              hx-disabled-elt="button"
+                              hx-on::after-request="document.querySelector('.tab[data-tab=audiocd]')?.click(); document.getElementById('files-step').hidden = false; this.closest('details.sessions-dropdown').open = false;">
+                            <input type="hidden" name="session_id" value="{{ eintrag.session_id }}">
+                            <button type="submit" class="button">Weitere Disc rippen</button>
+                        </form>
+                        {% endif %}
                         <button type="button" class="button danger"
                                 hx-delete="/sessions/{{ eintrag.session_id }}"
                                 hx-target="#sessions" hx-swap="innerHTML"

@@ -36,7 +36,16 @@ def modes() -> list[dict[str, str]]:
     return [{"value": key, "label": value} for key, value in _MODE_LABELS.items()]
 
 
-_DURATION_RE = re.compile(r"(?P<dur>\d{1,2}:\d{2}(?::\d{2})?)$")
+#: Ziffern *und* ihre klassischen OCR-Verwechslungen ("O" statt "0", "I"/"l"
+#: statt "1") -- eine Dauer wie "4:O2" ist auf einem Backcover-Scan der
+#: Normalfall, nicht die Ausnahme. Die Position (Doppelpunkt, feste
+#: Gruppengröße, Zeilenende) ist eng genug, dass daraus kein echtes Wort
+#: fälschlich als Dauer gelesen wird.
+_DAUER_ZIFFER = "[0-9OoIl]"
+_DURATION_RE = re.compile(
+    rf"(?P<dur>{_DAUER_ZIFFER}{{1,2}}:{_DAUER_ZIFFER}{{2}}(?::{_DAUER_ZIFFER}{{2}})?)$"
+)
+_DAUER_NORMALISIEREN = str.maketrans({"O": "0", "o": "0", "I": "1", "l": "1"})
 _TRACK_PREFIX_RE = re.compile(r"^\s*(?P<num>\d{1,2})\s*[.)\-:]?\s*(?P<rest>.*)$")
 
 
@@ -50,7 +59,8 @@ def _extract_duration(value: str) -> tuple[str, str]:
     if not match:
         return text, ""
     start = match.start("dur")
-    return text[:start].rstrip(" -–—\t"), match.group("dur")
+    dauer = match.group("dur").translate(_DAUER_NORMALISIEREN)
+    return text[:start].rstrip(" -–—\t"), dauer
 
 
 def _strip_track_prefix(line: str) -> tuple[str, str]:

@@ -33,7 +33,10 @@ def _proc(stdout: str = "", stderr: str = "", returncode: int = 0):
 
 class TestAusZeile:
     def test_gueltige_zeile(self):
-        zeile = _zeile(3, "The Beatles", "Abbey Road", 1969, "/music/Abbey Road")
+        zeile = _zeile(
+            3, "The Beatles", "Abbey Road", 1969, "/music/Abbey Road",
+            genres="Rock", label="Apple Records",
+        )
         album = albums._aus_zeile(zeile)
         assert album == albums.Album(
             id=3,
@@ -42,8 +45,8 @@ class TestAusZeile:
             year="1969",
             path=Path("/music/Abbey Road"),
             mb_albumartistid="",
-            genres="",
-            label="",
+            genres="Rock",
+            label="Apple Records",
         )
 
     def test_falsche_feldanzahl_wird_ignoriert(self):
@@ -397,3 +400,97 @@ class TestSetTrackArtistMbid:
         )
         with pytest.raises(albums.AlbumError, match="autsch"):
             albums.set_track_artist_mbid(42, self.MBID)
+
+
+class TestYearEditierbar:
+    def test_echtes_jahr_bleibt(self, tmp_path):
+        album = albums.Album(id=1, albumartist="X", album="Y", year="1969", path=tmp_path)
+        assert album.year_editierbar == "1969"
+
+    def test_sentinel_wird_leer(self, tmp_path):
+        """'0000' ist beets' Wert für "kein Jahr bekannt" -- vorausgefüllt
+        stünde sonst eine falsche Zahl im Formular, die man versehentlich
+        wörtlich zurückspeichern könnte."""
+        album = albums.Album(id=1, albumartist="X", album="Y", year="0000", path=tmp_path)
+        assert album.year_editierbar == ""
+
+    def test_leeres_jahr_bleibt_leer(self, tmp_path):
+        album = albums.Album(id=1, albumartist="X", album="Y", year="", path=tmp_path)
+        assert album.year_editierbar == ""
+
+
+class TestUpdateAlbumFields:
+    def _album(self, tmp_path: Path) -> albums.Album:
+        return albums.Album(id=9, albumartist="X", album="Y", year="2020", path=tmp_path)
+
+    def test_setzt_felder_auf_beiden_ebenen(self, tmp_path, monkeypatch):
+        aufrufe = []
+
+        def fake_run(cmd, **kw):
+            aufrufe.append(cmd)
+            return _proc()
+
+        monkeypatch.setattr(albums.subprocess, "run", fake_run)
+        albums.update_album_fields(
+            self._album(tmp_path), {"albumartist": "Neu", "year": "1999"}
+        )
+
+        assert len(aufrufe) == 2
+        titel_aufruf, album_aufruf = aufrufe
+
+        assert titel_aufruf[1:4] == ["modify", "-y", "album_id:9"]
+        assert "albumartist=Neu" in titel_aufruf
+        assert "year=1999" in titel_aufruf
+        assert "-a" not in titel_aufruf
+
+        assert "-a" in album_aufruf
+        assert "-W" in album_aufruf
+        assert "-I" in album_aufruf
+        assert "id:9" in album_aufruf
+        assert "albumartist=Neu" in album_aufruf
+
+    def test_ohne_felder_passiert_nichts(self, tmp_path, monkeypatch):
+        aufrufe = []
+        monkeypatch.setattr(
+            albums.subprocess, "run", lambda cmd, **kw: (aufrufe.append(cmd), _proc())[1]
+        )
+        albums.update_album_fields(self._album(tmp_path), {})
+        assert aufrufe == []
+
+    def test_fehlschlag_wird_gemeldet(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(
+            albums.subprocess, "run", lambda cmd, **kw: _proc(returncode=1, stderr="autsch")
+        )
+        with pytest.raises(albums.AlbumError, match="autsch"):
+            albums.update_album_fields(self._album(tmp_path), {"album": "Neu"})
+
+
+class TestUpdateTrackFields:
+    def test_baut_das_richtige_kommando(self, monkeypatch):
+        gesehen = {}
+
+        def fake_run(cmd, **kw):
+            gesehen["cmd"] = cmd
+            return _proc()
+
+        monkeypatch.setattr(albums.subprocess, "run", fake_run)
+        albums.update_track_fields(42, {"title": "Neuer Titel", "artist": "X"})
+        cmd = gesehen["cmd"]
+        assert cmd[1:4] == ["modify", "-y", "id:42"]
+        assert "title=Neuer Titel" in cmd
+        assert "artist=X" in cmd
+
+    def test_ohne_felder_passiert_nichts(self, monkeypatch):
+        aufrufe = []
+        monkeypatch.setattr(
+            albums.subprocess, "run", lambda cmd, **kw: (aufrufe.append(cmd), _proc())[1]
+        )
+        albums.update_track_fields(42, {})
+        assert aufrufe == []
+
+    def test_fehlschlag_wird_gemeldet(self, monkeypatch):
+        monkeypatch.setattr(
+            albums.subprocess, "run", lambda cmd, **kw: _proc(returncode=1, stderr="autsch")
+        )
+        with pytest.raises(albums.AlbumError, match="autsch"):
+            albums.update_track_fields(42, {"title": "Neu"})

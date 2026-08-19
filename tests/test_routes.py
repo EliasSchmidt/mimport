@@ -1917,18 +1917,36 @@ class TestEntwurfWiederherstellen:
         session = self._session_mit(["01.flac"])
         response = client.post(
             f"/ocr/parse/{session.session_id}",
-            data={"ocr_text": "01 Interpret - Titel", "tracknummer": "true", "interpret": "true"},
+            data={"ocr_text": "01 Interpret - Titel", "tracknummer": "true", "interpret": "interpret_titel"},
         )
         assert response.status_code == 200
 
         draft = sessions.load_draft(session)
         assert draft["ocr_text"] == "01 Interpret - Titel"
         assert draft["tracknummer"] == "true"
-        assert draft["interpret"] == "true"
+        assert draft["interpret"] == "interpret_titel"
         assert "dauer" not in draft
         assert draft["titel:01.flac"] == "Titel"
         assert draft["interpret:01.flac"] == "Interpret"
         assert draft["nr:01.flac"] == "01"
+
+    def test_parser_naechste_zeile_paart_titel_und_interpret(self, client):
+        session = self._session_mit(["01.flac", "02.flac"])
+        response = client.post(
+            f"/ocr/parse/{session.session_id}",
+            data={
+                "ocr_text": "The Earl of Oxfords March\nWilliam Byrd\nFive Pieces\nAnthony Holborn",
+                "interpret": "naechste_zeile",
+            },
+        )
+        assert response.status_code == 200
+
+        draft = sessions.load_draft(session)
+        assert draft["interpret"] == "naechste_zeile"
+        assert draft["titel:01.flac"] == "The Earl of Oxfords March"
+        assert draft["interpret:01.flac"] == "William Byrd"
+        assert draft["titel:02.flac"] == "Five Pieces"
+        assert draft["interpret:02.flac"] == "Anthony Holborn"
 
     def test_datei_upload_wird_beim_entwurf_ignoriert(self, client):
         """``hx-params=\"not bild\"`` verhindert, dass jeder Autosave-Tick das

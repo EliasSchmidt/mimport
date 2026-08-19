@@ -36,9 +36,21 @@
                 <input type="checkbox" name="tracknummer" value="true" {% if parse_flags.tracknummer %}checked{% endif %}>
                 Tracknummer vorne
             </label>
-            <label class="checkbox">
-                <input type="checkbox" name="interpret" value="true" {% if parse_flags.interpret %}checked{% endif %}>
-                Interpret von Titel trennen (an „ - “)
+            <label>Interpret
+                <select name="interpret">
+                    <option value="" {% if not parse_flags.interpret %}selected{% endif %}>
+                        nicht trennen
+                    </option>
+                    <option value="interpret_titel" {% if parse_flags.interpret == "interpret_titel" %}selected{% endif %}>
+                        gleiche Zeile („Interpret - Titel“)
+                    </option>
+                    <option value="titel_interpret" {% if parse_flags.interpret == "titel_interpret" %}selected{% endif %}>
+                        gleiche Zeile („Titel - Interpret“)
+                    </option>
+                    <option value="naechste_zeile" {% if parse_flags.interpret == "naechste_zeile" %}selected{% endif %}>
+                        nächste Zeile (Titel, dann Interpret)
+                    </option>
+                </select>
             </label>
             <label class="checkbox">
                 <input type="checkbox" name="dauer" value="true" {% if parse_flags.dauer %}checked{% endif %}>
@@ -48,6 +60,10 @@
         <p class="hint">
             Frei kombinierbar, je nachdem wie das Backcover die Tracks
             auflistet -- z. B. nur „Titel“, oder „01 Interpret - Titel - 3:45“.
+            Bei „nächste Zeile“ wird strikt abwechselnd gepaart (Titel,
+            Interpret, Titel, Interpret, …); Blöcke mit mehreren Titeln zu
+            einem Interpreten (z. B. ein Medley) geraten dabei durcheinander
+            und müssen danach von Hand korrigiert werden.
         </p>
 
         <div class="actions">

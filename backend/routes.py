@@ -49,19 +49,33 @@ router = APIRouter()
 CHUNK_SIZE = 1024 * 1024
 
 
+def _interpret_modus(wert: str) -> trackparse.InterpretModus:
+    if wert in ("interpret_titel", "titel_interpret", "naechste_zeile"):
+        return wert
+    return ""
+
+
+def _track_zahl_warnung(erkannt: int, erwartet: int, interpret: trackparse.InterpretModus) -> str:
+    """Bei "nächste Zeile" halbiert sich die Trackzahl gegenüber den
+    OCR-Zeilen -- "Zeile(n)" wäre dann eine falsche Einheit."""
+    einheit = "Track(s)" if interpret == "naechste_zeile" else "Zeile(n)"
+    return f"Parser hat {erkannt} {einheit} erkannt, Session enthält {erwartet} Datei(en)."
+
+
 def _parse_flags(draft: dict[str, str]) -> trackparse.ParseFlags:
     """Die zuletzt gewählten Parser-Schalter aus dem Entwurf, sonst die Vorgabe.
 
-    Ein Kästchen taucht im Entwurf nur auf, wenn es beim letzten Autosave
-    angehakt war -- Abwesenheit heißt "abgewählt", nicht "noch nie gesetzt".
-    Für einen frischen Entwurf (noch gar nichts gespeichert) gelten
-    stattdessen die Vorgaben aus ``ParseFlags``.
+    Ein Kästchen (bzw. beim Interpret-Auswahlfeld: ein nicht-leerer Wert)
+    taucht im Entwurf nur auf, wenn es beim letzten Autosave gesetzt war --
+    Abwesenheit heißt "abgewählt", nicht "noch nie gesetzt". Für einen
+    frischen Entwurf (noch gar nichts gespeichert) gelten stattdessen die
+    Vorgaben aus ``ParseFlags``.
     """
     if not draft:
         return trackparse.ParseFlags()
     return trackparse.ParseFlags(
         tracknummer="tracknummer" in draft,
-        interpret="interpret" in draft,
+        interpret=_interpret_modus(str(draft.get("interpret") or "")),
         dauer="dauer" in draft,
     )
 
@@ -86,13 +100,16 @@ def _entwurf_nach_ocr_lauf(
         draft.pop("ocr_text", None)
     for name, gesetzt in (
         ("tracknummer", flags.tracknummer),
-        ("interpret", flags.interpret),
         ("dauer", flags.dauer),
     ):
         if gesetzt:
             draft[name] = "true"
         else:
             draft.pop(name, None)
+    if flags.interpret:
+        draft["interpret"] = flags.interpret
+    else:
+        draft.pop("interpret", None)
     for row in rows:
         for praefix, wert in (
             ("titel", row["title"]),
@@ -1201,13 +1218,15 @@ async def ocr_backcover(
     session_id: str,
     bild: UploadFile | None = File(default=None),
     tracknummer: bool = Form(default=False),
-    interpret: bool = Form(default=False),
+    interpret: str = Form(default=""),
     dauer: bool = Form(default=False),
 ) -> HTMLResponse:
     """Liest Text aus einem Backcover-Bild und füllt die Trackliste vor."""
     session = _session_or_404(session_id)
     warnings: list[str] = []
-    flags = trackparse.ParseFlags(tracknummer=tracknummer, interpret=interpret, dauer=dauer)
+    flags = trackparse.ParseFlags(
+        tracknummer=tracknummer, interpret=_interpret_modus(interpret), dauer=dauer
+    )
 
     if bild is None:
         warnings.append("Bitte zuerst ein Backcover-Foto auswählen.")
@@ -1263,10 +1282,7 @@ async def ocr_backcover(
     )
     warnings.extend(result.warnings)
     if len(parsed) != len(session.audio_paths):
-        warnings.append(
-            f"Parser hat {len(parsed)} Zeile(n) erkannt, Session enthält "
-            f"{len(session.audio_paths)} Datei(en)."
-        )
+        warnings.append(_track_zahl_warnung(len(parsed), len(session.audio_paths), flags.interpret))
 
     rows = _track_inputs(session, parsed)
     _entwurf_nach_ocr_lauf(session, result.text, flags, rows)
@@ -1288,12 +1304,14 @@ async def ocr_parse(
     session_id: str,
     ocr_text: str = Form(default=""),
     tracknummer: bool = Form(default=False),
-    interpret: bool = Form(default=False),
+    interpret: str = Form(default=""),
     dauer: bool = Form(default=False),
 ) -> HTMLResponse:
     """Wendet die gewählten Parser-Schalter auf den OCR-Text an."""
     session = _session_or_404(session_id)
-    flags = trackparse.ParseFlags(tracknummer=tracknummer, interpret=interpret, dauer=dauer)
+    flags = trackparse.ParseFlags(
+        tracknummer=tracknummer, interpret=_interpret_modus(interpret), dauer=dauer
+    )
 
     warnings: list[str] = []
     text = ocr_text.strip()
@@ -1301,10 +1319,7 @@ async def ocr_parse(
     if not text:
         warnings.append("Noch kein OCR-Text vorhanden.")
     elif len(parsed) != len(session.audio_paths):
-        warnings.append(
-            f"Parser hat {len(parsed)} Zeile(n) erkannt, Session enthält "
-            f"{len(session.audio_paths)} Datei(en)."
-        )
+        warnings.append(_track_zahl_warnung(len(parsed), len(session.audio_paths), flags.interpret))
 
     rows = _track_inputs(session, parsed)
     if text:

@@ -59,52 +59,60 @@ class TestDauerErkennung:
 
 class TestParseText:
     def test_nur_titel_ohne_schalter(self):
-        flags = trackparse.ParseFlags(tracknummer=False, interpret=False, dauer=False)
+        flags = trackparse.ParseFlags(tracknummer=False, interpret="", dauer=False)
         [t1, t2] = trackparse.parse_text("Erster Track\nZweiter Track", flags)
         assert t1.title == "Erster Track"
         assert t2.title == "Zweiter Track"
         assert t1.number == t1.artist == t1.duration == ""
 
     def test_tracknummer_ohne_trenner(self):
-        flags = trackparse.ParseFlags(tracknummer=True, interpret=False, dauer=False)
+        flags = trackparse.ParseFlags(tracknummer=True, interpret="", dauer=False)
         [track] = trackparse.parse_text("01 Titel", flags)
         assert track.number == "01"
         assert track.title == "Titel"
 
     def test_tracknummer_mit_bindestrich(self):
-        flags = trackparse.ParseFlags(tracknummer=True, interpret=False, dauer=False)
+        flags = trackparse.ParseFlags(tracknummer=True, interpret="", dauer=False)
         [track] = trackparse.parse_text("3 - Ein Titel", flags)
         assert track.number == "3"
         assert track.title == "Ein Titel"
 
     def test_tracknummer_und_dauer(self):
-        flags = trackparse.ParseFlags(tracknummer=True, interpret=False, dauer=True)
+        flags = trackparse.ParseFlags(tracknummer=True, interpret="", dauer=True)
         [track] = trackparse.parse_text("2 Ein Titel 3:21", flags)
         assert track.number == "2"
         assert track.title == "Ein Titel"
         assert track.duration == "3:21"
 
     def test_nur_interpret_trennen(self):
-        flags = trackparse.ParseFlags(tracknummer=False, interpret=True, dauer=False)
+        flags = trackparse.ParseFlags(tracknummer=False, interpret="interpret_titel", dauer=False)
         [track] = trackparse.parse_text("Interpret - Titel", flags)
         assert track.artist == "Interpret"
         assert track.title == "Titel"
 
+    def test_umgekehrte_reihenfolge_titel_interpret(self):
+        """Genauso häufig wie "Interpret - Titel" -- Backcover machen es
+        nicht einheitlich, deshalb ist die Reihenfolge wählbar statt fest."""
+        flags = trackparse.ParseFlags(tracknummer=False, interpret="titel_interpret", dauer=False)
+        [track] = trackparse.parse_text("Titel - Interpret", flags)
+        assert track.title == "Titel"
+        assert track.artist == "Interpret"
+
     def test_tracknummer_und_interpret(self):
-        flags = trackparse.ParseFlags(tracknummer=True, interpret=True, dauer=False)
+        flags = trackparse.ParseFlags(tracknummer=True, interpret="interpret_titel", dauer=False)
         [track] = trackparse.parse_text("01 Interpret - Titel", flags)
         assert track.number == "01"
         assert track.artist == "Interpret"
         assert track.title == "Titel"
 
-    def test_alle_drei_schalter_mit_ocr_tippfehler(self):
+    def test_alle_schalter_mit_ocr_tippfehler(self):
         """Der gemeldete Fall vollständig durch den Parser."""
         zeilen = (
             "1 ZIGGY MARLEY - LOVE IS MY RELIGION - 3:51\n"
             "2 NATTALI RIZE - ONE PEOPLE - 4:O2\n"
             "3 SARAH LESCH - TESTAMENT - 5:41"
         )
-        flags = trackparse.ParseFlags(tracknummer=True, interpret=True, dauer=True)
+        flags = trackparse.ParseFlags(tracknummer=True, interpret="interpret_titel", dauer=True)
         tracks = trackparse.parse_text(zeilen, flags)
         assert [t.number for t in tracks] == ["1", "2", "3"]
         assert [t.artist for t in tracks] == [
@@ -120,7 +128,7 @@ class TestParseText:
         assert [t.duration for t in tracks] == ["3:51", "4:02", "5:41"]
 
     def test_leere_zeilen_werden_uebersprungen(self):
-        flags = trackparse.ParseFlags(tracknummer=False, interpret=False, dauer=False)
+        flags = trackparse.ParseFlags(tracknummer=False, interpret="", dauer=False)
         tracks = trackparse.parse_text("Titel 1\n\n  \nTitel 2", flags)
         assert len(tracks) == 2
 
@@ -129,3 +137,43 @@ class TestParseText:
         assert track.number == "2"
         assert track.title == "Ein Titel"
         assert track.duration == "3:21"
+
+
+class TestInterpretNaechsteZeile:
+    """Backcover, auf dem Titel und Interpret sich zeilenweise abwechseln --
+    z. B. ein Konzertprogramm mit Werk in einer Zeile, Komponist in der
+    nächsten, statt beides durch " - " getrennt in einer Zeile."""
+
+    def test_titel_und_interpret_wechseln_sich_ab(self):
+        text = "The Earl of Oxfords March\nWilliam Byrd\nFive Pieces\nAnthony Holborn"
+        flags = trackparse.ParseFlags(tracknummer=False, interpret="naechste_zeile", dauer=False)
+        tracks = trackparse.parse_text(text, flags)
+        assert [t.title for t in tracks] == ["The Earl of Oxfords March", "Five Pieces"]
+        assert [t.artist for t in tracks] == ["William Byrd", "Anthony Holborn"]
+
+    def test_ungerade_zeilenzahl_bleibt_die_letzte_zeile_ohne_interpret(self):
+        text = "Titel 1\nInterpret 1\nTitel 2"
+        flags = trackparse.ParseFlags(tracknummer=False, interpret="naechste_zeile", dauer=False)
+        tracks = trackparse.parse_text(text, flags)
+        assert [t.title for t in tracks] == ["Titel 1", "Titel 2"]
+        assert [t.artist for t in tracks] == ["Interpret 1", ""]
+
+    def test_kombinierbar_mit_tracknummer_und_dauer(self):
+        text = "01 The Earl of Oxfords March 3:12\nWilliam Byrd"
+        flags = trackparse.ParseFlags(tracknummer=True, interpret="naechste_zeile", dauer=True)
+        [track] = trackparse.parse_text(text, flags)
+        assert track.number == "01"
+        assert track.title == "The Earl of Oxfords March"
+        assert track.duration == "3:12"
+        assert track.artist == "William Byrd"
+
+    def test_mehrere_titel_ohne_zwischenzeile_werden_falsch_gepaart(self):
+        """Bekannte Grenze: ein Medley ohne Komponistenzeile zwischen den
+        Sätzen wird trotzdem als (Titel, Interpret) gepaart -- die Oberfläche
+        weist im Hinweistext darauf hin, dass das von Hand zu korrigieren
+        ist."""
+        text = "Satz 1\nSatz 2\nSatz 3\nSatz 4"
+        flags = trackparse.ParseFlags(tracknummer=False, interpret="naechste_zeile", dauer=False)
+        tracks = trackparse.parse_text(text, flags)
+        assert [t.title for t in tracks] == ["Satz 1", "Satz 3"]
+        assert [t.artist for t in tracks] == ["Satz 2", "Satz 4"]

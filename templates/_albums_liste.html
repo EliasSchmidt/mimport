@@ -1,6 +1,6 @@
-{# Liste der bereits importierten Alben. Eigenes Fragment, weil dasselbe HTML
-   zweimal gebraucht wird: einmal beim Laden von /albums, einmal als Ziel des
-   Cover-Dialogs (der ersetzt #albums-liste komplett, siehe cover.js). #}
+{# Liste der bereits importierten Alben -- nur zum Finden und Öffnen. Alles
+   Bearbeitbare (Cover, MusicBrainz-Links, Titel) sitzt auf der Detailseite
+   /albums/{id}: eine Tabellenzeile ist zu schmal, um das lesbar zu zeigen. #}
 {% if fehler %}
 <div class="banner error"><p>{{ fehler }}</p></div>
 {% endif %}
@@ -39,35 +39,7 @@
                 {{ a.year if a.year and a.year != "0000" else "–" }}
             </td>
             <td>
-                <button type="button" class="button"
-                        onclick="coverAufnehmen('/cover/album/{{ a.id }}', 'albums-liste', '{{ a.albumartist }} – {{ a.album }}')">
-                    {{ "Cover ersetzen" if a.has_cover else "Cover hinzufügen" }}
-                </button>
-
-                {% if a.has_albumartist_mbid %}
-                <span class="badge strong" title="{{ a.mb_albumartistid }}">MB ✓</span>
-                {% else %}
-                <details class="artist-fix">
-                    <summary class="button secondary">MB-Link fixen</summary>
-                    <form hx-post="/albums/{{ a.id }}/artist-lookup"
-                          hx-target="#artist-match-{{ a.id }}" hx-swap="innerHTML"
-                          class="picker">
-                        <input type="text" name="name" value="{{ a.albumartist }}">
-                        <button type="submit" class="button">Suchen</button>
-                    </form>
-                    <div id="artist-match-{{ a.id }}"></div>
-                </details>
-                {% endif %}
-
-                {# Titel erst beim Aufklappen laden -- die meisten Zeilen
-                   bleiben zu, das spart einen Subprozess pro Album beim
-                   bloßen Anzeigen der Liste. #}
-                <details class="artist-fix"
-                          hx-get="/albums/{{ a.id }}/tracks" hx-trigger="toggle once"
-                          hx-target="#tracks-{{ a.id }}" hx-swap="innerHTML">
-                    <summary class="button secondary">Titel</summary>
-                    <div id="tracks-{{ a.id }}"><p class="hint">lädt …</p></div>
-                </details>
+                <a class="button" href="/albums/{{ a.id }}">Bearbeiten</a>
             </td>
         </tr>
         {% endfor %}

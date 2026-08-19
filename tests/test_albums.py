@@ -19,9 +19,9 @@ from backend import albums
 T = albums._TRENNER
 
 
-def _zeile(id_, artist, album, year, pfad, mb_albumartistid="") -> str:
+def _zeile(id_, artist, album, year, pfad, mb_albumartistid="", genres="", label="") -> str:
     return T.join(
-        (str(id_), artist, album, str(year), str(pfad), mb_albumartistid)
+        (str(id_), artist, album, str(year), str(pfad), mb_albumartistid, genres, label)
     )
 
 
@@ -42,6 +42,8 @@ class TestAusZeile:
             year="1969",
             path=Path("/music/Abbey Road"),
             mb_albumartistid="",
+            genres="",
+            label="",
         )
 
     def test_falsche_feldanzahl_wird_ignoriert(self):

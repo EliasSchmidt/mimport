@@ -1,0 +1,96 @@
+{# Alles zu einem Album an einem Ort: Cover, gesetzte Tags, Titelliste.
+   Jede Aktion hier (Cover, Album-Link, Track-Link) rendert dieses Fragment
+   komplett neu -- einfacher als drei Teilansichten synchron zu halten, und
+   bei einem einzelnen Album kostet das nichts. #}
+{% if fehler %}
+<div class="banner error"><p>{{ fehler }}</p></div>
+{% endif %}
+
+<div class="album-kopf">
+    {% if album.has_cover %}
+    <img class="cover-gross" alt="" src="/cover/album/{{ album.id }}?v={{ album.cover_version }}">
+    {% else %}
+    <span class="cover-gross leer" aria-hidden="true">♪</span>
+    {% endif %}
+
+    <div class="album-kopf-text">
+        <h2>{{ album.albumartist }} – {{ album.album }}</h2>
+        <button type="button" class="button"
+                onclick="coverAufnehmen('/cover/album/{{ album.id }}', 'album-detail', '{{ album.albumartist }} – {{ album.album }}')">
+            {{ "Cover ersetzen" if album.has_cover else "Cover hinzufügen" }}
+        </button>
+    </div>
+</div>
+
+<section class="tag-block">
+    <h3>Album-Tags</h3>
+    <table class="tag-table">
+        <tbody>
+            <tr>
+                <th>Interpret</th>
+                <td>{{ album.albumartist or "–" }}</td>
+                <td class="tag-mb">
+                    {% if album.has_albumartist_mbid %}
+                    <span class="mb-badge" title="{{ album.mb_albumartistid }}">MB</span>
+                    {% else %}
+                    <details class="artist-fix">
+                        <summary class="button secondary">MB-Link fixen</summary>
+                        <form hx-post="/albums/{{ album.id }}/artist-lookup"
+                              hx-target="#artist-match-album" hx-swap="innerHTML"
+                              class="picker">
+                            <input type="text" name="name" value="{{ album.albumartist }}">
+                            <button type="submit" class="button">Suchen</button>
+                        </form>
+                        <div id="artist-match-album"></div>
+                    </details>
+                    {% endif %}
+                </td>
+            </tr>
+            <tr><th>Album</th><td colspan="2">{{ album.album or "–" }}</td></tr>
+            <tr>
+                <th>Jahr</th>
+                <td colspan="2">{{ album.year if album.year and album.year != "0000" else "–" }}</td>
+            </tr>
+            <tr><th>Genre</th><td colspan="2">{{ album.genres or "–" }}</td></tr>
+            <tr><th>Label</th><td colspan="2">{{ album.label or "–" }}</td></tr>
+        </tbody>
+    </table>
+</section>
+
+<section class="tag-block">
+    <h3>Titel</h3>
+    {% if not tracks %}
+    <p class="hint">Keine Titel gefunden.</p>
+    {% else %}
+    <table class="stapelbar files">
+        <thead>
+            <tr><th>#</th><th>Titel</th><th>Interpret</th><th></th></tr>
+        </thead>
+        <tbody>
+            {% for t in tracks %}
+            <tr>
+                <td class="mono small" data-spalte="#">{{ t.track }}</td>
+                <td class="name" data-spalte="Titel">{{ t.title }}</td>
+                <td class="name" data-spalte="Interpret">{{ t.artist }}</td>
+                <td>
+                    {% if t.has_artist_mbid %}
+                    <span class="mb-badge" title="{{ t.mb_artistid }}">MB</span>
+                    {% else %}
+                    <details class="artist-fix">
+                        <summary class="button secondary">MB-Link fixen</summary>
+                        <form hx-post="/albums/{{ album.id }}/tracks/{{ t.id }}/artist-lookup"
+                              hx-target="#track-match-{{ t.id }}" hx-swap="innerHTML"
+                              class="picker">
+                            <input type="text" name="name" value="{{ t.artist }}">
+                            <button type="submit" class="button">Suchen</button>
+                        </form>
+                        <div id="track-match-{{ t.id }}"></div>
+                    </details>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+</section>

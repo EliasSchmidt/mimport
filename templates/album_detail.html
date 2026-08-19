@@ -1,0 +1,12 @@
+{% extends "_layout.html" %}
+
+{% block title %}{{ album.albumartist }} – {{ album.album }} – mimport{% endblock %}
+{% block lead %}
+    <a href="/albums">← Zurück zur Albenliste</a>
+{% endblock %}
+
+{% block inhalt %}
+<section class="step" id="album-detail">
+    {% include "_album_detail.html" %}
+</section>
+{% endblock %}

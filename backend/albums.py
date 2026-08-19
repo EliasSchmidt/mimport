@@ -49,7 +49,10 @@ _TRENNER = "\x1f"
 
 #: Reihenfolge muss zu ``_aus_zeile`` passen. ``$path`` ist bei einem Album
 #: ein berechnetes Feld (der Ordner der ersten Spur), keine Datenbankspalte.
-_FELDER = ("$id", "$albumartist", "$album", "$year", "$path", "$mb_albumartistid")
+_FELDER = (
+    "$id", "$albumartist", "$album", "$year", "$path", "$mb_albumartistid",
+    "$genres", "$label",
+)
 _FORMAT = _TRENNER.join(_FELDER)
 
 #: Reihenfolge muss zu ``_track_aus_zeile`` passen.
@@ -69,6 +72,8 @@ class Album:
     year: str
     path: Path
     mb_albumartistid: str = ""
+    genres: str = ""
+    label: str = ""
 
     @property
     def cover_path(self) -> Path:
@@ -134,7 +139,7 @@ def _aus_zeile(zeile: str) -> Album | None:
         # Liste unbrauchbar machen.
         log.warning("Unerwartete beet-list-Zeile ignoriert: %r", zeile)
         return None
-    id_roh, albumartist, album, year, pfad, mb_albumartistid = teile
+    id_roh, albumartist, album, year, pfad, mb_albumartistid, genres, label = teile
     try:
         id_ = int(id_roh)
     except ValueError:
@@ -147,6 +152,8 @@ def _aus_zeile(zeile: str) -> Album | None:
         year=year,
         path=Path(pfad),
         mb_albumartistid=mb_albumartistid,
+        genres=genres,
+        label=label,
     )
 
 

@@ -200,8 +200,9 @@ Deshalb heißt die Datei in beiden Fällen genau so.
 ### Nachträglich, für ein schon importiertes Album
 
 Unter „Alben" (`/albums`) lässt sich die Library nach Interpret oder Titel
-durchsuchen und für jedes Ergebnis ein Cover aufnehmen oder ersetzen — auch
-wenn der Import längst gelaufen ist.
+durchsuchen. „Bearbeiten" öffnet die Detailseite eines Albums (`/albums/<id>`)
+mit Cover, allen gesetzten Album-Tags und der Titelliste — auch wenn der
+Import längst gelaufen ist.
 
 Zwei Dinge passieren dabei, nicht nur eines: die `cover.jpg` im Albumordner
 wird überschrieben (wie oben), und zusätzlich läuft `beet embedart -f` über

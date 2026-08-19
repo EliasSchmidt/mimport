@@ -1510,18 +1510,49 @@ def _alben_oder_fehler(q: str = "") -> tuple[list[albums.Album], str]:
         return [], str(exc)
 
 
-def _albums_fragment(request: Request, fehler: str = "") -> HTMLResponse:
-    treffer, listen_fehler = _alben_oder_fehler()
+@router.get("/albums", response_class=HTMLResponse)
+def album_list(request: Request, q: str = "") -> HTMLResponse:
+    """Bereits importierte Alben durchsuchen."""
+    treffer, fehler = _alben_oder_fehler(q)
+    return _seite(request, "albums.html", "alben", alben=treffer, q=q, fehler=fehler)
+
+
+def _album_mit_tracks(album_id: int) -> tuple[albums.Album, list[albums.Track], str]:
+    """Ein Album samt Titeln -- 404, wenn es das Album gar nicht gibt.
+
+    Fehlschläge beim Nachladen der Titel (Subprozess kaputt) sind dagegen kein
+    404: das Album selbst ist ja da, nur seine Titelliste bleibt leer und die
+    Fehlermeldung geht als ``fehler`` an die Seite statt als HTTP-Fehler.
+    """
+    album = albums.get_album(album_id)
+    if album is None:
+        raise HTTPException(status_code=404, detail="Album nicht gefunden.")
+    try:
+        return album, albums.list_tracks(album_id), ""
+    except albums.AlbumError as exc:
+        return album, [], str(exc)
+
+
+def _album_detail_fragment(
+    request: Request, album_id: int, fehler: str = ""
+) -> HTMLResponse:
+    album, tracks, listen_fehler = _album_mit_tracks(album_id)
     return _fragment(
-        request, "_albums_liste.html", alben=treffer, fehler=fehler or listen_fehler
+        request,
+        "_album_detail.html",
+        album=album,
+        tracks=tracks,
+        fehler=fehler or listen_fehler,
     )
 
 
-@router.get("/albums", response_class=HTMLResponse)
-def album_list(request: Request, q: str = "") -> HTMLResponse:
-    """Bereits importierte Alben durchsuchen, um ihr Cover zu ändern."""
-    treffer, fehler = _alben_oder_fehler(q)
-    return _seite(request, "albums.html", "alben", alben=treffer, q=q, fehler=fehler)
+@router.get("/albums/{album_id}", response_class=HTMLResponse)
+def album_detail(request: Request, album_id: int) -> HTMLResponse:
+    """Ein einzelnes Album: alle gesetzten Tags, alle Titel, Cover ändern."""
+    album, tracks, fehler = _album_mit_tracks(album_id)
+    return _seite(
+        request, "album_detail.html", "alben", album=album, tracks=tracks, fehler=fehler
+    )
 
 
 @router.get("/cover/album/{album_id}")
@@ -1562,8 +1593,8 @@ async def update_album_cover(
         bild_pfad = cover.speichern(album.path, await bild.read())
         albums.update_cover(album, bild_pfad)
     except (cover.CoverError, albums.AlbumError) as exc:
-        return _albums_fragment(request, fehler=str(exc))
-    return _albums_fragment(request)
+        return _album_detail_fragment(request, album_id, fehler=str(exc))
+    return _album_detail_fragment(request, album_id)
 
 
 def _mb_matches_fragment(
@@ -1592,7 +1623,7 @@ def album_artist_lookup(
 ) -> HTMLResponse:
     """MusicBrainz-Kandidaten für den Album-Interpreten."""
     return _mb_matches_fragment(
-        request, name.strip(), f"/albums/{album_id}/artist-apply", "#albums-liste"
+        request, name.strip(), f"/albums/{album_id}/artist-apply", "#album-detail"
     )
 
 
@@ -1607,30 +1638,8 @@ def album_artist_apply(
     try:
         albums.set_album_artist_mbid(album, mbid)
     except albums.AlbumError as exc:
-        return _albums_fragment(request, fehler=str(exc))
-    return _albums_fragment(request)
-
-
-def _tracks_fragment(request: Request, album_id: int, fehler: str = "") -> HTMLResponse:
-    try:
-        tracks = albums.list_tracks(album_id)
-        listen_fehler = ""
-    except albums.AlbumError as exc:
-        tracks = []
-        listen_fehler = str(exc)
-    return _fragment(
-        request,
-        "_album_tracks.html",
-        album_id=album_id,
-        tracks=tracks,
-        fehler=fehler or listen_fehler,
-    )
-
-
-@router.get("/albums/{album_id}/tracks", response_class=HTMLResponse)
-def album_tracks(request: Request, album_id: int) -> HTMLResponse:
-    """Titelliste eines Albums -- wird erst beim Aufklappen nachgeladen."""
-    return _tracks_fragment(request, album_id)
+        return _album_detail_fragment(request, album_id, fehler=str(exc))
+    return _album_detail_fragment(request, album_id)
 
 
 @router.post(
@@ -1644,7 +1653,7 @@ def track_artist_lookup(
         request,
         name.strip(),
         f"/albums/{album_id}/tracks/{track_id}/artist-apply",
-        f"#tracks-{album_id}",
+        "#album-detail",
     )
 
 
@@ -1658,5 +1667,5 @@ def track_artist_apply(
     try:
         albums.set_track_artist_mbid(track_id, mbid)
     except albums.AlbumError as exc:
-        return _tracks_fragment(request, album_id, fehler=str(exc))
-    return _tracks_fragment(request, album_id)
+        return _album_detail_fragment(request, album_id, fehler=str(exc))
+    return _album_detail_fragment(request, album_id)

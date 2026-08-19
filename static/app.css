@@ -218,6 +218,7 @@ main, .page-head, .page-foot { max-width: 62rem; margin: 0 auto; }
 .artist-fix summary::-webkit-details-marker { display: none; }
 .artist-fix[open] summary { margin-bottom: 0.5rem; }
 .artist-fix .picker { margin-bottom: 0.4rem; }
+.artist-fix .picker input[type="text"] { width: 12rem; }
 
 input[type="text"],
 select,
@@ -877,13 +878,70 @@ pre.output { max-height: 22rem; overflow-y: auto; }
     height: 2.75rem;
     object-fit: cover;
     border-radius: 4px;
-    background: var(--flaeche-2, #eee);
+    background: var(--surface-alt);
 }
 
 .cover-mini.leer {
     display: flex;
     align-items: center;
     justify-content: center;
-    color: var(--text-schwach, #999);
+    color: var(--text-dim);
     font-size: 1.2rem;
+}
+
+/* --- Albumdetails ------------------------------------------------------ */
+
+.album-kopf { display: flex; gap: 1rem; align-items: center; margin-bottom: 1rem; }
+
+.cover-gross {
+    display: block;
+    width: 6rem;
+    height: 6rem;
+    object-fit: cover;
+    border-radius: var(--radius);
+    background: var(--surface-alt);
+    flex: 0 0 auto;
+}
+
+.cover-gross.leer {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-dim);
+    font-size: 2rem;
+}
+
+.album-kopf-text h2 { margin: 0 0 0.5rem; font-size: 1.25rem; }
+
+.tag-block { margin-top: 1.5rem; }
+.tag-block h3 { margin: 0 0 0.6rem; font-size: 1rem; }
+
+.tag-table { width: 100%; border-collapse: collapse; }
+.tag-table th {
+    text-align: left;
+    color: var(--text-dim);
+    font-weight: 600;
+    font-size: 0.85rem;
+    width: 8rem;
+    vertical-align: top;
+    padding: 0.4rem 0.6rem 0.4rem 0;
+}
+.tag-table td { padding: 0.4rem 0; vertical-align: top; }
+.tag-table tr + tr { border-top: 1px solid var(--border); }
+.tag-mb { width: 1%; white-space: nowrap; text-align: right; }
+
+/* Kleiner Rundbadge statt des echten MusicBrainz-Logos -- das wäre eine
+   fremde Marke, die mimport nicht mitliefern soll. */
+.mb-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.6rem;
+    height: 1.6rem;
+    border-radius: 50%;
+    background: var(--ok-bg);
+    color: var(--ok);
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
 }

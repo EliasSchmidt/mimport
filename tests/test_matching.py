@@ -167,6 +167,72 @@ class TestMehrfachDiscZuordnung:
             )
 
 
+class TestTitelFehlenKomplett:
+    """Ein Rip hat keine Titel-Tags -- der dadurch unvermeidliche Abzug ist
+    kein Warnzeichen. Ein Upload mit echten, nur falschen Titeln dagegen
+    schon: dieselbe Kennzeichnung muss die beiden Fälle auseinanderhalten."""
+
+    def _match(self, *, item_titel: list[str], mit_track_title_abzug: bool):
+        from beets.autotag import AlbumInfo, AlbumMatch, Distance, TrackInfo
+        from beets.library import Item
+
+        tracks = [
+            TrackInfo(title="Come Together", track_id="t1", index=1, length=259.0),
+            TrackInfo(title="Something", track_id="t2", index=2, length=182.0),
+        ]
+        info = AlbumInfo(
+            album="Abbey Road",
+            album_id="964e8152-d86d-4b88-9b79-2f561db6c124",
+            artist="The Beatles",
+            artist_id="a1",
+            tracks=tracks,
+            year=1969,
+            data_source="MusicBrainz",
+            mediums=1,
+        )
+        items = [
+            Item(title=titel, artist="The Beatles", track=i + 1, length=200.0)
+            for i, titel in enumerate(item_titel)
+        ]
+        for index, item in enumerate(items):
+            item.path = f"/staging/{index + 1:02d} track.flac".encode()
+
+        distance = Distance()
+        if mit_track_title_abzug:
+            distance.add("track_title", 1.0)
+
+        return AlbumMatch(
+            distance=distance,
+            info=info,
+            mapping=dict(zip(items, tracks)),
+            extra_items=[],
+            extra_tracks=[],
+        )
+
+    def test_rip_ohne_titel_wird_erkannt(self):
+        match = self._match(item_titel=["", ""], mit_track_title_abzug=True)
+        candidate = matching.serialize_candidate(match, 0)
+        assert candidate.titel_fehlen_komplett is True
+
+    def test_echte_aber_falsche_titel_werden_nicht_als_fehlend_gemeldet(self):
+        match = self._match(
+            item_titel=["Falscher Titel", "Noch falscher"], mit_track_title_abzug=True
+        )
+        candidate = matching.serialize_candidate(match, 0)
+        assert candidate.titel_fehlen_komplett is False
+
+    def test_ohne_track_title_abzug_bleibt_es_false_auch_ohne_titel(self):
+        """Kein Abzug, also nichts zu erklären -- auch wenn die Titel leer sind."""
+        match = self._match(item_titel=["", ""], mit_track_title_abzug=False)
+        candidate = matching.serialize_candidate(match, 0)
+        assert candidate.titel_fehlen_komplett is False
+
+    def test_teilweise_titel_zaehlt_nicht_als_komplett_fehlend(self):
+        match = self._match(item_titel=["", "Ein Titel"], mit_track_title_abzug=True)
+        candidate = matching.serialize_candidate(match, 0)
+        assert candidate.titel_fehlen_komplett is False
+
+
 class TestSerializeCandidate:
     def test_grunddaten(self):
         candidate = matching.serialize_candidate(_album_match(), 0)

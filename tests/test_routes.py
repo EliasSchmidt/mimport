@@ -1606,6 +1606,50 @@ class TestManuellTaggen:
         assert erste.albumartist == "Various Artists"
         assert erste.comp is True
 
+    def test_manuell_korrigierte_tracknummer_wird_uebernommen(self, client):
+        """"Nr." in der Tabelle überschreibt die sonst aus der Position
+        abgeleitete Tracknummer -- wichtig, wenn die Dateireihenfolge nicht
+        der tatsächlichen Trackreihenfolge entspricht."""
+        import mediafile
+
+        session = self._session_mit(["01.flac", "02.flac"])
+        client.post(
+            f"/manual/{session.session_id}",
+            data={
+                "albumartist": "Can",
+                "genre": "Krautrock",
+                "year": "1971",
+                "nr:01.flac": "5",
+                "nr:02.flac": "3",
+            },
+        )
+
+        erste = mediafile.MediaFile(session.directory / "01.flac")
+        zweite = mediafile.MediaFile(session.directory / "02.flac")
+        assert erste.track == 5
+        assert zweite.track == 3
+        # "Track 5 von 2" wäre in sich widersprüchlich: sobald irgendeine
+        # Nummer von Hand korrigiert wurde, sagt die Dateianzahl dieser
+        # Sitzung nichts mehr verlässlich über die Gesamtzahl der Tracks aus.
+        assert not erste.tracktotal
+        assert not zweite.tracktotal
+
+    def test_ohne_manuelle_nummer_zaehlt_weiter_die_position(self, client):
+        import mediafile
+
+        session = self._session_mit(["01.flac", "02.flac"])
+        client.post(
+            f"/manual/{session.session_id}",
+            data={"albumartist": "Can", "genre": "Krautrock", "year": "1971"},
+        )
+
+        erste = mediafile.MediaFile(session.directory / "01.flac")
+        zweite = mediafile.MediaFile(session.directory / "02.flac")
+        assert erste.track == 1
+        assert zweite.track == 2
+        assert erste.tracktotal == 2
+        assert zweite.tracktotal == 2
+
     def test_genre_kommt_jetzt_auch_mehrfach_an(self, client):
         """Vorher verschwand es: beets 2.x kennt nur 'genres'."""
         import mediafile

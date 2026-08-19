@@ -191,9 +191,9 @@ def _ergänze_kuenstler_ids(fields: Mapping[str, object]) -> dict[str, object]:
 
 def _setzen(item: Any, key: str, value: object) -> None:
     """Setzt ein Feld so, dass es tatsächlich in der Datei landet."""
-    if key == "year":
+    if key in ("year", "track"):
         try:
-            item.year = int(str(value).strip())
+            setattr(item, key, int(str(value).strip()))
         except ValueError:
             pass
         return
@@ -267,6 +267,14 @@ def apply_manual_tags(
     if not usable and not je_track:
         return result
 
+    # Sobald irgendeine Nummer von Hand korrigiert wurde, sagt "Anzahl der
+    # Dateien in dieser Sitzung" nichts mehr verlässlich über die Gesamtzahl
+    # der Tracks aus -- die korrigierten Nummern können ja gerade bedeuten,
+    # dass hier nur ein Ausschnitt eines größeren Albums liegt. Ohne diese
+    # Ausnahme entstünde sonst ein in sich widersprüchliches Tag-Paar wie
+    # "Track 5 von 2".
+    manuelle_nummern = any("track" in werte for werte in je_track.values())
+
     for nummer, path in enumerate(paths, start=1):
         relative = ""
         if relative_to is not None:
@@ -296,10 +304,11 @@ def apply_manual_tags(
         # einem Sampler mit vierzehn Stücken vierzehnmal dieselbe Null, und
         # die Reihenfolge im Album ist dahin. Die Position in der sortierten
         # Liste ist die beste verfügbare Auskunft; eine vorhandene Nummer
-        # (etwa vom Rip) bleibt unangetastet.
+        # (etwa vom Rip, oder von Hand in "Nr." korrigiert) bleibt unangetastet
+        # -- Letzteres steckt schon in "eigene" und wurde oben gesetzt.
         if not item.track:
             item.track = nummer
-        if not item.tracktotal:
+        if not item.tracktotal and not manuelle_nummern:
             item.tracktotal = len(paths)
 
         try:

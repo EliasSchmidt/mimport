@@ -186,18 +186,20 @@ def _track_inputs(
         row = parsed[index] if index < len(parsed) else None
         title = (row.title if row else "").strip()
         artist = (row.artist if row else "").strip()
+        track = (row.number if row else "").strip()
         if not title:
             title = str(draft.get(f"titel:{file['key']}") or "").strip()
         if not artist:
             artist = str(draft.get(f"interpret:{file['key']}") or "").strip()
+        if not track:
+            track = str(draft.get(f"nr:{file['key']}") or "").strip()
         rows.append(
             {
                 "key": file["key"],
                 "display": file["display"],
                 "title": title,
                 "artist": artist,
-                "track": (row.number if row else "").strip(),
-                "duration": (row.duration if row else "").strip(),
+                "track": track,
             }
         )
     return rows
@@ -1379,11 +1381,13 @@ async def manual(
 ) -> HTMLResponse:
     """Schreibt selbst eingetragene Tags, wenn kein Match passt.
 
-    Neben den albumweiten Feldern kommen Titel und Interpret je Datei an --
-    als ``titel:<Dateiname>`` und ``artist:<Dateiname>``. Eine Sampler-CD
-    braucht das: dort hat jeder Track einen anderen Interpreten, während der
-    Albumkünstler „Various Artists" bleibt und das Compilation-Flag die Tracks
-    zusammenhält.
+    Neben den albumweiten Feldern kommen Titel, Interpret und Tracknummer je
+    Datei an -- als ``titel:<Dateiname>``, ``interpret:<Dateiname>`` und
+    ``nr:<Dateiname>``. Eine Sampler-CD braucht Titel/Interpret je Zeile:
+    dort hat jeder Track einen anderen Interpreten, während der
+    Albumkünstler „Various Artists" bleibt und das Compilation-Flag die
+    Tracks zusammenhält. Die Tracknummer korrigiert eine falsch erkannte
+    Reihenfolge, statt sich auf die Position in der Dateiliste zu verlassen.
     """
     session = _session_or_404(session_id)
     paths = session.audio_paths
@@ -1394,7 +1398,7 @@ async def manual(
     je_track: dict[str, dict[str, str]] = {}
     for schluessel, wert in formular.items():
         praefix, _, dateiname = str(schluessel).partition(":")
-        feld = {"titel": "title", "interpret": "artists"}.get(praefix)
+        feld = {"titel": "title", "interpret": "artists", "nr": "track"}.get(praefix)
         if feld and dateiname and str(wert).strip():
             je_track.setdefault(dateiname, {})[feld] = str(wert)
 

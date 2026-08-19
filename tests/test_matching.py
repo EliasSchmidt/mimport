@@ -103,6 +103,70 @@ def _album_match(*, missing: int = 0, unmatched: int = 0, penalty: float = 0.0):
     )
 
 
+class TestMehrfachDiscZuordnung:
+    """Ein Rip schreibt nur TRACKNUMBER, neu gezählt je Disc -- kein DISCNUMBER
+    (siehe ``backend.rip._rip_track``) und keinen Titel. Zwei Discs liefern
+    also zwölf Dateien, deren Tracknummern sich zweimal von 1 bis 6
+    wiederholen. Das prüft, ob beets' echte Zuordnungslogik (nicht unser
+    Code) das trotzdem richtig auflöst -- vor allem über die Spieldänge, da
+    ``track_index_changed`` sowohl den flachen als auch den Medium-Index
+    toleriert (``medium_index`` wiederholt sich je Disc genauso)."""
+
+    def test_gleiche_tracknummern_beider_discs_werden_getrennt(self):
+        from beets.autotag import TrackInfo
+        from beets.autotag.match import assign_items
+        from beets.library import Item
+
+        # Zwölf unterschiedliche Spiellängen, damit die Länge allein
+        # eindeutig disambiguiert -- realistisch für echte Songs.
+        laengen_disc1 = [187.0, 243.0, 156.0, 301.0, 212.0, 178.0]
+        laengen_disc2 = [265.0, 199.0, 340.0, 168.0, 224.0, 190.0]
+
+        tracks = [
+            TrackInfo(
+                title=f"Disc1 Track{i}",
+                track_id=f"d1t{i}",
+                index=i,
+                medium=1,
+                medium_index=i,
+                length=laenge,
+            )
+            for i, laenge in enumerate(laengen_disc1, start=1)
+        ] + [
+            TrackInfo(
+                title=f"Disc2 Track{i}",
+                track_id=f"d2t{i}",
+                index=6 + i,
+                medium=2,
+                medium_index=i,
+                length=laenge,
+            )
+            for i, laenge in enumerate(laengen_disc2, start=1)
+        ]
+
+        # Wie ein echter Rip: kein Titel, Tracknummer beginnt je Disc neu bei 1.
+        items = [
+            Item(title="", track=i, length=laenge)
+            for i, laenge in enumerate(laengen_disc1, start=1)
+        ] + [
+            Item(title="", track=i, length=laenge)
+            for i, laenge in enumerate(laengen_disc2, start=1)
+        ]
+
+        mapping, extra_items, extra_tracks = assign_items(items, tracks)
+
+        assert not extra_items, "keine Datei darf ohne Zuordnung bleiben"
+        assert not extra_tracks, "kein Track darf ohne Datei bleiben"
+        assert len(mapping) == 12
+
+        for item, track_info in mapping:
+            assert item.length == track_info.length, (
+                f"Track {track_info.title} bekam eine Datei falscher Länge "
+                f"({item.length} statt {track_info.length}) zugeordnet -- "
+                "die beiden Discs wurden vertauscht."
+            )
+
+
 class TestSerializeCandidate:
     def test_grunddaten(self):
         candidate = matching.serialize_candidate(_album_match(), 0)

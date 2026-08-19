@@ -75,18 +75,24 @@ def _storage_allowance(was: str = "Upload") -> tuple[int, str]:
     grenzen = [
         (
             settings.max_upload_bytes,
-            f"{was} überschreitet das Limit von "
-            f"{settings.max_upload_bytes / 1024**3:.1f} GB.",
+            (
+                f"{was} überschreitet das Limit von "
+                f"{settings.max_upload_bytes / 1024**3:.1f} GB."
+            ),
         ),
         (
             frei,
-            "Auf dem Server ist nicht genug Speicherplatz frei. Bitte zuerst "
-            "laufende Importe abschließen.",
+            (
+                "Auf dem Server ist nicht genug Speicherplatz frei. Bitte zuerst "
+                "laufende Importe abschließen."
+            ),
         ),
         (
             budget,
-            "Der Staging-Bereich ist ausgelastet. Bitte zuerst laufende "
-            "Importe abschließen oder nicht mehr benötigte Uploads verwerfen.",
+            (
+                "Der Staging-Bereich ist ausgelastet. Bitte zuerst laufende "
+                "Importe abschließen oder nicht mehr benötigte Uploads verwerfen."
+            ),
         ),
     ]
     return min(grenzen, key=lambda grenze: grenze[0])
@@ -1227,7 +1233,7 @@ async def artist_match(
         query = str(formular.get(field) or "").strip()
 
     lookup_failed = False
-    matches: tuple = ()
+    matches: tuple[artist_ids.ArtistMatch, ...] = ()
     if query:
         try:
             matches = artist_ids.search(query)
@@ -1448,3 +1454,99 @@ async def update_album_cover(
     except (cover.CoverError, albums.AlbumError) as exc:
         return _albums_fragment(request, fehler=str(exc))
     return _albums_fragment(request)
+
+
+def _mb_matches_fragment(
+    request: Request, query: str, apply_url: str, target: str
+) -> HTMLResponse:
+    """Sucht Künstler auf MusicBrainz und rendert die Treffer als Formulare.
+
+    Ein Fragment für Album- und Track-Interpret: beide sind „Namen eingeben,
+    Treffer sehen, mit einem Klick eine MBID übernehmen" -- nur das Ziel des
+    Übernehmen-Formulars unterscheidet sich.
+    """
+    treffer = artist_ids.search(query) if query else ()
+    return _fragment(
+        request,
+        "_mb_matches.html",
+        query=query,
+        matches=treffer,
+        apply_url=apply_url,
+        target=target,
+    )
+
+
+@router.post("/albums/{album_id}/artist-lookup", response_class=HTMLResponse)
+def album_artist_lookup(
+    request: Request, album_id: int, name: str = Form(default="")
+) -> HTMLResponse:
+    """MusicBrainz-Kandidaten für den Album-Interpreten."""
+    return _mb_matches_fragment(
+        request, name.strip(), f"/albums/{album_id}/artist-apply", "#albums-liste"
+    )
+
+
+@router.post("/albums/{album_id}/artist-apply", response_class=HTMLResponse)
+def album_artist_apply(
+    request: Request, album_id: int, mbid: str = Form(...)
+) -> HTMLResponse:
+    """Verknüpft den Album-Interpreten mit der gewählten MusicBrainz-ID."""
+    album = albums.get_album(album_id)
+    if album is None:
+        raise HTTPException(status_code=404, detail="Album nicht gefunden.")
+    try:
+        albums.set_album_artist_mbid(album, mbid)
+    except albums.AlbumError as exc:
+        return _albums_fragment(request, fehler=str(exc))
+    return _albums_fragment(request)
+
+
+def _tracks_fragment(request: Request, album_id: int, fehler: str = "") -> HTMLResponse:
+    try:
+        tracks = albums.list_tracks(album_id)
+        listen_fehler = ""
+    except albums.AlbumError as exc:
+        tracks = []
+        listen_fehler = str(exc)
+    return _fragment(
+        request,
+        "_album_tracks.html",
+        album_id=album_id,
+        tracks=tracks,
+        fehler=fehler or listen_fehler,
+    )
+
+
+@router.get("/albums/{album_id}/tracks", response_class=HTMLResponse)
+def album_tracks(request: Request, album_id: int) -> HTMLResponse:
+    """Titelliste eines Albums -- wird erst beim Aufklappen nachgeladen."""
+    return _tracks_fragment(request, album_id)
+
+
+@router.post(
+    "/albums/{album_id}/tracks/{track_id}/artist-lookup", response_class=HTMLResponse
+)
+def track_artist_lookup(
+    request: Request, album_id: int, track_id: int, name: str = Form(default="")
+) -> HTMLResponse:
+    """MusicBrainz-Kandidaten für den Interpreten eines einzelnen Titels."""
+    return _mb_matches_fragment(
+        request,
+        name.strip(),
+        f"/albums/{album_id}/tracks/{track_id}/artist-apply",
+        f"#tracks-{album_id}",
+    )
+
+
+@router.post(
+    "/albums/{album_id}/tracks/{track_id}/artist-apply", response_class=HTMLResponse
+)
+def track_artist_apply(
+    request: Request, album_id: int, track_id: int, mbid: str = Form(...)
+) -> HTMLResponse:
+    """Verknüpft den Interpreten eines einzelnen Titels mit der gewählten MBID."""
+    try:
+        albums.set_track_artist_mbid(track_id, mbid)
+    except albums.AlbumError as exc:
+        return _tracks_fragment(request, album_id, fehler=str(exc))
+    return _tracks_fragment(request, album_id)

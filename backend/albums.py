@@ -15,6 +15,18 @@ gibt es diesen Automatismus nicht mehr -- die Datei im Ordner ändert sich,
 aber die schon vorhandenen Audiodateien tragen ihr altes Cover noch in den
 eigenen Tags. Deshalb bettet ``update_cover`` es zusätzlich explizit über
 ``beet embedart -f`` ein.
+
+Dieselbe Lücke gibt es beim MusicBrainz-Künstlerlink: manche Alben oder
+einzelne Titel haben keine ``mb_albumartistid``/``mb_artistid``, weil der
+Import als-ist lief oder MusicBrainz den Namen damals nicht fand. Das lässt
+sich über ``beet modify`` nachtragen -- mit einem Stolperstein, der beim
+Testen auffiel: ``mb_albumartistid`` (einzeln) und ``mb_albumartistids``
+(Liste, beets 2.x) teilen sich beim Schreiben ins Datei-Tag denselben
+Speicherplatz. Setzt man nur das einzelne Feld, meldet ``beet modify`` zwar
+„geändert" und die Datenbank stimmt -- die Datei bleibt aber unverändert,
+weil das gleichzeitig mitgeschriebene leere ``…ids``-Feld das einzelne beim
+Schreiben wieder leert. Beide Funktionen setzen deshalb immer beide Felder
+zusammen.
 """
 
 from __future__ import annotations
@@ -37,8 +49,12 @@ _TRENNER = "\x1f"
 
 #: Reihenfolge muss zu ``_aus_zeile`` passen. ``$path`` ist bei einem Album
 #: ein berechnetes Feld (der Ordner der ersten Spur), keine Datenbankspalte.
-_FELDER = ("$id", "$albumartist", "$album", "$year", "$path")
+_FELDER = ("$id", "$albumartist", "$album", "$year", "$path", "$mb_albumartistid")
 _FORMAT = _TRENNER.join(_FELDER)
+
+#: Reihenfolge muss zu ``_track_aus_zeile`` passen.
+_TRACK_FELDER = ("$id", "$track", "$title", "$artist", "$mb_artistid")
+_TRACK_FORMAT = _TRENNER.join(_TRACK_FELDER)
 
 
 class AlbumError(Exception):
@@ -52,6 +68,7 @@ class Album:
     album: str
     year: str
     path: Path
+    mb_albumartistid: str = ""
 
     @property
     def cover_path(self) -> Path:
@@ -68,6 +85,23 @@ class Album:
             return str(int(self.cover_path.stat().st_mtime_ns))
         except OSError:
             return ""
+
+    @property
+    def has_albumartist_mbid(self) -> bool:
+        return bool(self.mb_albumartistid)
+
+
+@dataclass(frozen=True)
+class Track:
+    id: int
+    track: str
+    title: str
+    artist: str
+    mb_artistid: str = ""
+
+    @property
+    def has_artist_mbid(self) -> bool:
+        return bool(self.mb_artistid)
 
 
 def _lauf(args: list[str], *, timeout: int) -> subprocess.CompletedProcess[str]:
@@ -100,15 +134,44 @@ def _aus_zeile(zeile: str) -> Album | None:
         # Liste unbrauchbar machen.
         log.warning("Unerwartete beet-list-Zeile ignoriert: %r", zeile)
         return None
-    id_roh, albumartist, album, year, pfad = teile
+    id_roh, albumartist, album, year, pfad, mb_albumartistid = teile
     try:
         id_ = int(id_roh)
     except ValueError:
         log.warning("Album ohne gültige ID ignoriert: %r", zeile)
         return None
     return Album(
-        id=id_, albumartist=albumartist, album=album, year=year, path=Path(pfad)
+        id=id_,
+        albumartist=albumartist,
+        album=album,
+        year=year,
+        path=Path(pfad),
+        mb_albumartistid=mb_albumartistid,
     )
+
+
+def _track_aus_zeile(zeile: str) -> Track | None:
+    teile = zeile.split(_TRENNER)
+    if len(teile) != len(_TRACK_FELDER):
+        log.warning("Unerwartete beet-list-Zeile (Track) ignoriert: %r", zeile)
+        return None
+    id_roh, track, title, artist, mb_artistid = teile
+    try:
+        id_ = int(id_roh)
+    except ValueError:
+        log.warning("Track ohne gültige ID ignoriert: %r", zeile)
+        return None
+    return Track(
+        id=id_, track=track, title=title, artist=artist, mb_artistid=mb_artistid
+    )
+
+
+def _track_sortschluessel(track: str) -> tuple[int, str]:
+    try:
+        return (int(track), "")
+    except ValueError:
+        # Kein numerischer Tracktitel -- ans Ende, aber stabil sortiert.
+        return (10**9, track)
 
 
 def list_albums(query: str = "") -> list[Album]:
@@ -141,6 +204,20 @@ def get_album(album_id: int) -> Album | None:
     return treffer[0] if treffer else None
 
 
+def list_tracks(album_id: int) -> list[Track]:
+    """Die Titel eines Albums, der Tracknummer nach sortiert."""
+    proc = _lauf(
+        ["list", "-f", _TRACK_FORMAT, f"album_id:{album_id}"], timeout=30
+    )
+    if proc.returncode != 0:
+        raise AlbumError(
+            proc.stderr.strip() or "Die Titelliste ließ sich nicht abrufen."
+        )
+    tracks = [t for zeile in proc.stdout.splitlines() if (t := _track_aus_zeile(zeile))]
+    tracks.sort(key=lambda t: _track_sortschluessel(t.track))
+    return tracks
+
+
 def update_cover(album: Album, bild_pfad: Path) -> None:
     """Bettet ein Bild in alle Dateien eines Albums ein.
 
@@ -161,3 +238,41 @@ def update_cover(album: Album, bild_pfad: Path) -> None:
         raise AlbumError(
             proc.stderr.strip() or "Das Cover ließ sich nicht einbetten."
         )
+
+
+def _modify(vorwahl: list[str], query: str, felder: dict[str, str], *, timeout: int) -> None:
+    """``beet modify -y <vorwahl> <query> feld=wert …``, Fehler als ``AlbumError``."""
+    args = ["modify", "-y", *vorwahl, query, *(f"{k}={v}" for k, v in felder.items())]
+    proc = _lauf(args, timeout=timeout)
+    if proc.returncode != 0:
+        raise AlbumError(
+            proc.stderr.strip() or "Das Ändern der Tags ist fehlgeschlagen."
+        )
+
+
+def set_album_artist_mbid(album: Album, mbid: str) -> None:
+    """Verknüpft den Album-Interpreten nachträglich mit einer MusicBrainz-ID.
+
+    Zwei getrennte ``beet modify``-Aufrufe, weil Album- und Item-Zeilen in
+    beets unabhängig sind und ``-a`` nicht zuverlässig in die Dateien
+    zurückschreibt (siehe Moduldoc): Erst die Titel über ``album_id:`` -- das
+    schreibt Datenbank *und* Datei --, danach die Album-Zeile selbst über
+    ``id:`` mit ``-a``, nur für die eigene Anzeige. ``-W`` unterdrückt dabei
+    den erneuten, hier überflüssigen Dateizugriff; ``-I`` das erneute
+    Durchreichen an die (schon richtigen) Titel.
+    """
+    felder = {"mb_albumartistid": mbid, "mb_albumartistids": mbid}
+    with library_lock():
+        _modify([], f"album_id:{album.id}", felder, timeout=120)
+        _modify(["-a", "-W", "-I"], f"id:{album.id}", felder, timeout=30)
+
+
+def set_track_artist_mbid(track_id: int, mbid: str) -> None:
+    """Verknüpft den Interpreten eines einzelnen Titels mit einer MBID.
+
+    Anders als beim Album gibt es hier keine zweite, unabhängige Zeile --
+    ``id:`` trifft direkt den Titel, ein Aufruf genügt für Datenbank und
+    Datei.
+    """
+    with library_lock():
+        _modify([], f"id:{track_id}", {"mb_artistid": mbid, "mb_artistids": mbid}, timeout=60)

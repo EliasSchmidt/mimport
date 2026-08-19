@@ -75,7 +75,7 @@ async def lifespan(app: FastAPI):
     def _cover_nachziehen() -> None:
         try:
             audiobook.cover_nachziehen()
-        except Exception:  # noqa: BLE001
+        except Exception:
             log.exception("Cover aus m4bs holen fehlgeschlagen")
 
     def _ocr_vorladen() -> None:

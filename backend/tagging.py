@@ -103,7 +103,7 @@ def sampler_name() -> str:
 
     try:
         return str(config["va_name"].get()) or "Various Artists"
-    except Exception:
+    except Exception:  # noqa: BLE001 -- ohne gültige Konfiguration gilt der Standardname
         return "Various Artists"
 
 
@@ -208,7 +208,7 @@ def apply_manual_tags(
     paths: list[Path],
     fields: dict[str, object],
     *,
-    je_track: dict[str, dict[str, object]] | None = None,
+    je_track: Mapping[str, Mapping[str, object]] | None = None,
     relative_to: Path | None = None,
 ) -> TagWriteResult:
     """Schreibt handgepflegte Tags.
@@ -257,7 +257,7 @@ def apply_manual_tags(
         if relative_to is not None:
             try:
                 relative = str(path.relative_to(relative_to))
-            except Exception:
+            except Exception:  # noqa: BLE001 -- ohne relativen Pfad zählt nur der Basename
                 relative = ""
 
         eigene_quelle = je_track.get(relative) or je_track.get(path.name) or {}
@@ -270,7 +270,7 @@ def apply_manual_tags(
             continue
         try:
             item = Item.from_path(str(path))
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- eine unlesbare Datei soll die übrigen nicht stoppen
             result.failed.append((path.name, f"nicht lesbar: {exc}"))
             continue
 
@@ -292,7 +292,7 @@ def apply_manual_tags(
                 result.written.append(path.name)
             else:
                 result.failed.append((path.name, "Tags konnten nicht geschrieben werden"))
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- ein Schreibfehler soll die übrigen Dateien nicht stoppen
             result.failed.append((path.name, str(exc)))
     return result
 

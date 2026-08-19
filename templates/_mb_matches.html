@@ -1,0 +1,31 @@
+{# MusicBrainz-Kandidaten für einen Künstlernamen -- wiederverwendet für den
+   Album- und den Track-Interpreten. Nur ``apply_url`` und ``target``
+   unterscheiden, wohin ein Treffer übernommen wird. #}
+{% if not query %}
+<p class="hint">Namen eingeben und suchen.</p>
+{% elif not matches %}
+<p class="hint">Kein MusicBrainz-Treffer für „{{ query }}“.</p>
+{% else %}
+<ul class="artist-match-list">
+    {% for m in matches %}
+    <li class="artist-match-item{% if m.exact %} exact{% endif %}">
+        <div class="artist-match-copy">
+            <div>
+                <strong>{{ m.name }}</strong>
+                {% if m.exact %}<span class="badge strong">exakt</span>{% endif %}
+                {% if m.kind %}<span class="small">· {{ m.kind }}</span>{% endif %}
+                {% if m.area %}<span class="small">· {{ m.area }}</span>{% endif %}
+            </div>
+            {% if m.disambiguation %}
+            <div class="small">{{ m.disambiguation }}</div>
+            {% endif %}
+            <div class="mono small">{{ m.mbid }}</div>
+        </div>
+        <form hx-post="{{ apply_url }}" hx-target="{{ target }}" hx-swap="innerHTML">
+            <input type="hidden" name="mbid" value="{{ m.mbid }}">
+            <button type="submit" class="button secondary">Übernehmen</button>
+        </form>
+    </li>
+    {% endfor %}
+</ul>
+{% endif %}

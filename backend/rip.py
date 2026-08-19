@@ -196,7 +196,7 @@ def _lesen(
     return prozess.returncode
 
 
-def _run(command: list[str], *, timeout: float) -> subprocess.CompletedProcess:
+def _run(command: list[str], *, timeout: float) -> subprocess.CompletedProcess[str]:
     """Ruft ein Programm auf und gibt das Ergebnis zurück.
 
     Kein ``shell=True``: Track-Nummern und Pfade gehen unverändert an das
@@ -406,7 +406,7 @@ def _arbeite(
         job.meldung = f"Der Rip ist nach {job.dauer_text} fehlgeschlagen."
         bei_fehler()
         log.warning("Rip abgebrochen: %s", exc)
-    except Exception as exc:  # noqa: BLE001 -- der Thread darf nie still sterben
+    except Exception as exc:
         job.beendet = time.monotonic()
         job.zustand = "fehler"
         job.fehler = f"Unerwarteter Fehler: {exc}"

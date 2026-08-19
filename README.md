@@ -211,6 +211,28 @@ den eigenen Tags, ein `fetchart`-Automatismus greift nur beim Import selbst.
 Wie beim Import selbst teilen sich beide Dienste dafür denselben
 Library-Lock (siehe [Zwei Dienste](#zwei-dienste)).
 
+### MusicBrainz-Künstlerlink nachtragen
+
+Auf derselben Seite lässt sich pro Album und pro Titel eine fehlende
+MusicBrainz-Artist-ID nachtragen -- etwa wenn der Import als-ist lief oder
+MusicBrainz den Namen damals nicht fand. Die Suche ist dieselbe wie beim
+manuellen Taggen vor dem Import (`backend.artist_ids`).
+
+Zwei Fallstricke, auf die es dabei ankommt:
+
+* `mb_albumartistid` (einzeln) und `mb_albumartistids` (Liste, beets 2.x)
+  teilen sich beim Schreiben ins Datei-Tag denselben Speicherplatz. Wird nur
+  das einzelne Feld gesetzt, meldet `beet modify` zwar „geändert" und die
+  Datenbank stimmt -- die Datei bleibt aber unverändert, weil das
+  gleichzeitig mitgeschriebene leere Listenfeld das einzelne beim Schreiben
+  wieder leert. mimport setzt deshalb immer beide zusammen.
+* Die Album-Zeile und ihre Titel sind in beets unabhängige Datenbankzeilen.
+  Ein Fix für den Album-Interpreten braucht deshalb zwei `beet
+  modify`-Aufrufe: einen über die Titel (`album_id:`, schreibt Datenbank
+  *und* Datei), einen über die Album-Zeile selbst (`-a id:`, nur für die
+  eigene Anzeige, mit `-W` ohne erneuten Dateizugriff). Ein Titel-Interpret
+  dagegen ist eine einzelne Zeile -- da genügt ein Aufruf.
+
 ## Backcover-Text (OCR)
 
 Für das **manuelle Taggen** kann mimport zusätzlich den Text eines

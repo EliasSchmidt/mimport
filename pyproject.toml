@@ -41,3 +41,13 @@ testpaths = ["tests"]
 markers = [
     "network: braucht Internet (MusicBrainz). Ausschließen mit -m 'not network'.",
 ]
+
+[tool.basedpyright]
+typeCheckingMode = "standard"
+include = ["backend"]
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI erkennt Upload-Parameter genau an diesem Aufruf als Default -- das
+# ist kein veränderliches Objekt, das versehentlich zwischen Requests geteilt
+# wird, sondern der vorgesehene Weg, einen Parameter als Datei zu markieren.
+extend-immutable-calls = ["fastapi.File"]

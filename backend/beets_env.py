@@ -19,6 +19,7 @@ from __future__ import annotations
 import logging
 import subprocess
 import threading
+from typing import TypedDict
 
 log = logging.getLogger(__name__)
 
@@ -111,7 +112,18 @@ def beet_cli_version(beet_bin: str) -> str | None:
     return None
 
 
-def health() -> dict[str, object]:
+class Health(TypedDict):
+    """Startzustand für das Hinweisbanner in der Oberfläche."""
+
+    beets_version: str
+    beet_cli_version: str | None
+    metadata_sources: list[str]
+    fingerprint: bool
+    problems: list[str]
+    import_ready: bool
+
+
+def health() -> Health:
     """Startzustand für das Hinweisbanner in der Oberfläche."""
     from backend.config import settings
 

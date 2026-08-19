@@ -1553,6 +1553,7 @@ def _album_detail_fragment(
         album=album,
         tracks=tracks,
         fehler=fehler or listen_fehler,
+        genre_vorschlaege=genres.katalog(),
     )
 
 
@@ -1561,7 +1562,13 @@ def album_detail(request: Request, album_id: int) -> HTMLResponse:
     """Ein einzelnes Album: alle gesetzten Tags, alle Titel, Cover ändern."""
     album, tracks, fehler = _album_mit_tracks(album_id)
     return _seite(
-        request, "album_detail.html", "alben", album=album, tracks=tracks, fehler=fehler
+        request,
+        "album_detail.html",
+        "alben",
+        album=album,
+        tracks=tracks,
+        fehler=fehler,
+        genre_vorschlaege=genres.katalog(),
     )
 
 
@@ -1652,6 +1659,45 @@ def album_artist_apply(
     return _album_detail_fragment(request, album_id)
 
 
+@router.post("/albums/{album_id}/edit", response_class=HTMLResponse)
+def album_edit(
+    request: Request,
+    album_id: int,
+    albumartist: str = Form(default=""),
+    album: str = Form(default=""),
+    year: str = Form(default=""),
+    genre: str = Form(default=""),
+) -> HTMLResponse:
+    """Ändert Albumkünstler, Albumtitel, Jahr oder Genre nachträglich.
+
+    Leere Felder werden übersprungen, damit ein leeres Formularfeld nichts
+    überschreibt -- dieselbe Regel wie beim manuellen Taggen vor dem Import.
+    """
+    alb = albums.get_album(album_id)
+    if alb is None:
+        raise HTTPException(status_code=404, detail="Album nicht gefunden.")
+    felder = {
+        key: wert.strip()
+        for key, wert in {
+            "albumartist": albumartist,
+            "album": album,
+            "year": year,
+        }.items()
+        if wert.strip()
+    }
+    # "genre" und "genres" teilen sich beim Schreiben ins Datei-Tag denselben
+    # Speicherplatz -- derselbe Stolperstein wie bei mb_albumartistid/-ids
+    # (siehe Moduldoc), deshalb immer beide zusammen setzen.
+    if genre.strip():
+        felder["genre"] = genre.strip()
+        felder["genres"] = genre.strip()
+    try:
+        albums.update_album_fields(alb, felder)
+    except albums.AlbumError as exc:
+        return _album_detail_fragment(request, album_id, fehler=str(exc))
+    return _album_detail_fragment(request, album_id)
+
+
 @router.post(
     "/albums/{album_id}/tracks/{track_id}/artist-lookup", response_class=HTMLResponse
 )
@@ -1676,6 +1722,29 @@ def track_artist_apply(
     """Verknüpft den Interpreten eines einzelnen Titels mit der gewählten MBID."""
     try:
         albums.set_track_artist_mbid(track_id, mbid)
+    except albums.AlbumError as exc:
+        return _album_detail_fragment(request, album_id, fehler=str(exc))
+    return _album_detail_fragment(request, album_id)
+
+
+@router.post(
+    "/albums/{album_id}/tracks/{track_id}/edit", response_class=HTMLResponse
+)
+def track_edit(
+    request: Request,
+    album_id: int,
+    track_id: int,
+    title: str = Form(default=""),
+    artist: str = Form(default=""),
+) -> HTMLResponse:
+    """Ändert Titel oder Interpret eines einzelnen Titels nachträglich."""
+    felder = {
+        key: wert.strip()
+        for key, wert in {"title": title, "artist": artist}.items()
+        if wert.strip()
+    }
+    try:
+        albums.update_track_fields(track_id, felder)
     except albums.AlbumError as exc:
         return _album_detail_fragment(request, album_id, fehler=str(exc))
     return _album_detail_fragment(request, album_id)

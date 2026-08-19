@@ -55,6 +55,36 @@
             <tr><th>Label</th><td colspan="2">{{ album.label or "–" }}</td></tr>
         </tbody>
     </table>
+
+    <details class="artist-fix">
+        <summary class="button secondary">Bearbeiten</summary>
+        <form hx-post="/albums/{{ album.id }}/edit"
+              hx-target="#album-detail" hx-swap="innerHTML"
+              class="fields compact">
+            <label>Interpret
+                <input type="text" name="albumartist" value="{{ album.albumartist }}">
+            </label>
+            <label>Album
+                <input type="text" name="album" value="{{ album.album }}">
+            </label>
+            <label>Jahr
+                <input type="text" name="year" inputmode="numeric"
+                       value="{{ album.year_editierbar }}">
+            </label>
+            <label>Genre <small>(mehrere mit <span class="mono">;</span>)</small>
+                <input type="text" name="genre" value="{{ album.genres }}"
+                       list="genre-vorschlaege-album" autocomplete="off"
+                       data-genre-input>
+            </label>
+            <datalist id="genre-vorschlaege-album" data-genre-vorschlaege>
+                {% for genre in genre_vorschlaege %}
+                <option value="{{ genre }}"></option>
+                {% endfor %}
+            </datalist>
+            <button type="submit" class="button">Speichern</button>
+            <p class="hint">Leere Felder lassen den bisherigen Wert unangetastet.</p>
+        </form>
+    </details>
 </section>
 
 <section class="tag-block">
@@ -69,10 +99,25 @@
         <tbody>
             {% for t in tracks %}
             <tr>
+                {# "title"/"artist" gehören zu diesem Formular, obwohl sie in
+                   eigenen Zellen stehen -- ein <form> kann keine <td>s
+                   umschließen, ohne die Tabellenstruktur zu zerreißen. Das
+                   HTML5-Attribut "form" verknüpft sie stattdessen von außen. #}
                 <td class="mono small" data-spalte="#">{{ t.track }}</td>
-                <td class="name" data-spalte="Titel">{{ t.title }}</td>
-                <td class="name" data-spalte="Interpret">{{ t.artist }}</td>
+                <td data-spalte="Titel">
+                    <input type="text" name="title" form="track-edit-{{ t.id }}" value="{{ t.title }}">
+                </td>
+                <td data-spalte="Interpret">
+                    <input type="text" name="artist" form="track-edit-{{ t.id }}" value="{{ t.artist }}">
+                </td>
                 <td>
+                    <form id="track-edit-{{ t.id }}"
+                          hx-post="/albums/{{ album.id }}/tracks/{{ t.id }}/edit"
+                          hx-target="#album-detail" hx-swap="innerHTML"></form>
+                    <button type="submit" form="track-edit-{{ t.id }}" class="button secondary">
+                        Speichern
+                    </button>
+
                     {% if t.has_artist_mbid %}
                     <span class="mb-badge" title="{{ t.mb_artistid }}">MB</span>
                     {% else %}

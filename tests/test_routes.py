@@ -2135,3 +2135,130 @@ class TestAlbenArtistMbid:
             "/albums/1/tracks/10/artist-apply", data={"mbid": self.MATCH.mbid}
         )
         assert "Das Ändern der Tags ist fehlgeschlagen." in response.text
+
+
+class TestAlbenBearbeiten:
+    """Metadaten eines bereits importierten Albums nachträglich korrigieren --
+    nicht nur MusicBrainz-Links, sondern Albumkünstler, Titel, Jahr und Genre
+    direkt, auf der Detailseite /albums/<id>. Die eigentlichen
+    ``beet modify``-Aufrufe prüft ``test_albums.py``, hier zählt nur die
+    HTTP-Seite.
+    """
+
+    @pytest.fixture
+    def album(self, tmp_path, monkeypatch):
+        from backend import albums
+
+        ordner = tmp_path / "The Beatles" / "Abbey Road"
+        ordner.mkdir(parents=True)
+        eintrag = albums.Album(
+            id=1, albumartist="The Beatles", album="Abbey Road", year="1969",
+            path=ordner, genres="Rock",
+        )
+        monkeypatch.setattr(
+            routes.albums, "get_album", lambda album_id: eintrag if album_id == 1 else None
+        )
+        monkeypatch.setattr(routes.albums, "list_albums", lambda q="": [eintrag])
+        monkeypatch.setattr(routes.albums, "list_tracks", lambda album_id: [])
+        return eintrag
+
+    def test_detailseite_zeigt_bearbeiten_formular_mit_vorbefuellten_werten(
+        self, client, album
+    ):
+        response = client.get("/albums/1")
+        assert "Bearbeiten" in response.text
+        assert 'name="album" value="Abbey Road"' in response.text
+        assert 'name="genre" value="Rock"' in response.text
+
+    def test_leeres_jahr_wird_nicht_mit_sentinel_vorbefuellt(self, tmp_path, client, monkeypatch):
+        """Die eigentliche Logik prüft TestYearEditierbar in test_albums.py --
+        hier zählt nur, dass die Seite das rendert, was Album.year_editierbar
+        liefert."""
+        from backend import albums
+
+        ordner = tmp_path / "X" / "Y"
+        ordner.mkdir(parents=True)
+        eintrag = albums.Album(id=2, albumartist="X", album="Y", year="0000", path=ordner)
+        assert eintrag.year_editierbar == ""
+        monkeypatch.setattr(
+            routes.albums, "get_album", lambda album_id: eintrag if album_id == 2 else None
+        )
+        monkeypatch.setattr(routes.albums, "list_tracks", lambda album_id: [])
+        response = client.get("/albums/2")
+        assert 'name="year"' in response.text
+
+    def test_aenderung_wird_uebernommen(self, client, album, monkeypatch):
+        aufrufe = []
+        monkeypatch.setattr(
+            routes.albums,
+            "update_album_fields",
+            lambda a, felder: aufrufe.append((a.id, felder)),
+        )
+        response = client.post(
+            "/albums/1/edit",
+            data={"albumartist": "", "album": "Abbey Road (Remaster)", "year": "", "genre": ""},
+        )
+        assert response.status_code == 200
+        # Leere Felder werden nicht mitgeschickt -- sie sollen den
+        # bestehenden Wert nicht überschreiben.
+        assert aufrufe == [(1, {"album": "Abbey Road (Remaster)"})]
+
+    def test_genre_wird_einzeln_und_mehrfach_zusammen_gesetzt(self, client, album, monkeypatch):
+        """Wie bei mb_albumartistid/-ids: "genre" und "genres" teilen sich
+        beim Schreiben denselben Speicherplatz -- ohne beide zusammen bliebe
+        die Datei unverändert, obwohl beets "geändert" meldet."""
+        aufrufe = []
+        monkeypatch.setattr(
+            routes.albums,
+            "update_album_fields",
+            lambda a, felder: aufrufe.append((a.id, felder)),
+        )
+        response = client.post("/albums/1/edit", data={"genre": "Krautrock"})
+        assert response.status_code == 200
+        assert aufrufe == [(1, {"genre": "Krautrock", "genres": "Krautrock"})]
+
+    def test_unbekanntes_album_gibt_404(self, client, album):
+        response = client.post("/albums/999/edit", data={"album": "X"})
+        assert response.status_code == 404
+
+    def test_fehlschlag_wird_gemeldet(self, client, album, monkeypatch):
+        from backend import albums
+
+        def kaputt(a, felder):
+            raise albums.AlbumError("Das Ändern der Tags ist fehlgeschlagen.")
+
+        monkeypatch.setattr(routes.albums, "update_album_fields", kaputt)
+        response = client.post("/albums/1/edit", data={"album": "X"})
+        assert "Das Ändern der Tags ist fehlgeschlagen." in response.text
+
+    def test_track_bearbeiten_formular_ist_vorbefuellt(self, client, album, monkeypatch):
+        from backend import albums
+
+        titel = albums.Track(id=10, track="01", title="Come Together", artist="The Beatles")
+        monkeypatch.setattr(routes.albums, "list_tracks", lambda album_id: [titel])
+        response = client.get("/albums/1")
+        assert 'name="title" form="track-edit-10" value="Come Together"' in response.text
+        assert 'hx-post="/albums/1/tracks/10/edit"' in response.text
+
+    def test_track_aenderung_wird_uebernommen(self, client, album, monkeypatch):
+        aufrufe = []
+        monkeypatch.setattr(
+            routes.albums,
+            "update_track_fields",
+            lambda track_id, felder: aufrufe.append((track_id, felder)),
+        )
+        response = client.post(
+            "/albums/1/tracks/10/edit", data={"title": "Neuer Titel", "artist": ""}
+        )
+        assert response.status_code == 200
+        assert aufrufe == [(10, {"title": "Neuer Titel"})]
+
+    def test_track_fehlschlag_wird_gemeldet(self, client, album, monkeypatch):
+        from backend import albums
+
+        def kaputt(track_id, felder):
+            raise albums.AlbumError("Das Ändern der Tags ist fehlgeschlagen.")
+
+        monkeypatch.setattr(routes.albums, "update_track_fields", kaputt)
+        response = client.post("/albums/1/tracks/10/edit", data={"title": "X"})
+        assert "Das Ändern der Tags ist fehlgeschlagen." in response.text

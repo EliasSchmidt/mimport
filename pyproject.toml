@@ -41,3 +41,7 @@ testpaths = ["tests"]
 markers = [
     "network: braucht Internet (MusicBrainz). Ausschließen mit -m 'not network'.",
 ]
+
+[tool.basedpyright]
+typeCheckingMode = "standard"
+include = ["backend"]

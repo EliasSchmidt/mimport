@@ -179,7 +179,8 @@ def serialize_candidate(match: Any, index: int) -> Candidate:
     distance = match.distance
 
     penalties: list[tuple[str, float]] = []
-    for key, value in distance.items():
+    for raw_key, value in distance.items():
+        key = str(raw_key)
         label = PENALTY_LABELS.get(key, key.replace("_", " "))
         penalties.append((label, round(float(value) * 100, 1)))
     penalties.sort(key=lambda pair: pair[1], reverse=True)

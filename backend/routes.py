@@ -66,6 +66,47 @@ def _parse_flags(draft: dict[str, str]) -> trackparse.ParseFlags:
     )
 
 
+def _entwurf_nach_ocr_lauf(
+    session: sessions.StagingSession,
+    ocr_text: str,
+    flags: trackparse.ParseFlags,
+    rows: list[dict[str, str]],
+) -> None:
+    """Sichert Texterkennung/Parser-Lauf sofort im Entwurf.
+
+    Das normale Autosave reagiert nur auf Tippen im Formular (``input``-
+    Events); ein htmx-Swap nach "Text erkennen" oder "Parser anwenden" löst
+    das nicht aus. Ohne das hier ging ein erkannter Text verloren, wenn die
+    Sitzung danach ohne weiteren Tastendruck verlassen wurde.
+    """
+    draft = sessions.load_draft(session)
+    if ocr_text:
+        draft["ocr_text"] = ocr_text
+    else:
+        draft.pop("ocr_text", None)
+    for name, gesetzt in (
+        ("tracknummer", flags.tracknummer),
+        ("interpret", flags.interpret),
+        ("dauer", flags.dauer),
+    ):
+        if gesetzt:
+            draft[name] = "true"
+        else:
+            draft.pop(name, None)
+    for row in rows:
+        for praefix, wert in (
+            ("titel", row["title"]),
+            ("interpret", row["artist"]),
+            ("nr", row["track"]),
+        ):
+            key = f"{praefix}:{row['key']}"
+            if wert:
+                draft[key] = wert
+            else:
+                draft.pop(key, None)
+    sessions.save_draft(session, draft)
+
+
 def _storage_allowance(was: str = "Upload") -> tuple[int, str]:
     """Wie viele Bytes noch ins Staging dürfen -- und die Meldung dazu.
 
@@ -1227,6 +1268,8 @@ async def ocr_backcover(
             f"{len(session.audio_paths)} Datei(en)."
         )
 
+    rows = _track_inputs(session, parsed)
+    _entwurf_nach_ocr_lauf(session, result.text, flags, rows)
     return _fragment(
         request,
         "_manual_ocr.html",
@@ -1234,7 +1277,7 @@ async def ocr_backcover(
         parse_flags=flags,
         ocr_text=result.text,
         ocr_warnings=warnings,
-        track_inputs=_track_inputs(session, parsed),
+        track_inputs=rows,
         ocr_overlay=overlay,
     )
 
@@ -1263,6 +1306,9 @@ async def ocr_parse(
             f"{len(session.audio_paths)} Datei(en)."
         )
 
+    rows = _track_inputs(session, parsed)
+    if text:
+        _entwurf_nach_ocr_lauf(session, text, flags, rows)
     return _fragment(
         request,
         "_manual_ocr.html",
@@ -1270,7 +1316,7 @@ async def ocr_parse(
         parse_flags=flags,
         ocr_text=text,
         ocr_warnings=warnings,
-        track_inputs=_track_inputs(session, parsed),
+        track_inputs=rows,
         ocr_overlay=None,
     )
 

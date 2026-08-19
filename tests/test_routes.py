@@ -1910,6 +1910,26 @@ class TestEntwurfWiederherstellen:
         assert 'value="Windsbacher Knabenchor"' in html
         assert 'value="1985"' in html
 
+    def test_parser_lauf_sichert_sofort_den_entwurf(self, client):
+        """Ohne das hier stand ein erkannter Text erst im Entwurf, sobald
+        danach noch irgendwo getippt wurde -- der htmx-Swap nach "Parser
+        anwenden" löst das normale (tippbasierte) Autosave nicht aus."""
+        session = self._session_mit(["01.flac"])
+        response = client.post(
+            f"/ocr/parse/{session.session_id}",
+            data={"ocr_text": "01 Interpret - Titel", "tracknummer": "true", "interpret": "true"},
+        )
+        assert response.status_code == 200
+
+        draft = sessions.load_draft(session)
+        assert draft["ocr_text"] == "01 Interpret - Titel"
+        assert draft["tracknummer"] == "true"
+        assert draft["interpret"] == "true"
+        assert "dauer" not in draft
+        assert draft["titel:01.flac"] == "Titel"
+        assert draft["interpret:01.flac"] == "Interpret"
+        assert draft["nr:01.flac"] == "01"
+
     def test_datei_upload_wird_beim_entwurf_ignoriert(self, client):
         """``hx-params=\"not bild\"`` verhindert, dass jeder Autosave-Tick das
         OCR-Backcoverfoto erneut mitschickt -- diese Route soll trotzdem nicht

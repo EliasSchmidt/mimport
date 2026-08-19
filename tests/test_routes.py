@@ -1679,3 +1679,134 @@ class TestAlbenCover:
         assert "Das Cover ließ sich nicht einbetten." in response.text
         # Das Bild liegt trotzdem schon im Ordner -- nichts geht verloren.
         assert (album.path / "cover.jpg").read_bytes() == self.JPEG
+
+
+class TestAlbenArtistMbid:
+    """Album- und Track-Interpret nachträglich mit MusicBrainz verknüpfen.
+
+    Die eigentlichen ``beet modify``-Aufrufe prüft ``test_albums.py``. Hier
+    zählt nur die HTTP-Seite: Suche anzeigen, Auswahl übernehmen, Fehler
+    melden -- für Album und Track getrennt, weil es getrennte Endpunkte sind.
+    """
+
+    from backend.artist_ids import ArtistMatch
+
+    MATCH = ArtistMatch(
+        name="The Beatles",
+        mbid="b10bbbfc-cf9e-42e0-be17-e2c3e1d2600d",
+        exact=True,
+    )
+
+    @pytest.fixture
+    def album(self, tmp_path, monkeypatch):
+        from backend import albums
+
+        ordner = tmp_path / "The Beatles" / "Abbey Road"
+        ordner.mkdir(parents=True)
+        eintrag = albums.Album(
+            id=1, albumartist="The Beatles", album="Abbey Road", year="1969",
+            path=ordner,
+        )
+        monkeypatch.setattr(
+            routes.albums, "get_album", lambda album_id: eintrag if album_id == 1 else None
+        )
+        monkeypatch.setattr(routes.albums, "list_albums", lambda q="": [eintrag])
+        return eintrag
+
+    def test_album_suche_zeigt_treffer(self, client, album, monkeypatch):
+        monkeypatch.setattr(routes.artist_ids, "search", lambda name: (self.MATCH,))
+        response = client.post(
+            "/albums/1/artist-lookup", data={"name": "The Beatles"}
+        )
+        assert response.status_code == 200
+        assert self.MATCH.mbid in response.text
+        assert 'hx-post="/albums/1/artist-apply"' in response.text
+
+    def test_album_suche_ohne_treffer(self, client, album, monkeypatch):
+        monkeypatch.setattr(routes.artist_ids, "search", lambda name: ())
+        response = client.post("/albums/1/artist-lookup", data={"name": "Nichts da"})
+        assert "Kein MusicBrainz-Treffer" in response.text
+
+    def test_album_uebernehmen_ruft_die_verknuepfung_auf(self, client, album, monkeypatch):
+        from backend import albums
+
+        aufrufe = []
+        monkeypatch.setattr(
+            routes.albums,
+            "set_album_artist_mbid",
+            lambda a, mbid: aufrufe.append((a.id, mbid)),
+        )
+        response = client.post("/albums/1/artist-apply", data={"mbid": self.MATCH.mbid})
+        assert response.status_code == 200
+        assert aufrufe == [(1, self.MATCH.mbid)]
+
+    def test_album_uebernehmen_unbekanntes_album(self, client, album):
+        assert client.post("/albums/999/artist-apply", data={"mbid": "x"}).status_code == 404
+
+    def test_album_uebernehmen_meldet_fehlschlag(self, client, album, monkeypatch):
+        from backend import albums
+
+        def kaputt(a, mbid):
+            raise albums.AlbumError("Das Ändern der Tags ist fehlgeschlagen.")
+
+        monkeypatch.setattr(routes.albums, "set_album_artist_mbid", kaputt)
+        response = client.post("/albums/1/artist-apply", data={"mbid": self.MATCH.mbid})
+        assert "Das Ändern der Tags ist fehlgeschlagen." in response.text
+
+    def test_titelliste_wird_geladen(self, client, album, monkeypatch):
+        from backend import albums
+
+        titel = albums.Track(id=10, track="01", title="Come Together", artist="The Beatles")
+        monkeypatch.setattr(routes.albums, "list_tracks", lambda album_id: [titel])
+        response = client.get("/albums/1/tracks")
+        assert response.status_code == 200
+        assert "Come Together" in response.text
+        assert "MB-Link fixen" in response.text
+
+    def test_titelliste_mit_verknuepftem_titel_zeigt_haken(self, client, album, monkeypatch):
+        from backend import albums
+
+        titel = albums.Track(
+            id=10, track="01", title="Come Together", artist="The Beatles",
+            mb_artistid=self.MATCH.mbid,
+        )
+        monkeypatch.setattr(routes.albums, "list_tracks", lambda album_id: [titel])
+        response = client.get("/albums/1/tracks")
+        assert "MB ✓" in response.text
+        assert "MB-Link fixen" not in response.text
+
+    def test_track_suche_zeigt_treffer(self, client, album, monkeypatch):
+        monkeypatch.setattr(routes.artist_ids, "search", lambda name: (self.MATCH,))
+        response = client.post(
+            "/albums/1/tracks/10/artist-lookup", data={"name": "The Beatles"}
+        )
+        assert response.status_code == 200
+        assert self.MATCH.mbid in response.text
+        assert 'hx-post="/albums/1/tracks/10/artist-apply"' in response.text
+
+    def test_track_uebernehmen_ruft_die_verknuepfung_auf(self, client, album, monkeypatch):
+        aufrufe = []
+        monkeypatch.setattr(
+            routes.albums,
+            "set_track_artist_mbid",
+            lambda track_id, mbid: aufrufe.append((track_id, mbid)),
+        )
+        monkeypatch.setattr(routes.albums, "list_tracks", lambda album_id: [])
+        response = client.post(
+            "/albums/1/tracks/10/artist-apply", data={"mbid": self.MATCH.mbid}
+        )
+        assert response.status_code == 200
+        assert aufrufe == [(10, self.MATCH.mbid)]
+
+    def test_track_uebernehmen_meldet_fehlschlag(self, client, album, monkeypatch):
+        from backend import albums
+
+        def kaputt(track_id, mbid):
+            raise albums.AlbumError("Das Ändern der Tags ist fehlgeschlagen.")
+
+        monkeypatch.setattr(routes.albums, "set_track_artist_mbid", kaputt)
+        monkeypatch.setattr(routes.albums, "list_tracks", lambda album_id: [])
+        response = client.post(
+            "/albums/1/tracks/10/artist-apply", data={"mbid": self.MATCH.mbid}
+        )
+        assert "Das Ändern der Tags ist fehlgeschlagen." in response.text

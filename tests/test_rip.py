@@ -88,6 +88,69 @@ class TestStart:
         assert job.disc_id == VEKTOR_ID
         assert job.tracks_gesamt == 6
         assert job.session_id
+        assert job.neue_session is True
+        assert job.disc_ordner is None
+
+    def test_weitere_disc_haengt_an_bestehende_session_an(self, monkeypatch, toc):
+        """Eine zweite physische CD desselben Albums, nicht ein neues Album."""
+        monkeypatch.setattr(rip, "read_toc", lambda: toc)
+        monkeypatch.setattr(rip.threading, "Thread", _FakeThread)
+
+        session = sessions.create_session()
+        (session.directory / "01 Track 1.flac").write_bytes(b"fLaC")
+
+        job = rip.start(allowance=10**12, session_id=session.session_id)
+
+        assert job.session_id == session.session_id
+        assert job.neue_session is False
+        assert job.disc_ordner == str(session.directory / "CD 2")
+        # Die erste Disc ist vorher nach "CD 1" umgezogen, sonst kollidiert
+        # ihr "01 Track 1.flac" mit dem der zweiten.
+        assert (session.directory / "CD 1" / "01 Track 1.flac").is_file()
+        assert not (session.directory / "01 Track 1.flac").exists()
+
+    def test_weitere_disc_mit_unbekannter_session(self, monkeypatch, toc):
+        monkeypatch.setattr(rip, "read_toc", lambda: toc)
+        monkeypatch.setattr(rip.threading, "Thread", _FakeThread)
+
+        with pytest.raises(rip.RipError):
+            rip.start(allowance=10**12, session_id="x" * 20)
+        # Der Auftrag bleibt sichtbar, damit die Oberfläche den Fehler zeigen
+        # kann -- er wird nur nicht als "läuft" markiert.
+        job = rip.current()
+        assert job is not None
+        assert job.zustand == "fehler"
+
+
+class TestNaechsteDisc:
+    def test_erste_disc_zieht_nach_cd1_um_zweite_wird_cd2(self, tmp_path):
+        session_dir = tmp_path / "sess"
+        session_dir.mkdir()
+        (session_dir / "01 Track 1.flac").write_bytes(b"x")
+
+        ziel = rip._naechste_disc(session_dir)
+
+        assert ziel == session_dir / "CD 2"
+        assert ziel.is_dir()
+        assert (session_dir / "CD 1" / "01 Track 1.flac").is_file()
+
+    def test_dritte_disc_zaehlt_weiter(self, tmp_path):
+        session_dir = tmp_path / "sess"
+        session_dir.mkdir()
+        (session_dir / "CD 1").mkdir()
+        (session_dir / "CD 2").mkdir()
+
+        ziel = rip._naechste_disc(session_dir)
+
+        assert ziel == session_dir / "CD 3"
+
+    def test_leere_session_bekommt_cd1(self, tmp_path):
+        session_dir = tmp_path / "sess"
+        session_dir.mkdir()
+
+        ziel = rip._naechste_disc(session_dir)
+
+        assert ziel == session_dir / "CD 1"
 
 
 class _FakeThread:
@@ -125,6 +188,37 @@ class TestAblauf:
         assert gelesen == [1, 2, 3, 4, 5, 6]
         assert len(session.audio_paths) == 6
         assert job.prozent == 100
+
+    def test_zweite_disc_ueberschreibt_die_erste_nicht(self, monkeypatch, toc):
+        """Beide Discs vergeben dieselben Dateinamen -- die dürfen sich nicht
+        gegenseitig überschreiben, wenn sie in derselben Session landen."""
+        monkeypatch.setattr(
+            rip, "_rip_track", lambda n, z, **kw: z.write_bytes(f"a{n}".encode())
+        )
+        monkeypatch.setattr(rip.discid, "lookup", lambda *a, **k: [])
+
+        session = sessions.create_session()
+        erste = rip.RipJob(disc_id=VEKTOR_ID, session_id=session.session_id)
+        rip._arbeite(
+            erste, toc, session.directory,
+            bei_fehler=lambda: rip._session_verwerfen(erste),
+        )
+        assert erste.zustand == "fertig"
+        assert len(session.audio_paths) == 6
+
+        monkeypatch.setattr(
+            rip, "_rip_track", lambda n, z, **kw: z.write_bytes(f"b{n}".encode())
+        )
+        zielordner = rip._naechste_disc(session.directory)
+        zweite = rip.RipJob(
+            disc_id=VEKTOR_ID, session_id=session.session_id, neue_session=False
+        )
+        rip._arbeite(zweite, toc, zielordner, bei_fehler=lambda: None)
+
+        assert zweite.zustand == "fertig"
+        assert len(session.audio_paths) == 12
+        assert (session.directory / "CD 1" / "01 Track 1.flac").read_bytes() == b"a1"
+        assert (session.directory / "CD 2" / "01 Track 1.flac").read_bytes() == b"b1"
 
     def test_releases_werden_uebernommen(self, monkeypatch, toc):
         monkeypatch.setattr(

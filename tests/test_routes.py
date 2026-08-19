@@ -632,6 +632,88 @@ class TestRip:
         assert "Audio-CD lesen" in response.text
         assert not session.directory.exists()
 
+    def test_fertiger_rip_bietet_weitere_disc_an(
+        self, client, werkzeuge_da, monkeypatch
+    ):
+        """Ein Mehrfach-CD-Album lässt sich nicht am Stück einlegen."""
+        from backend import rip, sessions
+
+        session = sessions.create_session()
+        job = rip.RipJob(zustand="fertig", session_id=session.session_id)
+        monkeypatch.setattr(rip, "_job", job)
+
+        response = client.get("/rip")
+        assert "Weitere Disc rippen" in response.text
+        assert f'value="{session.session_id}"' in response.text
+
+    def test_weitere_disc_haengt_an_dieselbe_session_an(
+        self, client, werkzeuge_da, monkeypatch
+    ):
+        """Die zweite CD landet in derselben Session, nicht in einer neuen."""
+        from backend import discid, rip, sessions
+        from tests.test_discid import CDPARANOIA_AUSGABE
+        from tests.test_rip import _FakeThread
+
+        session = sessions.create_session()
+        (session.directory / "01 Track 1.flac").write_bytes(b"fLaC\x00\x00\x00\x22")
+
+        monkeypatch.setattr(
+            rip, "read_toc", lambda: discid.parse_cdparanoia_toc(CDPARANOIA_AUSGABE)
+        )
+        monkeypatch.setattr(rip.threading, "Thread", _FakeThread)
+
+        response = client.post("/rip", data={"session_id": session.session_id})
+
+        assert response.status_code == 200
+        job = rip.current()
+        assert job is not None
+        assert job.session_id == session.session_id
+        assert job.neue_session is False
+        # Die erste Disc ist vor der zweiten nach "CD 1" umgezogen, sonst
+        # kollidieren die Dateinamen beider Discs.
+        assert (session.directory / "CD 1" / "01 Track 1.flac").is_file()
+        assert (session.directory / "CD 2").is_dir()
+
+    def test_weitere_disc_mit_unbekannter_session_meldet_fehler(
+        self, client, werkzeuge_da, monkeypatch
+    ):
+        from backend import discid, rip
+        from tests.test_discid import CDPARANOIA_AUSGABE
+        from tests.test_rip import _FakeThread
+
+        monkeypatch.setattr(
+            rip, "read_toc", lambda: discid.parse_cdparanoia_toc(CDPARANOIA_AUSGABE)
+        )
+        monkeypatch.setattr(rip.threading, "Thread", _FakeThread)
+
+        response = client.post("/rip", data={"session_id": "x" * 20})
+        assert "gibt es nicht" in response.text
+
+    def test_laufwerk_freigeben_behaelt_die_session(
+        self, client, werkzeuge_da, monkeypatch
+    ):
+        """Scheitert die zweite Disc, soll die erste nicht mit verschwinden."""
+        from backend import rip, sessions
+
+        session = sessions.create_session()
+        (session.directory / "CD 1" / "01 Track 1.flac").parent.mkdir(parents=True)
+        (session.directory / "CD 1" / "01 Track 1.flac").write_bytes(
+            b"fLaC\x00\x00\x00\x22"
+        )
+        job = rip.RipJob(
+            zustand="fehler",
+            session_id=session.session_id,
+            neue_session=False,
+            fehler="Track 1 ließ sich nicht lesen.",
+        )
+        monkeypatch.setattr(rip, "_job", job)
+
+        response = client.request("DELETE", "/rip?sitzung_loeschen=false")
+
+        assert "Audio-CD lesen" in response.text
+        assert session.directory.exists()
+        assert (session.directory / "CD 1" / "01 Track 1.flac").is_file()
+
 
 class TestOffeneSitzungen:
     """Ein geschlossener Tab darf einen Upload nicht kosten."""

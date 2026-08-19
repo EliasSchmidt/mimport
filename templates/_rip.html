@@ -63,12 +63,30 @@
     <div class="banner error">
         <strong>{{ job.meldung }}</strong>
         <p>{{ job.fehler }}</p>
+        {% if not job.neue_session %}
+        <p class="hint">
+            Die zuvor gelesene(n) Disc(s) bleiben dabei erhalten -- betroffen
+            ist nur diese eine.
+        </p>
+        {% endif %}
     </div>
     <div class="actions">
+        {% if not job.neue_session %}
+        <form hx-post="/rip" hx-target="#rip" hx-swap="innerHTML"
+              hx-disabled-elt="button">
+            <input type="hidden" name="session_id" value="{{ job.session_id }}">
+            <button type="submit" class="button primary">Diese Disc nochmal lesen</button>
+        </form>
+        <button type="button" class="button secondary"
+                hx-delete="/rip?sitzung_loeschen=false" hx-target="#rip" hx-swap="innerHTML">
+            Laufwerk freigeben
+        </button>
+        {% else %}
         <button type="button" class="button secondary"
                 hx-delete="/rip" hx-target="#rip" hx-swap="innerHTML">
             Nochmal versuchen
         </button>
+        {% endif %}
     </div>
 
     {% elif job.laeuft %}
@@ -96,6 +114,9 @@
     {% else %}
     <div class="banner ok">
         <strong>{{ job.meldung }}</strong>
+        {% if job.disc_ordner %}
+        <p class="hint mono">{{ job.disc_anzeige }}</p>
+        {% endif %}
         {% if job.disc_id %}
         <p class="hint">DiscID: <span class="mono">{{ job.disc_id }}</span></p>
         {% endif %}
@@ -136,7 +157,20 @@
     </div>
     {% endif %}
 
+    <p class="hint">
+        Gehört zu diesem Album noch eine weitere CD? Erst einlegen und lesen
+        lassen, bevor unten gematcht wird -- danach zählen alle bisher
+        gelesenen Discs als eine Session.
+    </p>
     <div class="actions">
+        <form hx-post="/rip" hx-target="#rip" hx-swap="innerHTML"
+              hx-disabled-elt="button" hx-indicator="#rip-weitere-spinner">
+            <input type="hidden" name="session_id" value="{{ job.session_id }}">
+            <button type="submit" class="button">Weitere Disc rippen</button>
+        </form>
+        <span id="rip-weitere-spinner" class="htmx-indicator spinner">
+            startet …
+        </span>
         <button type="button" class="button secondary"
                 hx-delete="/rip" hx-target="#rip" hx-swap="innerHTML"
                 hx-confirm="Gelesene Tracks verwerfen und Laufwerk freigeben?">

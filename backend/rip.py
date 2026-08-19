@@ -32,12 +32,16 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from backend import discid, sessions
-from backend.config import settings
+from backend.config import AUDIO_EXTENSIONS, settings
 
 log = logging.getLogger(__name__)
 
 #: Zustände eines Auftrags. ``fertig`` und ``fehler`` sind Endzustände.
 ZUSTAENDE = ("liest_toc", "rippt", "fertig", "fehler")
+
+#: Wie ein Disc-Unterordner innerhalb einer Musik-Session heißt -- dieselbe
+#: Konvention wie bei Hörbüchern (``backend.audiobook._DISC_RE``).
+_DISC_RE = re.compile(r"^CD (\d+)$")
 
 
 class RipError(Exception):
@@ -67,6 +71,14 @@ class RipJob:
     modus: str = "musik"
     buch: str | None = None
     disc_ordner: str | None = None
+
+    #: Hat dieser Auftrag seine Session selbst angelegt (True), oder ist er
+    #: einer bereits bestehenden beigetreten, um eine weitere Disc eines
+    #: Mehrfach-CD-Albums anzuhängen (False)? Nur wer die Session angelegt
+    #: hat, darf sie beim Verwerfen auch löschen -- sonst risse "Verwerfen"
+    #: nach einer fehlgeschlagenen zweiten Disc die bereits gelesene erste
+    #: mit weg.
+    neue_session: bool = True
 
     @property
     def laeuft(self) -> bool:
@@ -415,29 +427,91 @@ def _arbeite(
         log.exception("Rip mit unerwartetem Fehler abgebrochen")
 
 
-def start(*, allowance: int) -> RipJob:
+def start(*, allowance: int, session_id: str | None = None) -> RipJob:
     """Startet einen Rip, wenn Laufwerk und Platz es hergeben.
 
     ``allowance`` ist die Obergrenze in Bytes; geprüft wird gegen die
     *unkomprimierte* Größe der CD, obwohl FLAC deutlich darunter landet. Nach
     oben abzuschätzen ist hier richtig -- der Platz muss zwischendurch auch für
     das WAV reichen.
+
+    Ohne ``session_id`` entsteht eine neue Session, wie bisher. Mit ``session_id``
+    wird stattdessen einer bestehenden Session eine weitere Disc angehängt --
+    für Musikalben, die sich über mehrere physische CDs erstrecken. Ohne diesen
+    Weg landete die zweite CD entweder in einer eigenen, zweiten Session (zwei
+    halbe Alben statt eines) oder überschriebe die erste, weil beide bei
+    "01 Track 1.flac" anfangen.
     """
     job, toc = _vorbereiten(allowance)
 
-    session = sessions.create_session()
+    if session_id:
+        try:
+            session = sessions.get_session(session_id)
+        except sessions.SessionError as exc:
+            job.zustand = "fehler"
+            job.fehler = str(exc)
+            job.meldung = "Sitzung nicht gefunden."
+            raise RipError(job.fehler) from exc
+        job.neue_session = False
+        zielordner = _naechste_disc(session.directory)
+        job.disc_ordner = str(zielordner)
+    else:
+        session = sessions.create_session()
+        zielordner = session.directory
+
     job.session_id = session.session_id
     job.meldung = f"Lese {toc.track_count} Tracks …"
 
     _starten(
         job,
         toc,
-        session.directory,
-        # Eine Musik-Session ist ein Wegwerfordner: schlägt der Rip fehl, soll
-        # nichts davon übrig bleiben.
-        bei_fehler=lambda: _session_verwerfen(job),
+        zielordner,
+        # Eine frische Session ist ein Wegwerfordner: schlägt der Rip fehl,
+        # soll nichts davon übrig bleiben. Bei einer weiteren Disc gehören der
+        # Session aber schon zuvor gelesene Discs -- dort darf nur der
+        # angefangene Disc-Ordner weg.
+        bei_fehler=(
+            (lambda: _session_verwerfen(job))
+            if job.neue_session
+            else (lambda: shutil.rmtree(zielordner, ignore_errors=True))
+        ),
     )
     return job
+
+
+def _naechste_disc(session_dir: Path) -> Path:
+    """Ordner für die nächste Disc einer Musik-Session, legt ihn gleich an.
+
+    Die erste Disc einer Session liegt flach im Session-Ordner (siehe
+    ``start()``) -- ein einsames "CD 1" wäre für die meisten Alben, die aus
+    genau einer CD bestehen, unnötiger Ballast. Kommt aber eine zweite Disc
+    dazu, muss die erste vorher nach "CD 1" umziehen: sonst kollidieren die
+    Dateinamen, die beide Discs gleich vergeben (``01 Track 1.flac`` usw.).
+    """
+    belegt = {
+        int(treffer.group(1))
+        for kind in session_dir.iterdir()
+        if kind.is_dir() and (treffer := _DISC_RE.match(kind.name))
+    }
+    flach = [
+        p
+        for p in session_dir.iterdir()
+        if p.is_file() and p.suffix.lower() in AUDIO_EXTENSIONS
+    ]
+    if flach and not belegt:
+        ziel = session_dir / "CD 1"
+        ziel.mkdir()
+        for datei in flach:
+            datei.rename(ziel / datei.name)
+        belegt = {1}
+        log.info("Bisherige Tracks von %s nach „CD 1“ geräumt.", session_dir)
+
+    nummer = 1
+    while nummer in belegt:
+        nummer += 1
+    ziel = session_dir / f"CD {nummer}"
+    ziel.mkdir(parents=True, exist_ok=True)
+    return ziel
 
 
 def _vorbereiten(allowance: int) -> tuple[RipJob, discid.Toc]:

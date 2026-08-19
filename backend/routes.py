@@ -498,11 +498,14 @@ def rip_status(request: Request) -> HTMLResponse:
 
 
 @router.post("/rip", response_class=HTMLResponse)
-def rip_start(request: Request) -> HTMLResponse:
+def rip_start(request: Request, session_id: str = Form(default="")) -> HTMLResponse:
     """Startet den Rip der eingelegten Audio-CD.
 
     Kehrt sofort zurück; gelesen wird im Hintergrund. Ein Rip dauert 10 bis 40
     Minuten, so lange darf keine Anfrage offen stehen.
+
+    Mit ``session_id`` (vom "Weitere Disc rippen"-Knopf) hängt sich der Rip an
+    ein Mehrfach-CD-Album an, statt eine neue Session zu beginnen.
     """
     sessions.sweep_expired(settings.session_ttl_hours)
     erlaubt, grenzmeldung = _storage_allowance("Diese CD")
@@ -510,7 +513,7 @@ def rip_start(request: Request) -> HTMLResponse:
         return _fragment(request, "_error.html", message=grenzmeldung)
 
     try:
-        rip.start(allowance=erlaubt)
+        rip.start(allowance=erlaubt, session_id=session_id or None)
     except rip.RipError as exc:
         log.warning("Rip nicht gestartet: %s", exc)
         # Der Fehler steht im Auftrag und wird mit angezeigt.
@@ -519,14 +522,23 @@ def rip_start(request: Request) -> HTMLResponse:
 
 
 @router.delete("/rip", response_class=HTMLResponse)
-def rip_reset(request: Request) -> HTMLResponse:
-    """Verwirft einen abgeschlossenen Auftrag, damit die nächste CD kann."""
+def rip_reset(request: Request, sitzung_loeschen: bool = True) -> HTMLResponse:
+    """Verwirft einen abgeschlossenen Auftrag, damit die nächste CD kann.
+
+    Normalerweise verschwindet mit dem Auftrag auch die Session -- das ist das
+    "Verwerfen" in der Oberfläche. Nach einer fehlgeschlagenen weiteren Disc
+    eines Mehrfach-CD-Albums soll das aber *nicht* passieren: die zuvor
+    erfolgreich gelesenen Discs sollen nicht mit in den Abfluss gehen, nur weil
+    die neueste nicht lesbar war. Für diesen Fall schickt "Laufwerk freigeben"
+    in ``_rip.html`` ``sitzung_loeschen=false`` und die Session bleibt als
+    offene Sitzung stehen.
+    """
     job = rip.current()
     try:
         rip.reset()
     except rip.RipError as exc:
         return _fragment(request, "_error.html", message=str(exc))
-    if job is not None and job.session_id:
+    if job is not None and job.session_id and sitzung_loeschen:
         sessions.delete_session(job.session_id)
     return _rip_fragment(request)
 

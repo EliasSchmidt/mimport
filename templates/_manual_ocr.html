@@ -32,16 +32,23 @@
         </label>
 
         <div class="fields compact">
-            <label>Parser
-                <select name="mode">
-                    {% for mode in parse_modes %}
-                    <option value="{{ mode.value }}" {% if parse_mode == mode.value %}selected{% endif %}>
-                        {{ mode.label }}
-                    </option>
-                    {% endfor %}
-                </select>
+            <label class="checkbox">
+                <input type="checkbox" name="tracknummer" value="true" {% if parse_flags.tracknummer %}checked{% endif %}>
+                Tracknummer vorne
+            </label>
+            <label class="checkbox">
+                <input type="checkbox" name="interpret" value="true" {% if parse_flags.interpret %}checked{% endif %}>
+                Interpret von Titel trennen (an „ - “)
+            </label>
+            <label class="checkbox">
+                <input type="checkbox" name="dauer" value="true" {% if parse_flags.dauer %}checked{% endif %}>
+                Dauer am Zeilenende erkennen
             </label>
         </div>
+        <p class="hint">
+            Frei kombinierbar, je nachdem wie das Backcover die Tracks
+            auflistet -- z. B. nur „Titel“, oder „01 Interpret - Titel - 3:45“.
+        </p>
 
         <div class="actions">
             <button type="button"

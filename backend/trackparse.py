@@ -2,6 +2,12 @@
 
 Der Zweck ist nicht, semantisch "klug" zu raten, sondern häufige Layouts mit
 klaren Regeln in ein editierbares Formular zu überführen.
+
+Statt eines festen Katalogs an Layout-"Modi" (die in Wahrheit immer dieselben
+drei Operationen kombinieren) sind das drei unabhängige Schalter: jede Zeile
+kann optional eine Tracknummer vorn, eine Trennung von Interpret und Titel,
+und eine Dauer am Ende haben. Das deckt jede Kombination ab, ohne dass für
+neue Layouts neue Modi erfunden werden müssen.
 """
 
 from __future__ import annotations
@@ -20,20 +26,19 @@ class ParsedTrack:
     duration: str = ""
 
 
-_MODE_LABELS: dict[str, str] = {
-    "plain_title": "Nur Titel (eine Zeile = ein Track)",
-    "track_title": "Tracknr + Titel (z. B. 01 Titel)",
-    "track_dash_title": "Tracknr - Titel (z. B. 01 - Titel)",
-    "track_title_duration": "Tracknr Titel Dauer (z. B. 01 Titel 3:45)",
-    "artist_dash_title": "Artist - Titel",
-    "track_artist_dash_title": "Tracknr Artist - Titel",
-    "track_artist_dash_title_duration": "Tracknr Artist - Titel - 3:45",
-}
+@dataclass(frozen=True)
+class ParseFlags:
+    """Welche Bestandteile eine Zeile hat -- Grundlage für den Parser.
 
+    Ersetzt den früheren Katalog fester Modi (``track_title_duration`` usw.):
+    das waren immer nur Kombinationen dieser drei Schalter, plus zwei
+    Modus-Namen, die sich (weil die Dauer schon immer unabhängig vom Modus
+    erkannt wurde) in der Praxis gar nicht unterschieden.
+    """
 
-def modes() -> list[dict[str, str]]:
-    """Verfügbare Parser-Modi für die Oberfläche."""
-    return [{"value": key, "label": value} for key, value in _MODE_LABELS.items()]
+    tracknummer: bool = True
+    interpret: bool = False
+    dauer: bool = True
 
 
 #: Ziffern *und* ihre klassischen OCR-Verwechslungen ("O" statt "0", "I"/"l"
@@ -77,40 +82,27 @@ def _split_artist_title(text: str) -> tuple[str, str]:
     return artist.strip(), title.strip()
 
 
-def parse_text(text: str, mode: str) -> list[ParsedTrack]:
-    """Wendet einen Parser-Modus auf OCR-Rohtext an."""
-    lines = _split_lines(text)
+def parse_text(text: str, flags: ParseFlags) -> list[ParsedTrack]:
+    """Wendet die gewählten Schalter zeilenweise auf OCR-Rohtext an."""
     result: list[ParsedTrack] = []
 
-    for raw in lines:
-        line, duration = _extract_duration(raw)
-        number = ""
-        artist = ""
-        title = line
+    for raw in _split_lines(text):
+        line = raw
+        duration = ""
+        if flags.dauer:
+            line, duration = _extract_duration(line)
 
-        if mode == "plain_title":
-            pass
-        elif mode == "track_title" or mode == "track_dash_title" or mode == "track_title_duration":
-            number, rest = _strip_track_prefix(line)
-            title = rest or line
-        elif mode == "artist_dash_title":
+        number = ""
+        if flags.tracknummer:
+            number, line = _strip_track_prefix(line)
+
+        artist = ""
+        if flags.interpret:
             artist, parsed_title = _split_artist_title(line)
-            title = parsed_title or line
-        elif mode == "track_artist_dash_title" or mode == "track_artist_dash_title_duration":
-            number, rest = _strip_track_prefix(line)
-            artist, parsed_title = _split_artist_title(rest)
-            title = parsed_title or rest or line
-        else:
-            # Unbekannter Modus: robust auf den einfachsten Modus zurückfallen.
-            title = line
+            line = parsed_title or line
 
         result.append(
-            ParsedTrack(
-                number=number,
-                artist=artist,
-                title=title.strip(),
-                duration=duration,
-            )
+            ParsedTrack(number=number, artist=artist, title=line.strip(), duration=duration)
         )
 
     return result

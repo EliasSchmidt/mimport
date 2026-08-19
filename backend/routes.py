@@ -47,7 +47,23 @@ router = APIRouter()
 #: Uploads in Häppchen auf die Platte schreiben, damit ein Album mit
 #: verlustfreien Dateien nicht komplett im Speicher landet.
 CHUNK_SIZE = 1024 * 1024
-DEFAULT_PARSE_MODE = "track_title_duration"
+
+
+def _parse_flags(draft: dict[str, str]) -> trackparse.ParseFlags:
+    """Die zuletzt gewählten Parser-Schalter aus dem Entwurf, sonst die Vorgabe.
+
+    Ein Kästchen taucht im Entwurf nur auf, wenn es beim letzten Autosave
+    angehakt war -- Abwesenheit heißt "abgewählt", nicht "noch nie gesetzt".
+    Für einen frischen Entwurf (noch gar nichts gespeichert) gelten
+    stattdessen die Vorgaben aus ``ParseFlags``.
+    """
+    if not draft:
+        return trackparse.ParseFlags()
+    return trackparse.ParseFlags(
+        tracknummer="tracknummer" in draft,
+        interpret="interpret" in draft,
+        dauer="dauer" in draft,
+    )
 
 
 def _storage_allowance(was: str = "Upload") -> tuple[int, str]:
@@ -224,8 +240,7 @@ def _files_fragment(request: Request, session: sessions.StagingSession) -> HTMLR
         infos=infos,
         summary=audio.summarize(infos),
         health=beets_env.health(),
-        parse_modes=trackparse.modes(),
-        parse_mode=str(draft.get("mode") or DEFAULT_PARSE_MODE),
+        parse_flags=_parse_flags(draft),
         ocr_text=str(draft.get("ocr_text") or ""),
         ocr_warnings=[],
         track_inputs=_track_inputs(session, draft=draft),
@@ -1088,8 +1103,7 @@ def match(
         session_id=session_id,
         result=result,
         file_count=len(paths),
-        parse_modes=trackparse.modes(),
-        parse_mode=str(draft.get("mode") or DEFAULT_PARSE_MODE),
+        parse_flags=_parse_flags(draft),
         ocr_text=str(draft.get("ocr_text") or ""),
         ocr_warnings=[],
         track_inputs=_track_inputs(session, draft=draft),
@@ -1145,12 +1159,14 @@ async def ocr_backcover(
     request: Request,
     session_id: str,
     bild: UploadFile | None = File(default=None),
-    mode: str = Form(default=DEFAULT_PARSE_MODE),
+    tracknummer: bool = Form(default=False),
+    interpret: bool = Form(default=False),
+    dauer: bool = Form(default=False),
 ) -> HTMLResponse:
     """Liest Text aus einem Backcover-Bild und füllt die Trackliste vor."""
     session = _session_or_404(session_id)
     warnings: list[str] = []
-    selected_mode = mode if mode in {m["value"] for m in trackparse.modes()} else DEFAULT_PARSE_MODE
+    flags = trackparse.ParseFlags(tracknummer=tracknummer, interpret=interpret, dauer=dauer)
 
     if bild is None:
         warnings.append("Bitte zuerst ein Backcover-Foto auswählen.")
@@ -1158,8 +1174,7 @@ async def ocr_backcover(
             request,
             "_manual_ocr.html",
             session_id=session_id,
-            parse_modes=trackparse.modes(),
-            parse_mode=selected_mode,
+            parse_flags=flags,
             ocr_text="",
             ocr_warnings=warnings,
             track_inputs=_track_inputs(session),
@@ -1173,7 +1188,7 @@ async def ocr_backcover(
         session_id,
         bild.filename or "bild.jpg",
         len(payload) // 1024,
-        selected_mode,
+        flags,
     )
     try:
         result = ocr.recognize(payload, suffix=suffix)
@@ -1183,15 +1198,14 @@ async def ocr_backcover(
             request,
             "_manual_ocr.html",
             session_id=session_id,
-            parse_modes=trackparse.modes(),
-            parse_mode=selected_mode,
+            parse_flags=flags,
             ocr_text="",
             ocr_warnings=warnings,
             track_inputs=_track_inputs(session),
             ocr_overlay=None,
         )
 
-    parsed = trackparse.parse_text(result.text, selected_mode)
+    parsed = trackparse.parse_text(result.text, flags)
     image_bytes = result.preview_bytes or payload
     image_type = result.preview_content_type or (
         bild.content_type
@@ -1217,8 +1231,7 @@ async def ocr_backcover(
         request,
         "_manual_ocr.html",
         session_id=session_id,
-        parse_modes=trackparse.modes(),
-        parse_mode=selected_mode,
+        parse_flags=flags,
         ocr_text=result.text,
         ocr_warnings=warnings,
         track_inputs=_track_inputs(session, parsed),
@@ -1231,15 +1244,17 @@ async def ocr_parse(
     request: Request,
     session_id: str,
     ocr_text: str = Form(default=""),
-    mode: str = Form(default=DEFAULT_PARSE_MODE),
+    tracknummer: bool = Form(default=False),
+    interpret: bool = Form(default=False),
+    dauer: bool = Form(default=False),
 ) -> HTMLResponse:
-    """Wendet einen einfachen Parser auf den OCR-Text an."""
+    """Wendet die gewählten Parser-Schalter auf den OCR-Text an."""
     session = _session_or_404(session_id)
-    selected_mode = mode if mode in {m["value"] for m in trackparse.modes()} else DEFAULT_PARSE_MODE
+    flags = trackparse.ParseFlags(tracknummer=tracknummer, interpret=interpret, dauer=dauer)
 
     warnings: list[str] = []
     text = ocr_text.strip()
-    parsed = trackparse.parse_text(text, selected_mode) if text else []
+    parsed = trackparse.parse_text(text, flags) if text else []
     if not text:
         warnings.append("Noch kein OCR-Text vorhanden.")
     elif len(parsed) != len(session.audio_paths):
@@ -1252,8 +1267,7 @@ async def ocr_parse(
         request,
         "_manual_ocr.html",
         session_id=session_id,
-        parse_modes=trackparse.modes(),
-        parse_mode=selected_mode,
+        parse_flags=flags,
         ocr_text=text,
         ocr_warnings=warnings,
         track_inputs=_track_inputs(session, parsed),
@@ -1356,8 +1370,7 @@ def manual_start(request: Request, session_id: str) -> HTMLResponse:
         request,
         "_manual_start.html",
         session_id=session_id,
-        parse_modes=trackparse.modes(),
-        parse_mode=str(draft.get("mode") or DEFAULT_PARSE_MODE),
+        parse_flags=_parse_flags(draft),
         ocr_text=str(draft.get("ocr_text") or ""),
         ocr_warnings=[],
         track_inputs=_track_inputs(session, draft=draft),

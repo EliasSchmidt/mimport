@@ -671,10 +671,38 @@ pre.output { max-height: 22rem; overflow-y: auto; }
     border-radius: var(--radius);
     background: var(--surface);
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
+    /* Absicherung: sollte die Tabelle darin doch mal breiter werden als das
+       Panel, scrollt nur das Panel, statt dass die absolut positionierte
+       Tabelle die ganze Seite horizontal aufbläht. */
+    overflow-x: auto;
 }
 
 .sessions-panel h3 { margin: 0 0 0.6rem; font-size: 0.92rem; }
-.sessions-panel .files td:last-child { text-align: right; white-space: nowrap; }
+
+/* Fünf Spalten (Auswahl, Dateien, Größe, Zuletzt, Aktionen) passen in diesem
+   22-28rem schmalen Panel nicht nebeneinander -- unabhängig von der
+   Fensterbreite, anders als bei den übrigen ".stapelbar"-Tabellen, die erst
+   ab @media (max-width: 40rem) weiter unten stapeln. Dasselbe Karten-Layout
+   deshalb hier fest statt bedingt. */
+.sessions-panel .files thead { display: none; }
+.sessions-panel .files, .sessions-panel .files tbody, .sessions-panel .files tr, .sessions-panel .files td {
+    display: block;
+}
+.sessions-panel .files tr { padding: 0.5rem 0; border-bottom: 1px solid var(--border); }
+.sessions-panel .files tr:last-child { border-bottom: none; }
+.sessions-panel .files td { border: none; padding: 0.1rem 0; }
+.sessions-panel .files td[data-spalte]::before {
+    content: attr(data-spalte) ": ";
+    color: var(--text-dim);
+    font-size: 0.8rem;
+}
+.sessions-panel .files td:last-child {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin-top: 0.4rem;
+    text-align: left;
+}
 
 @media (max-width: 40rem) {
     .sessions-slot { margin-left: 0; width: 100%; }

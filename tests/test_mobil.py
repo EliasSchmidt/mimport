@@ -424,6 +424,43 @@ def test_fortsetzen_zeigt_ladezustand_und_schliesst_dropdown(browser, server, mo
         seite.close()
 
 
+def test_offenes_sitzungen_dropdown_sprengt_die_seite_nicht(browser, server):
+    """Fünf Spalten (Auswahl, Dateien, Größe, Zuletzt, Aktionen) passten nicht
+    nebeneinander in das 22-28rem schmale Panel -- die "Fortsetzen"/"Verwerfen"-
+    Knöpfe blieben ungewrappt breiter als das Panel, und weil nichts das
+    abschnitt, blähte die absolut positionierte Tabelle die ganze Seite
+    horizontal auf. Das trat gerade NICHT auf dem 360px-Handy-Breakpoint auf
+    (dort greift schon die allgemeine ".stapelbar"-Stapelung), sondern in der
+    Mitte -- z. B. bei einem schmaleren Desktop-Fenster.
+    """
+    seite = browser.new_page(viewport={"width": 1000, "height": 700})
+    try:
+        seite.goto(server + "/musik", wait_until="networkidle")
+        seite.set_input_files(
+            "#upload-files",
+            [{"name": "01 Track 1.flac", "mimeType": "audio/flac",
+              "buffer": b"fLaC\x00\x00\x00\x22" + b"\x00" * 34}],
+        )
+        seite.click("#upload-submit")
+        seite.wait_for_selector("#files-inner", timeout=20000)
+
+        # Neu laden, damit die Sitzung als "offen" im Dropdown auftaucht.
+        seite.goto(server + "/musik", wait_until="networkidle")
+        seite.click("details.sessions-dropdown > summary")
+        seite.wait_for_timeout(200)
+
+        overflow = seite.evaluate(
+            "document.documentElement.scrollWidth - window.innerWidth"
+        )
+        assert overflow <= 0, f"Seite läuft mit offenem Dropdown um {overflow}px über"
+
+        fortsetzen = seite.get_by_role("button", name="Fortsetzen")
+        verwerfen = seite.get_by_role("button", name="Verwerfen")
+        assert fortsetzen.is_visible() and verwerfen.is_visible()
+    finally:
+        seite.close()
+
+
 def test_genre_vorschlaege_werden_beim_tippen_aktualisiert(browser, server):
     """Auch nach einem ersten Genre sollen sinnvolle Vorschläge übrig bleiben."""
     seite = browser.new_page(viewport={"width": 900, "height": 800})

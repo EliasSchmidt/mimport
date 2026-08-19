@@ -305,6 +305,58 @@ def test_artist_lookup_trifft_nur_das_angeklickte_feld(browser, server, monkeypa
         seite.close()
 
 
+def test_fortsetzen_zeigt_ladezustand_und_schliesst_dropdown(browser, server, monkeypatch):
+    """``Fortsetzen`` lädt eine Sitzung neu über ``audio.inspect_file`` je Datei --
+    auf dem knappen Zielserver spürbar langsam, und bis eben ganz ohne
+    Rückmeldung: der Klick verschwand für Sekunden im Nichts, und das
+    Sitzungen-Dropdown blieb offen über der neu geladenen Ansicht liegen.
+    """
+    from backend import routes as routes_mod
+
+    original = routes_mod._files_fragment
+
+    def verzoegert(request, session):
+        time.sleep(1.5)
+        return original(request, session)
+
+    monkeypatch.setattr(routes_mod, "_files_fragment", verzoegert)
+
+    seite = browser.new_page(viewport={"width": 900, "height": 800})
+    try:
+        seite.goto(server + "/musik", wait_until="networkidle")
+        seite.set_input_files(
+            "#upload-files",
+            [{"name": "01 Stück.flac", "mimeType": "audio/flac",
+              "buffer": b"fLaC\x00\x00\x00\x22" + b"\x00" * 34}],
+        )
+        seite.click("#upload-submit")
+        seite.wait_for_selector("#files-inner", timeout=20000)
+
+        # Neu laden, damit die Sitzung als "offen" auftaucht -- über den
+        # echten Weg (Dropdown -> Fortsetzen), nicht per Rohnavigation.
+        seite.goto(server + "/musik", wait_until="networkidle")
+        seite.click("details.sessions-dropdown > summary")
+
+        dropdown = seite.locator("details.sessions-dropdown")
+        fortsetzen = seite.get_by_role("button", name="Fortsetzen")
+        spinner = seite.locator(".sessions-panel .spinner").first
+
+        assert dropdown.get_attribute("open") is not None
+        fortsetzen.click()
+
+        # Mitten in der künstlichen Verzögerung: Rückmeldung muss sofort da
+        # sein, nicht erst wenn die Antwort eintrifft.
+        seite.wait_for_timeout(300)
+        assert spinner.is_visible()
+        assert fortsetzen.is_disabled()
+
+        seite.wait_for_selector("#files-inner", timeout=20000)
+        seite.wait_for_timeout(100)
+        assert dropdown.get_attribute("open") is None
+    finally:
+        seite.close()
+
+
 def test_genre_vorschlaege_werden_beim_tippen_aktualisiert(browser, server):
     """Auch nach einem ersten Genre sollen sinnvolle Vorschläge übrig bleiben."""
     seite = browser.new_page(viewport={"width": 900, "height": 800})

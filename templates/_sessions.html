@@ -33,9 +33,14 @@
                         <button type="button" class="button primary"
                                 hx-get="/session/{{ eintrag.session_id }}"
                                 hx-target="#files" hx-swap="innerHTML"
-                                hx-on::after-request="document.getElementById('files-step').hidden = false">
+                                hx-indicator="#resume-spinner-{{ eintrag.session_id }}"
+                                hx-disabled-elt="this"
+                                hx-on::after-request="document.getElementById('files-step').hidden = false; this.closest('details.sessions-dropdown').open = false;">
                             Fortsetzen
                         </button>
+                        <span id="resume-spinner-{{ eintrag.session_id }}" class="htmx-indicator spinner">
+                            <span class="spinner-ring" aria-hidden="true"></span> lade …
+                        </span>
                         <button type="button" class="button danger"
                                 hx-delete="/sessions/{{ eintrag.session_id }}"
                                 hx-target="#sessions" hx-swap="innerHTML"

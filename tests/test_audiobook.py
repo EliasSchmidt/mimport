@@ -516,6 +516,8 @@ class TestVonVornEinlesen:
         (buch / "B.m4b").write_bytes(b"zweite")
         zweite = audiobook.m4b_beiseite_legen(buch)
 
+        assert erste is not None
+        assert zweite is not None
         assert erste != zweite
         assert erste.read_bytes() == b"erste"
         assert zweite.read_bytes() == b"zweite"

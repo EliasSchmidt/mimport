@@ -80,23 +80,13 @@ def parse_text(text: str, mode: str) -> list[ParsedTrack]:
 
         if mode == "plain_title":
             pass
-        elif mode == "track_title":
-            number, rest = _strip_track_prefix(line)
-            title = rest or line
-        elif mode == "track_dash_title":
-            number, rest = _strip_track_prefix(line)
-            title = rest or line
-        elif mode == "track_title_duration":
+        elif mode == "track_title" or mode == "track_dash_title" or mode == "track_title_duration":
             number, rest = _strip_track_prefix(line)
             title = rest or line
         elif mode == "artist_dash_title":
             artist, parsed_title = _split_artist_title(line)
             title = parsed_title or line
-        elif mode == "track_artist_dash_title":
-            number, rest = _strip_track_prefix(line)
-            artist, parsed_title = _split_artist_title(rest)
-            title = parsed_title or rest or line
-        elif mode == "track_artist_dash_title_duration":
+        elif mode == "track_artist_dash_title" or mode == "track_artist_dash_title_duration":
             number, rest = _strip_track_prefix(line)
             artist, parsed_title = _split_artist_title(rest)
             title = parsed_title or rest or line

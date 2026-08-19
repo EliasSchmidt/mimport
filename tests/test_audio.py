@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from backend.audio import AudioInfo, classify_format, summarize
+from backend.audio import AudioInfo, Quality, classify_format, summarize
 
 
 class TestClassifyFormat:
@@ -30,7 +30,7 @@ class TestClassifyFormat:
 
 
 class TestSummarize:
-    def _info(self, name: str, quality: str, error: str = "") -> AudioInfo:
+    def _info(self, name: str, quality: Quality, error: str = "") -> AudioInfo:
         from pathlib import Path
 
         return AudioInfo(

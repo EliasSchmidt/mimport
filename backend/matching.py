@@ -54,7 +54,7 @@ PENALTY_LABELS: dict[str, str] = {
 
 #: MusicBrainz-Release-ID: 8-4-4-4-12 Hexzeichen.
 _MBID_RE = re.compile(
-    r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", re.I
+    r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", re.IGNORECASE
 )
 
 
@@ -252,7 +252,7 @@ def load_items(paths: list[Path]) -> list[Any]:
     for path in paths:
         try:
             items.append(Item.from_path(str(path)))
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- eine unlesbare Datei soll die übrigen nicht stoppen
             log.warning("Datei nicht als Audio lesbar, übersprungen: %s (%s)", path, exc)
     return items
 

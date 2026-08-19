@@ -86,7 +86,7 @@ def browser():
     with sync_playwright() as p:
         try:
             b = p.chromium.launch()
-        except Exception as exc:  # Browser nicht installiert
+        except Exception as exc:  # noqa: BLE001 -- Browser nicht installiert
             pytest.skip(f"Chromium fehlt: {exc}")
         yield b
         b.close()
@@ -346,8 +346,10 @@ def test_genre_vorschlaege_werden_beim_tippen_aktualisiert(browser, server):
 
 def _zustand_setzen(seite, *, sicher=True, erlaubnis="default", api=True):
     teile = [
-        f"Object.defineProperty(window, 'isSecureContext', "
-        f"{{get: () => {str(sicher).lower()}}});"
+        (
+            f"Object.defineProperty(window, 'isSecureContext', "
+            f"{{get: () => {str(sicher).lower()}}});"
+        )
     ]
     if api:
         teile.append(

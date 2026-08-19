@@ -44,7 +44,7 @@ def album_session(tmp_path):
 
 def _fake_match(*, missing: int = 0, unmatched_paths: list | None = None):
     """Baut einen ``AlbumMatch`` über echte Dateien der Session."""
-    from beets.autotag import AlbumInfo, AlbumMatch, Distance, TrackInfo
+    from beets.autotag import AlbumInfo, Distance, TrackInfo
 
     tracks = [
         TrackInfo(title=title, track_id=f"t{n}", index=n, length=length)
@@ -105,8 +105,6 @@ class TestDateiliste:
 
     def test_hinweis_bei_verlustbehafteter_datei(self, client, tmp_path, monkeypatch):
         """MP3 im Upload muss den Hinweis auslösen -- ohne zu blockieren."""
-        import mediafile
-
         from backend import audio
 
         # Eine echte MP3 zu bauen wäre unnötig aufwendig; entscheidend ist, was
@@ -249,7 +247,7 @@ class TestUebernehmenUndImport:
         # Gegenprobe in der Datei selbst.
         import mediafile
 
-        erste = sorted(album_session.audio_paths)[0]
+        erste = min(album_session.audio_paths)
         assert mediafile.MediaFile(erste).mb_albumid == (
             "964e8152-d86d-4b88-9b79-2f561db6c124"
         )
@@ -264,7 +262,7 @@ class TestUebernehmenUndImport:
 
         import mediafile
 
-        media = mediafile.MediaFile(sorted(album_session.audio_paths)[0])
+        media = mediafile.MediaFile(min(album_session.audio_paths))
         assert media.albumartist == "Eigenes"
         assert media.album == "Selbstgemacht"
         assert media.year == 1999
@@ -316,11 +314,10 @@ class TestMehrwertigeTags:
     """
 
     def test_genre_landet_wirklich_in_der_datei(self, tmp_path):
-        from tests.flacfixture import write_flac
-
         import mediafile
 
         from backend import tagging
+        from tests.flacfixture import write_flac
 
         pfad = write_flac(tmp_path / "t.flac", seconds=5)
         tagging.apply_manual_tags([pfad], {"genres": "Jazz"})
@@ -363,11 +360,10 @@ class TestMehrwertigeTags:
         assert tagging._genrewerte(eingabe) == erwartet
 
     def test_mbids_werden_nur_bei_vollstaendiger_auflosung_gesetzt(self, tmp_path, monkeypatch):
-        from tests.flacfixture import write_flac
-
         import mediafile
 
         from backend import tagging
+        from tests.flacfixture import write_flac
 
         monkeypatch.setattr(
             tagging.artist_ids,
@@ -388,11 +384,10 @@ class TestMehrwertigeTags:
 
     def test_sampler_bekommt_je_track_einen_kuenstler(self, tmp_path, monkeypatch):
         """Der Fall Various Artists: Albumkünstler gleich, Interpret je Track."""
-        from tests.flacfixture import write_flac
-
         import mediafile
 
         from backend import tagging
+        from tests.flacfixture import write_flac
 
         ids = {
             "Various Artists": "89ad4ac3-39f7-470e-963a-56509c546377",
@@ -481,9 +476,8 @@ class TestSamplerAlbumkuenstler:
     def test_sampler_ohne_angabe_bekommt_various_artists(self, tmp_path):
         import mediafile
 
-        from tests.flacfixture import write_flac
-
         from backend import tagging
+        from tests.flacfixture import write_flac
 
         dateien = [write_flac(tmp_path / f"{i:02d}.flac", seconds=60) for i in (1, 2)]
         tagging.apply_manual_tags(
@@ -503,9 +497,8 @@ class TestSamplerAlbumkuenstler:
     def test_eigene_angabe_wird_nicht_ueberschrieben(self, tmp_path):
         import mediafile
 
-        from tests.flacfixture import write_flac
-
         from backend import tagging
+        from tests.flacfixture import write_flac
 
         pfad = write_flac(tmp_path / "01.flac", seconds=60)
         tagging.apply_manual_tags(
@@ -516,9 +509,8 @@ class TestSamplerAlbumkuenstler:
     def test_ohne_sampler_kein_eingriff(self, tmp_path):
         import mediafile
 
-        from tests.flacfixture import write_flac
-
         from backend import tagging
+        from tests.flacfixture import write_flac
 
         pfad = write_flac(tmp_path / "01.flac", seconds=60)
         tagging.apply_manual_tags([pfad], {"album": "Ein Album"})

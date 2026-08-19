@@ -103,7 +103,6 @@ def _engine():
             rapid_ocr_class = rapidocr_module.RapidOCR
             model_type_enum = rapidocr_module.ModelType
             lang_det_enum = rapidocr_module.LangDet
-            lang_rec_enum = rapidocr_module.LangRec
             ocr_version_enum = rapidocr_module.OCRVersion
         except Exception as exc:
             raise OcrError(
@@ -172,7 +171,7 @@ def _extract_detections(raw: object) -> list[OcrDetection]:
                     ]
                     text = str(item.get("txt", "")).strip()
                     score = float(item.get("score", 0.0))
-                except Exception:
+                except Exception:  # noqa: BLE001, S112 -- eine kaputte Box soll die übrigen nicht verhindern
                     continue
                 if len(box) == 4 and text:
                     detections.append(OcrDetection(box=box, text=text, score=score))
@@ -188,7 +187,7 @@ def _extract_detections(raw: object) -> list[OcrDetection]:
             ]
             text_value = str(text).strip()
             score_value = float(score)
-        except Exception:
+        except Exception:  # noqa: BLE001, S112 -- eine kaputte Box soll die übrigen nicht verhindern
             continue
         if len(box) == 4 and text_value:
             detections.append(OcrDetection(box=box, text=text_value, score=score_value))
@@ -200,7 +199,7 @@ def _image_size(image_bytes: bytes) -> tuple[int, int]:
     try:
         with Image.open(BytesIO(image_bytes)) as image:
             return int(image.width), int(image.height)
-    except Exception:
+    except Exception:  # noqa: BLE001 -- unlesbares Bild liefert nur eine leere Größe
         return 0, 0
 
 
@@ -305,5 +304,5 @@ def recognize(image_bytes: bytes, *, suffix: str = ".jpg") -> OcrResult:
         if tmp_path is not None:
             try:
                 tmp_path.unlink(missing_ok=True)
-            except Exception:
+            except Exception:  # noqa: BLE001 -- Aufräumen ist best effort, das Löschen darf fehlschlagen
                 log.warning("Temporäres OCR-Bild konnte nicht gelöscht werden: %s", tmp_path)

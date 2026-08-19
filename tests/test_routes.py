@@ -684,8 +684,6 @@ class TestHoerbuecher:
         assert "beide gebraucht" in response.text
 
     def test_pfadausbruch_im_titel(self, client, bibliothek):
-        from backend import audiobook
-
         client.post("/audiobook/rip", data={"autor": "../..", "titel": "../etc"})
         # Nichts oberhalb der Bibliothek angelegt.
         assert not (bibliothek.parent / "etc").exists()
@@ -1728,8 +1726,6 @@ class TestAlbenArtistMbid:
         assert "Kein MusicBrainz-Treffer" in response.text
 
     def test_album_uebernehmen_ruft_die_verknuepfung_auf(self, client, album, monkeypatch):
-        from backend import albums
-
         aufrufe = []
         monkeypatch.setattr(
             routes.albums,

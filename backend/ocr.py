@@ -159,6 +159,8 @@ def _extract_detections(raw: object) -> list[OcrDetection]:
         to_json = getattr(raw, "to_json", None)
         if callable(to_json):
             payload = to_json() or []
+            if not isinstance(payload, list):
+                payload = []
             for item in payload:
                 if not isinstance(item, dict):
                     continue

@@ -208,7 +208,7 @@ def apply_manual_tags(
     paths: list[Path],
     fields: dict[str, object],
     *,
-    je_track: dict[str, dict[str, object]] | None = None,
+    je_track: Mapping[str, Mapping[str, object]] | None = None,
     relative_to: Path | None = None,
 ) -> TagWriteResult:
     """Schreibt handgepflegte Tags.

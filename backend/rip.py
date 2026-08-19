@@ -196,7 +196,7 @@ def _lesen(
     return prozess.returncode
 
 
-def _run(command: list[str], *, timeout: float) -> subprocess.CompletedProcess:
+def _run(command: list[str], *, timeout: float) -> subprocess.CompletedProcess[str]:
     """Ruft ein Programm auf und gibt das Ergebnis zurück.
 
     Kein ``shell=True``: Track-Nummern und Pfade gehen unverändert an das

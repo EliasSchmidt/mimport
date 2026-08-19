@@ -1227,7 +1227,7 @@ async def artist_match(
         query = str(formular.get(field) or "").strip()
 
     lookup_failed = False
-    matches: tuple = ()
+    matches: tuple[artist_ids.ArtistMatch, ...] = ()
     if query:
         try:
             matches = artist_ids.search(query)

@@ -1,0 +1,10 @@
+{# Direkter Einstieg ins Handtagging, ohne MusicBrainz-Suche davor -- für den
+   Fall, dass schon vorher klar ist, dass dort nichts zu finden sein wird
+   (Eigenaufnahme, private CD-R, ...). Keine MusicBrainz-Anfrage, kein
+   Warten. #}
+<div class="banner info">
+    <strong>Von Hand taggen</strong>
+    <p>Ohne MusicBrainz-Suche -- die mit <span class="mono">*</span> markierten Felder unten sind Pflicht.</p>
+</div>
+{% include "_manual.html" %}
+<script>document.querySelector("#files .search-details")?.removeAttribute("open");</script>

@@ -26,6 +26,8 @@
              hx-params="not bild"
              hx-swap="none"
              hx-on::after-request="event.stopPropagation()"></div>
+        {% include "_manual_ocr.html" %}
+
         <div class="card">
             <h4>Metadaten</h4>
             <p class="hint">
@@ -33,10 +35,13 @@
                 Künstlernamen eindeutig kennt, schreiben wir zusätzlich dessen
                 Artist-ID in die Datei; eine Album- oder Release-ID setzen wir
                 beim Handtaggen bewusst nicht.
+                <strong>Ohne übernommenen MusicBrainz-Treffer sind die mit
+                <span class="mono">*</span> markierten Felder Pflicht</strong> --
+                beim Sampler zählt statt Albumkünstler der Track-Künstler je Zeile.
             </p>
 
             <div class="fields">
-                <label>Albumkünstler <small>(für das ganze Album)</small>
+                <label data-albumartist-label>Albumkünstler <span class="pflicht" data-albumartist-pflicht>*</span> <small>(für das ganze Album)</small>
                     <div class="lookup-field"
                          hx-post="/artist-match/{{ session_id }}"
                          hx-trigger="click from:find .lookup-button, keydown[key=='Enter'] from:find input consume"
@@ -46,7 +51,8 @@
                          hx-swap="innerHTML"
                          hx-indicator="#lookup-spinner-albumartist-{{ session_id }}">
                         <input type="text" name="albumartist" data-albumartist data-artist-field="albumartist"
-                               placeholder="z. B. The Beatles" value="{{ draft.albumartist or '' }}">
+                               placeholder="z. B. The Beatles" value="{{ draft.albumartist or '' }}"
+                               {% if not draft.compilation %}required{% endif %}>
                         <input type="hidden" name="mb_albumartistids" data-artist-mbid="albumartist"
                                value="{{ draft.mb_albumartistids or '' }}">
                         <button type="button" class="button secondary lookup-button" aria-label="Bei MusicBrainz suchen">
@@ -92,17 +98,19 @@
                         <div class="hint">Noch kein MusicBrainz-Match ausgewählt.</div>
                     </div>
                 </label>
-                <label>Jahr
-                    <input type="text" name="year" inputmode="numeric" placeholder="1969" value="{{ draft.year or '' }}">
+                <label>Jahr <span class="pflicht">*</span>
+                    <input type="text" name="year" inputmode="numeric" placeholder="1969"
+                           value="{{ draft.year or '' }}" required>
                 </label>
-                <label>Genre <small>(mehrere mit <span class="mono">;</span>)</small>
+                <label>Genre <span class="pflicht">*</span> <small>(mehrere mit <span class="mono">;</span>)</small>
                     <input type="text"
                            name="genre"
                            placeholder="z. B. Jazz; Fusion"
                            list="genre-vorschlaege-{{ session_id }}"
                            autocomplete="off"
                            data-genre-input
-                           value="{{ draft.genre or '' }}">
+                           value="{{ draft.genre or '' }}"
+                           required>
                     <small>Beim Tippen erscheinen Vorschläge aus dem Projektkatalog; Freitext bleibt erlaubt.</small>
                 </label>
             </div>
@@ -119,11 +127,10 @@
             </label>
             <p class="hint" data-sampler-hinweis hidden>
                 Das Feld „Track-Künstler für alle Tracks" ist jetzt deaktiviert; die
-                Track-Künstler bitte pro Track unten eintragen.
+                Track-Künstler bitte pro Track unten eintragen -- dort ist dann
+                jede Zeile Pflicht statt des Albumkünstlers oben.
             </p>
         </div>
-
-        {% include "_manual_ocr.html" %}
 
         <div class="actions">
             <button type="button"

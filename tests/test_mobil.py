@@ -130,6 +130,8 @@ def test_dateiliste_nach_upload_passt(browser, server):
         # Auch mit aufgeklapptem Formular für das Taggen von Hand -- die
         # Tabelle "Titel je Track" steht darin als eigene Karte, ohne
         # weiteres Aufklappen.
+        seite.click("button:has-text('Ohne MusicBrainz von Hand taggen')")
+        seite.wait_for_selector("details.manual > summary")
         seite.click("details.manual > summary")
         seite.wait_for_timeout(200)
         assert ueberlauf(seite) <= 0
@@ -200,6 +202,8 @@ def test_samplerhaken_stellt_die_felder_ein(browser, server):
         )
         seite.click("#upload-submit")
         seite.wait_for_selector("#files-inner", timeout=20000)
+        seite.click("button:has-text('Ohne MusicBrainz von Hand taggen')")
+        seite.wait_for_selector("details.manual > summary")
         seite.click("details.manual > summary")
 
         albumartist = seite.locator("[data-albumartist]")
@@ -237,6 +241,8 @@ def test_eigener_albumkuenstler_bleibt_stehen(browser, server):
         )
         seite.click("#upload-submit")
         seite.wait_for_selector("#files-inner", timeout=20000)
+        seite.click("button:has-text('Ohne MusicBrainz von Hand taggen')")
+        seite.wait_for_selector("details.manual > summary")
         seite.click("details.manual > summary")
 
         seite.fill("[data-albumartist]", "Deutsche Grammophon")
@@ -275,6 +281,8 @@ def test_artist_lookup_trifft_nur_das_angeklickte_feld(browser, server, monkeypa
         )
         seite.click("#upload-submit")
         seite.wait_for_selector("#files-inner", timeout=20000)
+        seite.click("button:has-text('Ohne MusicBrainz von Hand taggen')")
+        seite.wait_for_selector("details.manual > summary")
         seite.click("details.manual > summary")
 
         seite.fill("[data-artist-field=albumartist]", "Windsbacher Knabenchor")
@@ -330,6 +338,8 @@ def test_mehrfach_kuenstler_werden_getrennt_gewaehlt_und_zusammengesetzt(browser
         )
         seite.click("#upload-submit")
         seite.wait_for_selector("#files-inner", timeout=20000)
+        seite.click("button:has-text('Ohne MusicBrainz von Hand taggen')")
+        seite.wait_for_selector("details.manual > summary")
         seite.click("details.manual > summary")
 
         seite.fill("[data-artist-field=albumartist]", "Windsbacher Knabenchor / Karl-Friedrich Beringer")
@@ -426,6 +436,8 @@ def test_genre_vorschlaege_werden_beim_tippen_aktualisiert(browser, server):
         )
         seite.click("#upload-submit")
         seite.wait_for_selector("#files-inner", timeout=20000)
+        seite.click("button:has-text('Ohne MusicBrainz von Hand taggen')")
+        seite.wait_for_selector("details.manual > summary")
         seite.click("details.manual > summary")
 
         genre = seite.locator("[data-genre-input]")

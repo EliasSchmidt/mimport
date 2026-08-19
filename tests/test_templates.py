@@ -255,7 +255,7 @@ class TestUebernehmenUndImport:
     def test_handgesetzte_tags_landen_in_den_dateien(self, client, album_session):
         response = client.post(
             f"/manual/{album_session.session_id}",
-            data={"albumartist": "Eigenes", "album": "Selbstgemacht", "year": "1999"},
+            data={"albumartist": "Eigenes", "album": "Selbstgemacht", "year": "1999", "genre": "Pop"},
         )
         assert response.status_code == 200
         assert "Tags geschrieben" in response.text

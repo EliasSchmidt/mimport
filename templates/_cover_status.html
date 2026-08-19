@@ -1,0 +1,22 @@
+{# Inhalt ohne eigene Wrapper-ID: ``coverAufnehmen`` ersetzt per
+   ``getElementById(box_id).innerHTML`` -- eine ID hier drin würde sich bei
+   jedem erneuten Foto ein Stockwerk tiefer schachteln. Wrapper und ID stehen
+   deshalb im jeweils einbindenden Template (_files.html, _applied.html). #}
+{% if cover_present %}
+<img class="session-cover-preview"
+     src="/cover/session/{{ session_id }}?v={{ cover_version }}"
+     alt="Cover dieser Sitzung">
+<p class="hint">
+    <strong>Cover vorhanden.</strong> Es liegt als <span class="mono">cover.jpg</span>
+    in dieser Sitzung und wird beim Import von beets übernommen.
+</p>
+{% else %}
+<p class="hint">
+    <strong>Kein Cover vorhanden.</strong> Ohne übernommenes MusicBrainz-Release
+    lädt beets keins automatisch nach.
+</p>
+{% endif %}
+<button type="button" class="button{{ '' if cover_present else ' primary' }}"
+        onclick="coverAufnehmen('/cover/session/{{ session_id }}?box_id={{ box_id }}', '{{ box_id }}', '{{ cover_titel }}')">
+    {{ "Cover neu fotografieren" if cover_present else "Cover fotografieren" }}
+</button>

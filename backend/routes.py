@@ -17,7 +17,7 @@ import logging
 import shutil
 from pathlib import Path
 
-from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse
 
 from backend import (
@@ -990,18 +990,37 @@ def session_cover(session_id: str, v: str = "") -> FileResponse:
 
 @router.post("/cover/session/{session_id}", response_class=HTMLResponse)
 async def cover_session(
-    request: Request, session_id: str, bild: UploadFile = File(...)
+    request: Request,
+    session_id: str,
+    bild: UploadFile = File(...),
+    box_id: str = Query(default="files"),
 ) -> HTMLResponse:
-    """Nimmt ein Cover für einen laufenden Musik-Upload entgegen.
+    """Nimmt ein Cover für eine laufende Musik-Session entgegen.
 
     Es landet als ``cover.jpg`` neben den Audiodateien; beim Import zieht beets
     es über ``fetchart`` heran, statt selbst eines zu suchen.
+
+    ``box_id`` unterscheidet, von wo aus aufgenommen wurde: der Standardfall
+    ``"files"`` (Schritt 2) tauscht die ganze Dateiliste neu ein, jeder andere
+    Wert (z. B. aus Schritt 4, wo ohne MusicBrainz-Release sonst kein Cover
+    nachgeladen würde) nur die kleine Cover-Box selbst -- ``coverAufnehmen``
+    im Browser ersetzt ohnehin nur das Element mit genau dieser ID.
     """
     session = _session_or_404(session_id)
     try:
         cover.speichern(session.directory, await bild.read())
     except cover.CoverError as exc:
         return _fragment(request, "_error.html", message=str(exc))
+    if box_id != "files":
+        return _fragment(
+            request,
+            "_cover_status.html",
+            session_id=session_id,
+            box_id=box_id,
+            cover_titel="Cover für dieses Album",
+            cover_present=True,
+            cover_version=_session_cover_version(session),
+        )
     return _files_fragment(request, session)
 
 
@@ -1092,6 +1111,8 @@ def choose(
         result=write_result,
         candidate=matching.serialize_candidate(match_obj, 0),
         health=beets_env.health(),
+        cover_present=cover.vorhanden(session.directory),
+        cover_version=_session_cover_version(session),
     )
 
 
@@ -1295,6 +1316,33 @@ async def entwurf_speichern(request: Request, session_id: str) -> HTMLResponse:
     return HTMLResponse("")
 
 
+@router.post("/manual-start/{session_id}", response_class=HTMLResponse)
+def manual_start(request: Request, session_id: str) -> HTMLResponse:
+    """Direkter Einstieg ins Handtagging, ohne MusicBrainz-Suche.
+
+    Für den Fall, dass schon vorher klar ist, dass dort nichts zu finden sein
+    wird -- sonst würde "Matches suchen" hier nur eine MusicBrainz-Anfrage
+    verbraten, die absehbar mit "Kein Treffer" endet.
+    """
+    session = _session_or_404(session_id)
+    if not session.audio_paths:
+        return _fragment(request, "_error.html", message="In dieser Sitzung liegen keine Dateien.")
+    draft = sessions.load_draft(session)
+    return _fragment(
+        request,
+        "_manual_start.html",
+        session_id=session_id,
+        parse_modes=trackparse.modes(),
+        parse_mode=str(draft.get("mode") or DEFAULT_PARSE_MODE),
+        ocr_text=str(draft.get("ocr_text") or ""),
+        ocr_warnings=[],
+        track_inputs=_track_inputs(session, draft=draft),
+        draft=draft,
+        genre_vorschlaege=genres.katalog(),
+        ocr_overlay=None,
+    )
+
+
 @router.post("/manual/{session_id}", response_class=HTMLResponse)
 async def manual(
     request: Request,
@@ -1327,6 +1375,33 @@ async def manual(
         feld = {"titel": "title", "interpret": "artists"}.get(praefix)
         if feld and dateiname and str(wert).strip():
             je_track.setdefault(dateiname, {})[feld] = str(wert)
+
+    # Handgetaggt heißt: kein MusicBrainz-Treffer übernommen. Dann bestehen wir
+    # auf Mindestangaben, statt eine Datei mit im Grunde leeren Metadaten
+    # durchzulassen. Beim Sampler sagt "Various Artists" beim Albumkünstler
+    # nichts über die tatsächlichen Interpreten aus -- dort zählt stattdessen
+    # jede Zeile in "Titel je Track" für sich.
+    fehlende: list[str] = []
+    if not genre.strip():
+        fehlende.append("Genre")
+    if not year.strip():
+        fehlende.append("Jahr")
+    if compilation:
+        ohne_interpret = [
+            datei["key"]
+            for datei in _track_files(session)
+            if not str(je_track.get(datei["key"], {}).get("artists", "")).strip()
+        ]
+        if ohne_interpret:
+            fehlende.append("Track-Künstler für: " + ", ".join(ohne_interpret))
+    elif not albumartist.strip():
+        fehlende.append("Albumkünstler")
+    if fehlende:
+        return _fragment(
+            request,
+            "_error.html",
+            message="Ohne MusicBrainz-Treffer bitte noch ausfüllen: " + "; ".join(fehlende),
+        )
 
     write_result = tagging.apply_manual_tags(
         paths,
@@ -1362,6 +1437,8 @@ async def manual(
         result=write_result,
         candidate=None,
         health=beets_env.health(),
+        cover_present=cover.vorhanden(session.directory),
+        cover_version=_session_cover_version(session),
     )
 
 

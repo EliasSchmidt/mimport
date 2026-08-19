@@ -28,6 +28,15 @@
 </div>
 {% endif %}
 
+{# Ohne übernommenes MusicBrainz-Release hat beets kein Cover zum Nachladen
+   -- genau dann fehlt eins am häufigsten, deshalb hier nochmal thematisiert,
+   statt sich nur auf Schritt 2 zu verlassen. #}
+{% set box_id = "applied-cover-status" %}
+{% set cover_titel = "Cover für dieses Album" %}
+<div id="applied-cover-status" class="session-cover-box {{ 'warn' if not cover_present }}">
+    {% include "_cover_status.html" %}
+</div>
+
 <div class="import-box">
     <h3>An beets übergeben</h3>
     <p class="hint">

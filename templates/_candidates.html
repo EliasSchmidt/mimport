@@ -16,6 +16,11 @@
     <p>{{ result.note }}</p>
 </div>
 {% include "_manual.html" %}
+{# Die MusicBrainz-Suchfelder oben in Schritt 2 sind jetzt nur noch
+   Altlast -- kein Treffer heißt, das Handtagging unten ist der Weg. Bleibt
+   über <summary> jederzeit wieder erreichbar, falls doch nochmal ein
+   anderer Suchbegriff versucht werden soll. #}
+<script>document.querySelector("#files .search-details")?.removeAttribute("open");</script>
 {% else %}
 
 <p class="hint">

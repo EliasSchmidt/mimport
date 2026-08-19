@@ -229,11 +229,16 @@ class TestSessionEndpunkte:
         assert "MusicBrainz-ID" in response.text
 
     def test_manuelle_tags_ohne_eingabe(self, client):
+        """Ohne MusicBrainz-Treffer sind Genre, Jahr und Albumkünstler Pflicht --
+        eine komplett leere Übernahme soll das klar benennen, statt stillschweigend
+        nichts zu schreiben oder mit halben Metadaten durchzurutschen."""
         session = sessions.create_session()
         (session.directory / "a.flac").write_bytes(b"fLaC\x00\x00\x00\x22")
 
         response = client.post(f"/manual/{session.session_id}", data={})
-        assert "kein Feld" in response.text
+        assert "Genre" in response.text
+        assert "Jahr" in response.text
+        assert "Albumkünstler" in response.text
 
 
 class TestImportSperre:
@@ -1359,10 +1364,33 @@ class TestManuellTaggen:
             write_flac(session.directory / name, seconds=5)
         return session
 
-    def test_formular_bietet_je_track_felder(self, client):
+    def test_dateiliste_bietet_direkten_einstieg_ohne_manuelles_formular(self, client):
+        """Das Handtagging-Formular gehörte früher fest zu Schritt 2 (_files.html)
+        UND zu Schritt 3 (_candidates.html) -- mit identischen Element-IDs
+        gleichzeitig im DOM, sobald beide Schritte sichtbar waren. Schritt 2
+        bietet jetzt nur noch den Einstieg, das Formular selbst lebt nur noch
+        in Schritt 3."""
         session = self._session_mit(["01.flac", "02.flac"])
         html = client.get(f"/session/{session.session_id}").text
 
+        assert "Tags selbst setzen" not in html
+        assert 'name="titel:01.flac"' not in html
+        assert 'hx-post="/manual-start/' in html
+        assert "Ohne MusicBrainz von Hand taggen" in html
+
+    def test_manual_start_liefert_das_formular_ohne_musicbrainz_anfrage(self, client, monkeypatch):
+        from backend import artist_ids
+
+        def keine_suche(*a, **k):
+            raise AssertionError("MusicBrainz hätte hier nicht angefragt werden dürfen")
+
+        monkeypatch.setattr(artist_ids, "search", keine_suche)
+
+        session = self._session_mit(["01.flac", "02.flac"])
+        response = client.post(f"/manual-start/{session.session_id}")
+        html = response.text
+
+        assert response.status_code == 200
         assert "von Hand taggen" in html
         assert 'name="titel:01.flac"' in html
         assert 'name="interpret:02.flac"' in html
@@ -1386,6 +1414,8 @@ class TestManuellTaggen:
                 "albumartist": "Various Artists",
                 "album": "Sampler 99",
                 "compilation": "true",
+                "genre": "Jazz",
+                "year": "1999",
                 "titel:01.flac": "Erstes",
                 "interpret:01.flac": "Miles Davis",
                 "titel:02.flac": "Zweites",
@@ -1407,7 +1437,14 @@ class TestManuellTaggen:
         import mediafile
 
         session = self._session_mit(["01.flac"])
-        client.post(f"/manual/{session.session_id}", data={"genre": "Krautrock; Psychedelic Rock"})
+        client.post(
+            f"/manual/{session.session_id}",
+            data={
+                "genre": "Krautrock; Psychedelic Rock",
+                "albumartist": "Can",
+                "year": "1971",
+            },
+        )
 
         medien = mediafile.MediaFile(session.directory / "01.flac")
         # mediafile liefert im einfachen Feld nur den ersten Eintrag zurück;
@@ -1426,6 +1463,8 @@ class TestManuellTaggen:
                 "albumartist": "Windsbacher Knabenchor",
                 "album": "Nun singet und seid froh",
                 "composer": "Johann Sebastian Bach",
+                "genre": "Chormusik",
+                "year": "1985",
             },
         )
 
@@ -1440,7 +1479,12 @@ class TestManuellTaggen:
         session = self._session_mit(["01.flac"])
         client.post(
             f"/manual/{session.session_id}",
-            data={"composer": "Johann Sebastian Bach; Georg Friedrich Händel"},
+            data={
+                "composer": "Johann Sebastian Bach; Georg Friedrich Händel",
+                "albumartist": "Windsbacher Knabenchor",
+                "genre": "Chormusik",
+                "year": "1985",
+            },
         )
 
         medien = mediafile.MediaFile(session.directory / "01.flac")
@@ -1459,6 +1503,8 @@ class TestManuellTaggen:
                 "artist": "Alligatoah",
                 "mb_artistids": "bde41239-2535-4b28-b6e5-1074f990a14a",
                 "album": "Mein lokales Album",
+                "genre": "Deutschrap",
+                "year": "2015",
             },
         )
 
@@ -1532,7 +1578,32 @@ class TestManuellTaggen:
     def test_ohne_eingabe_wird_nichts_geschrieben(self, client):
         session = self._session_mit(["01.flac"])
         response = client.post(f"/manual/{session.session_id}", data={})
-        assert "kein Feld" in response.text
+        assert "Genre" in response.text
+        assert "Jahr" in response.text
+        assert "Albumkünstler" in response.text
+
+    def test_sampler_ohne_track_kuenstler_wird_zurueckgewiesen(self, client):
+        """Bei einem Sampler ist "Various Artists" beim Albumkünstler nur ein
+        Platzhalter -- ohne MusicBrainz-Treffer zählt dann jede Zeile in
+        "Titel je Track" für sich."""
+        session = self._session_mit(["01.flac", "02.flac"])
+        response = client.post(
+            f"/manual/{session.session_id}",
+            data={
+                "compilation": "true",
+                "genre": "Jazz",
+                "year": "1999",
+                "interpret:01.flac": "Miles Davis",
+                # 02.flac bleibt absichtlich ohne Track-Künstler.
+            },
+        )
+        assert "02.flac" in response.text
+        assert "Track-Künstler" in response.text
+
+        import mediafile
+
+        medien = mediafile.MediaFile(session.directory / "02.flac")
+        assert medien.title is None
 
 
 class TestEntwurfWiederherstellen:
@@ -1573,18 +1644,27 @@ class TestEntwurfWiederherstellen:
         assert 'name="compilation" value="true" data-sampler checked' in html
         assert 'name="titel:01.flac" value="Stille Nacht"' in html
 
-    def test_ohne_entwurf_bleiben_die_felder_leer(self, client):
+    def test_ohne_entwurf_bleibt_das_formular_beim_fortsetzen_zu(self, client):
+        """Ohne Entwurf gibt es nichts zum Wiederherstellen -- Schritt 3 bleibt
+        beim Fortsetzen zu, statt ungefragt ein leeres Formular aufzuklappen."""
         session = self._session_mit(["01.flac"])
         html = client.get(f"/session/{session.session_id}").text
-        assert 'name="albumartist" data-albumartist data-artist-field="albumartist"' in html
+        assert "hx-swap-oob" not in html
         assert 'value="Windsbacher' not in html
+
+        formular = client.post(f"/manual-start/{session.session_id}").text
+        assert 'name="albumartist" data-albumartist data-artist-field="albumartist"' in formular
+        assert 'value="Windsbacher' not in formular
 
     def test_geschriebene_tags_raeumen_den_entwurf_weg(self, client):
         session = self._session_mit(["01.flac"])
         client.post(f"/entwurf/{session.session_id}", data={"album": "Zwischenstand"})
         assert sessions.load_draft(session) == {"album": "Zwischenstand"}
 
-        client.post(f"/manual/{session.session_id}", data={"album": "Endgültig"})
+        client.post(
+            f"/manual/{session.session_id}",
+            data={"album": "Endgültig", "albumartist": "Jemand", "genre": "Pop", "year": "2020"},
+        )
         assert sessions.load_draft(session) == {}
 
     def test_matches_suchen_wischt_den_entwurf_nicht_weg(self, client, monkeypatch):

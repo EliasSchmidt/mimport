@@ -304,15 +304,23 @@ function samplerUmschalten(haken) {
   const formular = manualContainer(haken);
   if (!formular) return;
   const albumartist = formular.querySelector("[data-albumartist]");
+  const albumartistStern = formular.querySelector("[data-albumartist-pflicht]");
   const alleInterpreten = formular.querySelector("[data-alle-interpreten]");
   const hinweis = formular.querySelector("[data-sampler-hinweis]");
   const feld = alleInterpreten?.querySelector("input");
+  // Ohne übernommenen MusicBrainz-Treffer ist "ein Interpret" Pflicht -- bei
+  // einem Sampler sagt der Albumkünstler ("Various Artists") darüber aber
+  // nichts aus, dafür zählt dann jede Zeile "Track-Künstler" einzeln.
+  const trackInterpreten = formular.querySelectorAll('input[name^="interpret:"]');
 
   if (haken.checked) {
     if (albumartist && !albumartist.value.trim()) {
       albumartist.value = SAMPLER_NAME;
       albumartist.dataset.vonUns = "ja";
     }
+    if (albumartist) albumartist.required = false;
+    if (albumartistStern) albumartistStern.hidden = true;
+    trackInterpreten.forEach((i) => { i.required = true; });
     if (feld) {
       feld.value = "";
       feld.disabled = true;
@@ -326,6 +334,9 @@ function samplerUmschalten(haken) {
       albumartist.value = "";
       delete albumartist.dataset.vonUns;
     }
+    if (albumartist) albumartist.required = true;
+    if (albumartistStern) albumartistStern.hidden = false;
+    trackInterpreten.forEach((i) => { i.required = false; });
     if (feld) feld.disabled = false;
     alleInterpreten?.classList.remove("abgeschaltet");
     if (hinweis) hinweis.hidden = true;

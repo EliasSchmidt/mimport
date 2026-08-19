@@ -66,31 +66,40 @@
           hx-target="#candidates"
           hx-swap="innerHTML"
           hx-indicator="#match-spinner">
-        <p class="hint">
-            beets sucht anhand der vorhandenen Tags. Wenn das nichts findet oder
-            das Falsche trifft, kannst du gezielt nachhelfen.
-        </p>
-        <div class="fields">
-            <label>
-                Künstler <small>(optional)</small>
-                <input type="text" name="artist" placeholder="aus den Tags">
-            </label>
-            <label>
-                Album <small>(optional)</small>
-                <input type="text" name="album" placeholder="aus den Tags">
-            </label>
-            <label class="wide">
-                MusicBrainz-Release-ID oder -Adresse <small>(optional)</small>
-                <input type="text" name="mbid"
-                       placeholder="z. B. 964e8152-d86d-4b88-9b79-2f561db6c124">
-            </label>
-        </div>
+        <details class="search-details" open>
+            <summary>MusicBrainz durchsuchen</summary>
+            <p class="hint">
+                beets sucht anhand der vorhandenen Tags. Wenn das nichts findet oder
+                das Falsche trifft, kannst du gezielt nachhelfen.
+            </p>
+            <div class="fields">
+                <label>
+                    Künstler <small>(optional)</small>
+                    <input type="text" name="artist" placeholder="aus den Tags">
+                </label>
+                <label>
+                    Album <small>(optional)</small>
+                    <input type="text" name="album" placeholder="aus den Tags">
+                </label>
+                <label class="wide">
+                    MusicBrainz-Release-ID oder -Adresse <small>(optional)</small>
+                    <input type="text" name="mbid"
+                           placeholder="z. B. 964e8152-d86d-4b88-9b79-2f561db6c124">
+                </label>
+            </div>
+        </details>
         <div class="actions">
             <button type="submit" class="button primary">Matches suchen</button>
             <span id="match-spinner" class="htmx-indicator spinner">
                 <span class="spinner-ring" aria-hidden="true"></span>
                 frage MusicBrainz …
             </span>
+            <button type="button" class="button secondary"
+                    hx-post="/manual-start/{{ session_id }}"
+                    hx-target="#candidates"
+                    hx-swap="innerHTML">
+                Ohne MusicBrainz von Hand taggen
+            </button>
             <button type="button" class="button"
                     onclick="coverAufnehmen('/cover/session/{{ session_id }}', 'files', 'Cover für diesen Upload')">
                 {{ "Cover neu fotografieren" if cover_present else "Cover fotografieren" }}
@@ -105,23 +114,21 @@
         </div>
     </form>
 
-    {% if cover_present %}
-    <div class="session-cover-box">
-        <img class="session-cover-preview"
-             src="/cover/session/{{ session_id }}?v={{ cover_version }}"
-             alt="Cover dieser Upload-Session">
-        <p class="hint">
-            <strong>Cover vorhanden.</strong> Es liegt als <span class="mono">cover.jpg</span>
-            in dieser Upload-Session und wird beim Import von beets übernommen.
-        </p>
+    {% set box_id = "files-cover-status" %}
+    {% set cover_titel = "Cover für diesen Upload" %}
+    <div id="files-cover-status" class="session-cover-box">
+        {% include "_cover_status.html" %}
     </div>
-    {% else %}
-    <p class="hint">
-        Ein Cover kannst du schon jetzt fotografieren; es bleibt in der
-        Staging-Session und wird beim Import mit übernommen.
-    </p>
-    {% endif %}
-
-    {# Von Hand taggen, inklusive OCR-Vorbelegung aus dem Backcover. #}
-    {% include "_manual.html" %}
 </div>
+
+{% if draft %}
+{# Ein gespeicherter Entwurf beweist, dass hier schon von Hand getaggt wurde --
+   dann soll das beim Fortsetzen sofort wieder aufgeklappt dastehen, statt
+   hinter einem erneuten Klick auf "Ohne MusicBrainz von Hand taggen" zu
+   verschwinden. Out-of-Band, weil diese Antwort eigentlich nur #files
+   beliefert; #candidates bekommt hier trotzdem sein eigenes Update. #}
+<div id="candidates" hx-swap-oob="innerHTML">
+    {% include "_manual_start.html" %}
+</div>
+<script>document.getElementById("match-step").hidden = false;</script>
+{% endif %}

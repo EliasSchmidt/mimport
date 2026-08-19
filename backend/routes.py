@@ -1232,14 +1232,31 @@ async def artist_match(
     if not query and field in {"artist", "albumartist"}:
         query = str(formular.get(field) or "").strip()
 
-    lookup_failed = False
-    matches: tuple[artist_ids.ArtistMatch, ...] = ()
-    if query:
+    # " / "-getrennte Namen (Kollaboration, Chor + Dirigent, ...) suchen wir
+    # einzeln -- eine kombinierte MusicBrainz-Suche nach dem ganzen String
+    # fände so gut wie nie einen Treffer.
+    namen = tagging.kuenstlerliste(query) if query else []
+    namen_treffer: list[dict[str, object]] = []
+    for einzelname in namen:
+        einzel_fehlgeschlagen = False
+        einzel_matches: tuple[artist_ids.ArtistMatch, ...] = ()
         try:
-            matches = artist_ids.search(query)
+            einzel_matches = artist_ids.search(einzelname)
         except artist_ids.LookupFehlgeschlagen:
-            lookup_failed = True
-    exact_count = sum(1 for match in matches if match.exact)
+            einzel_fehlgeschlagen = True
+        namen_treffer.append(
+            {
+                "name": einzelname,
+                "matches": einzel_matches,
+                "exact_count": sum(1 for match in einzel_matches if match.exact),
+                "lookup_failed": einzel_fehlgeschlagen,
+            }
+        )
+
+    # Der einfache Fall (genau ein Name) behält seine bisherigen, flachen
+    # Variablen -- unverändert gegenüber vorher, damit sich am gewohnten
+    # Ein-Künstler-Weg nichts verschiebt.
+    einzel = namen_treffer[0] if len(namen_treffer) == 1 else None
     return _fragment(
         request,
         "_artist_matches.html",
@@ -1247,9 +1264,11 @@ async def artist_match(
         field_label=_field_label(field),
         mbid_field=_mbid_field(field),
         query=query,
-        matches=matches,
-        exact_count=exact_count,
-        lookup_failed=lookup_failed,
+        matches=einzel["matches"] if einzel else (),
+        exact_count=einzel["exact_count"] if einzel else 0,
+        lookup_failed=einzel["lookup_failed"] if einzel else False,
+        namen_treffer=namen_treffer,
+        mehrfach=len(namen_treffer) > 1,
         invalid_field=field not in {"albumartist", "artist"},
     )
 
@@ -1283,6 +1302,7 @@ async def manual(
     albumartist: str = Form(default=""),
     album: str = Form(default=""),
     artist: str = Form(default=""),
+    composer: str = Form(default=""),
     year: str = Form(default=""),
     genre: str = Form(default=""),
     compilation: bool = Form(default=False),
@@ -1316,6 +1336,7 @@ async def manual(
             "album": album,
             "artists": artist,
             "mb_artistids": str(formular.get("mb_artistids") or "").strip(),
+            "composers": composer,
             "year": year,
             # In beets 2.x heißt das Feld "genres"; als "genre" gesetzt landete
             # es früher nur als flexibles Attribut und nie in der Datei.

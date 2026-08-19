@@ -7,6 +7,55 @@
     <strong>Noch kein MusicBrainz-Match gesucht</strong>
     <p>Gib erst einen Namen ein und starte dann die Suche.</p>
 </div>
+{% elif mehrfach %}
+<div class="banner info artist-match-banner">
+    <strong>{{ namen_treffer|length }} Künstler erkannt</strong>
+    <p>„{{ query }}“ sieht nach mehreren Namen aus -- bitte für jeden einzeln den passenden MusicBrainz-Eintrag wählen. Erst wenn alle eine Artist-ID haben, wird sie geschrieben.</p>
+</div>
+<div class="artist-match-multi" data-artist-multi data-field="{{ field }}">
+    {% for eintrag in namen_treffer %}
+    <div class="artist-match-group" data-name-slot="{{ loop.index0 }}" data-original-name="{{ eintrag.name }}">
+        <h5>{{ eintrag.name }}</h5>
+        <div data-artist-multi-status>
+            {% if eintrag.lookup_failed %}
+            <div class="banner warn artist-match-banner">
+                <strong>MusicBrainz war gerade nicht erreichbar</strong>
+                <p>Das ist kein „kein Treffer“ -- bitte den Button einfach noch einmal drücken.</p>
+            </div>
+            {% elif not eintrag.matches %}
+            <div class="banner warn artist-match-banner">
+                <strong>Kein MusicBrainz-Treffer für „{{ eintrag.name }}“</strong>
+                <p>Der Name bleibt trotzdem als Klartext im Tag erhalten; eine Artist-ID setzen wir dann nicht.</p>
+            </div>
+            {% else %}
+            <ul class="artist-match-list">
+                {% for match in eintrag.matches %}
+                <li class="artist-match-item{% if match.exact %} exact{% endif %}">
+                    <div class="artist-match-copy">
+                        <div>
+                            <strong>{{ match.name }}</strong>
+                            {% if match.exact %}<span class="badge strong">exakt</span>{% endif %}
+                            {% if match.kind %}<span class="small">· {{ match.kind }}</span>{% endif %}
+                            {% if match.area %}<span class="small">· {{ match.area }}</span>{% endif %}
+                        </div>
+                        {% if match.disambiguation %}
+                        <div class="small">{{ match.disambiguation }}</div>
+                        {% endif %}
+                        <div class="mono small">{{ match.mbid }}</div>
+                    </div>
+                    <button type="button"
+                            class="button secondary"
+                            data-artist-choose
+                            data-name="{{ match.name }}"
+                            data-mbid="{{ match.mbid }}">Übernehmen</button>
+                </li>
+                {% endfor %}
+            </ul>
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
 {% elif lookup_failed %}
 <div class="banner warn artist-match-banner">
     <strong>MusicBrainz war gerade nicht erreichbar</strong>

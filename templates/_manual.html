@@ -63,6 +63,11 @@
                 <label>Album
                     <input type="text" name="album" placeholder="z. B. Abbey Road" value="{{ draft.album or '' }}">
                 </label>
+                <label>Komponist <small>(mehrere mit <span class="mono">/</span> oder <span class="mono">;</span>)</small>
+                    <input type="text" name="composer" placeholder="z. B. Johann Sebastian Bach"
+                           value="{{ draft.composer or '' }}">
+                    <small>Bei Klassik: der Komponist, getrennt vom ausführenden Chor/Orchester bei Albumkünstler und Track-Künstler.</small>
+                </label>
                 <label data-alle-interpreten>Track-Künstler <small>(für alle Tracks)</small>
                     <div class="lookup-field"
                          hx-post="/artist-match/{{ session_id }}"

@@ -305,6 +305,63 @@ def test_artist_lookup_trifft_nur_das_angeklickte_feld(browser, server, monkeypa
         seite.close()
 
 
+def test_mehrfach_kuenstler_werden_getrennt_gewaehlt_und_zusammengesetzt(browser, server, monkeypatch):
+    """Chor + Dirigent (oder jede andere ``A / B``-Kollaboration): jeder Name
+    bekommt eine eigene Trefferliste, und erst wenn für BEIDE ein Treffer
+    gewählt wurde, landet eine kombinierte Artist-ID im versteckten Feld --
+    eine halbe Auswahl wäre mehrdeutig, welcher Name zu welcher ID gehört.
+    """
+    from backend import artist_ids
+
+    def stub(name, **kwargs):
+        return (
+            artist_ids.ArtistMatch(name=name, mbid=f"mbid-{name}", exact=True),
+        )
+
+    monkeypatch.setattr(artist_ids, "search", stub)
+
+    seite = browser.new_page(viewport={"width": 900, "height": 800})
+    try:
+        seite.goto(server + "/musik", wait_until="networkidle")
+        seite.set_input_files(
+            "#upload-files",
+            [{"name": "01 Stück.flac", "mimeType": "audio/flac",
+              "buffer": b"fLaC\x00\x00\x00\x22" + b"\x00" * 34}],
+        )
+        seite.click("#upload-submit")
+        seite.wait_for_selector("#files-inner", timeout=20000)
+        seite.click("details.manual > summary")
+
+        seite.fill("[data-artist-field=albumartist]", "Windsbacher Knabenchor / Karl-Friedrich Beringer")
+        seite.locator("[data-artist-field=albumartist]").locator(
+            "xpath=ancestor::div[contains(@class,'lookup-field')]"
+        ).locator(".lookup-button").click()
+
+        gruppen = seite.locator("[data-artist-results=albumartist] .artist-match-group")
+        gruppen.first.wait_for(timeout=5000)
+        assert gruppen.count() == 2
+
+        mbid_feld = seite.locator("[data-artist-mbid=albumartist]")
+
+        # Nur den ersten Namen wählen -- solange der zweite offen ist, darf
+        # noch keine (halbe, mehrdeutige) ID geschrieben werden.
+        seite.locator('[data-name-slot="0"] [data-artist-choose]').click()
+        seite.wait_for_timeout(150)
+        assert mbid_feld.input_value() == ""
+
+        # Jetzt auch den zweiten -- erst jetzt ist die Auswahl vollständig.
+        seite.locator('[data-name-slot="1"] [data-artist-choose]').click()
+        seite.wait_for_timeout(150)
+
+        assert seite.locator("[data-artist-field=albumartist]").input_value() == (
+            "Windsbacher Knabenchor / Karl-Friedrich Beringer"
+        )
+        erwartete_id = "mbid-Windsbacher Knabenchor; mbid-Karl-Friedrich Beringer"
+        assert mbid_feld.input_value() == erwartete_id
+    finally:
+        seite.close()
+
+
 def test_fortsetzen_zeigt_ladezustand_und_schliesst_dropdown(browser, server, monkeypatch):
     """``Fortsetzen`` lädt eine Sitzung neu über ``audio.inspect_file`` je Datei --
     auf dem knappen Zielserver spürbar langsam, und bis eben ganz ohne

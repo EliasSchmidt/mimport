@@ -371,6 +371,19 @@ document.body.addEventListener("click", (event) => {
   const button = event.target.closest("[data-artist-choose]");
   if (!button) return;
 
+  const name = String(button.dataset.name || "").trim();
+  const value = String(button.dataset.mbid || "").trim();
+  if (!name || !value) return;
+
+  // Mehrere " / "-getrennte Namen (Kollaboration, Chor + Dirigent, ...):
+  // jeder Name hat seinen eigenen Abschnitt mit eigener Auswahl, statt dass
+  // "Übernehmen" wie sonst das ganze Feld überschreibt.
+  const slot = button.closest("[data-name-slot]");
+  if (slot) {
+    mehrfachUebernehmen(slot, name, value);
+    return;
+  }
+
   const form = manualContainer(button);
   if (!form) return;
 
@@ -378,10 +391,8 @@ document.body.addEventListener("click", (event) => {
   const input = artistZielFeld(form, field);
   const mbid = artistZielMbid(form, field);
   const result = artistZielErgebnis(form, field);
-  const name = String(button.dataset.name || "").trim();
-  const value = String(button.dataset.mbid || "").trim();
   const label = String(button.dataset.fieldLabel || field || "Künstler");
-  if (!input || !mbid || !result || !name || !value) return;
+  if (!input || !mbid || !result) return;
 
   input.value = name;
   mbid.value = value;
@@ -392,6 +403,39 @@ document.body.addEventListener("click", (event) => {
     `${name} wird mit Artist-ID geschrieben.`,
   );
 });
+
+/** Eine Auswahl innerhalb eines Mehrfach-Namen-Abschnitts einordnen und das
+ * Feld aus allen bisherigen Auswahlen (oder, wo noch nichts gewählt wurde,
+ * dem ursprünglich getippten Namen) neu zusammensetzen. */
+function mehrfachUebernehmen(slot, name, value) {
+  slot.dataset.chosenName = name;
+  slot.dataset.chosenMbid = value;
+  const status = slot.querySelector("[data-artist-multi-status]");
+  if (status) {
+    status.innerHTML = artistStatusHtml("ok", "Übernommen", `${name} wird verwendet.`);
+  }
+  mehrfachZusammensetzen(slot.closest("[data-artist-multi]"));
+}
+
+function mehrfachZusammensetzen(gruppe) {
+  if (!gruppe) return;
+  const form = manualContainer(gruppe);
+  const field = gruppe.dataset.field || "";
+  const input = artistZielFeld(form, field);
+  const mbid = artistZielMbid(form, field);
+  if (!input || !mbid) return;
+
+  const slots = [...gruppe.querySelectorAll("[data-name-slot]")];
+  const namen = slots.map((s) => s.dataset.chosenName || s.dataset.originalName || "");
+  const ids = slots.map((s) => s.dataset.chosenMbid || "");
+  // Nur wenn wirklich jeder Name eine Artist-ID hat, schreiben wir sie --
+  // eine halbe Liste wäre mehrdeutig, welcher Name zu welcher ID gehört.
+  const vollstaendig = ids.length > 0 && ids.every((id) => id);
+
+  input.value = namen.join(" / ");
+  mbid.dataset.selectedName = input.value;
+  mbid.value = vollstaendig ? ids.join("; ") : "";
+}
 
 document.body.addEventListener("input", (event) => {
   const input = event.target.closest("[data-artist-field]");

@@ -70,7 +70,12 @@ def apply_album_match(match: Any, *, from_scratch: bool = False) -> TagWriteResu
 #: Felder, die beets mehrwertig führt. Ein einzelner String landet dort sonst
 #: als flexibles Attribut und **wird nicht in die Datei geschrieben** -- genau
 #: das passierte mit "genre", das in beets 2.x "genres" heißt.
-_MEHRWERTIG = {"genres": "genre", "artists": "artist", "albumartists": "albumartist"}
+_MEHRWERTIG = {
+    "genres": "genre",
+    "artists": "artist",
+    "albumartists": "albumartist",
+    "composers": "composer",
+}
 _ID_MEHRWERTIG = {
     "mb_artistids": "mb_artistid",
     "mb_albumartistids": "mb_albumartistid",
@@ -110,6 +115,16 @@ def sampler_name() -> str:
 def _kuenstlerwerte(value: object) -> list[str]:
     """Zerlegt eine Eingabe wie ``A feat. B`` in einzelne Namen."""
     return [teil.strip() for teil in _KUENSTLER_TRENNER.split(str(value)) if teil.strip()]
+
+
+def kuenstlerliste(value: object) -> list[str]:
+    """Öffentliche Fassung von :func:`_kuenstlerwerte`.
+
+    Die Mehrfach-Suche im UI (``routes.artist_match``) muss dieselbe Zerlegung
+    verwenden wie das spätere Schreiben, sonst würde die MusicBrainz-Suche
+    andere Namen sehen als am Ende in die Datei wandern.
+    """
+    return _kuenstlerwerte(value)
 
 
 def _genrewerte(value: object) -> list[str]:

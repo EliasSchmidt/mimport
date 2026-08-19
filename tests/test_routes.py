@@ -1415,6 +1415,38 @@ class TestManuellTaggen:
         assert medien.genre == "Krautrock"
         assert medien.genres == ["Krautrock", "Psychedelic Rock"]
 
+    def test_komponist_landet_getrennt_vom_interpreten_in_der_datei(self, client):
+        """Klassik: Chor/Orchester steht bei Künstler, der Komponist separat."""
+        import mediafile
+
+        session = self._session_mit(["01.flac"])
+        client.post(
+            f"/manual/{session.session_id}",
+            data={
+                "albumartist": "Windsbacher Knabenchor",
+                "album": "Nun singet und seid froh",
+                "composer": "Johann Sebastian Bach",
+            },
+        )
+
+        medien = mediafile.MediaFile(session.directory / "01.flac")
+        assert medien.albumartist == "Windsbacher Knabenchor"
+        assert medien.composer == "Johann Sebastian Bach"
+        assert medien.composers == ["Johann Sebastian Bach"]
+
+    def test_mehrere_komponisten_werden_aufgetrennt(self, client):
+        import mediafile
+
+        session = self._session_mit(["01.flac"])
+        client.post(
+            f"/manual/{session.session_id}",
+            data={"composer": "Johann Sebastian Bach; Georg Friedrich Händel"},
+        )
+
+        medien = mediafile.MediaFile(session.directory / "01.flac")
+        assert medien.composer == "Johann Sebastian Bach"
+        assert medien.composers == ["Johann Sebastian Bach", "Georg Friedrich Händel"]
+
     def test_manuell_gewaehlte_artist_ids_werden_uebernommen(self, client):
         import mediafile
 
@@ -1465,6 +1497,37 @@ class TestManuellTaggen:
         assert "Alligatoah" in response.text
         assert "bde41239-2535-4b28-b6e5-1074f990a14a" in response.text
         assert 'data-artist-choose' in response.text
+
+    def test_artist_match_trennt_mehrere_namen_getrennt_auf(self, client, monkeypatch):
+        """``Artist A / Artist B`` (z. B. Chor + Dirigent) soll nicht als ein
+        einziger String bei MusicBrainz gesucht werden -- das fände so gut
+        wie nie einen Treffer -- sondern als zwei getrennte Suchen mit je
+        eigener Auswahl."""
+        from backend import routes
+        from backend.artist_ids import ArtistMatch
+
+        gesuchte_namen: list[str] = []
+
+        def stub(name, **kwargs):
+            gesuchte_namen.append(name)
+            return (
+                ArtistMatch(name=name, mbid=f"mbid-{name}", exact=True),
+            )
+
+        monkeypatch.setattr(routes.artist_ids, "search", stub)
+
+        session = self._session_mit(["01.flac"])
+        response = client.post(
+            f"/artist-match/{session.session_id}",
+            data={"field": "albumartist", "albumartist": "Windsbacher Knabenchor / Karl-Friedrich Beringer"},
+        )
+        assert response.status_code == 200
+        assert gesuchte_namen == ["Windsbacher Knabenchor", "Karl-Friedrich Beringer"]
+        assert "2 Künstler erkannt" in response.text
+        assert 'data-name-slot="0"' in response.text
+        assert 'data-name-slot="1"' in response.text
+        assert "Windsbacher Knabenchor" in response.text
+        assert "Karl-Friedrich Beringer" in response.text
 
     def test_ohne_eingabe_wird_nichts_geschrieben(self, client):
         session = self._session_mit(["01.flac"])

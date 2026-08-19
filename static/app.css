@@ -207,6 +207,9 @@ main, .page-head, .page-foot { max-width: 62rem; margin: 0 auto; }
 .artist-match-item.exact { border-color: var(--ok); }
 .artist-match-copy { min-width: 0; }
 .artist-match-copy .mono { word-break: break-all; }
+.artist-match-multi { display: grid; gap: 0.7rem; }
+.artist-match-group { border: 1px solid var(--border); border-radius: 6px; padding: 0.6rem; }
+.artist-match-group h5 { margin: 0 0 0.4rem; font-size: 0.9rem; }
 
 /* Aufklappbarer MB-Link-Fix und Titelliste in der Albenliste. */
 .artist-fix { display: inline-block; margin: 0.35rem 0 0; }

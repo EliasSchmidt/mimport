@@ -75,18 +75,24 @@ def _storage_allowance(was: str = "Upload") -> tuple[int, str]:
     grenzen = [
         (
             settings.max_upload_bytes,
-            f"{was} überschreitet das Limit von "
-            f"{settings.max_upload_bytes / 1024**3:.1f} GB.",
+            (
+                f"{was} überschreitet das Limit von "
+                f"{settings.max_upload_bytes / 1024**3:.1f} GB."
+            ),
         ),
         (
             frei,
-            "Auf dem Server ist nicht genug Speicherplatz frei. Bitte zuerst "
-            "laufende Importe abschließen.",
+            (
+                "Auf dem Server ist nicht genug Speicherplatz frei. Bitte zuerst "
+                "laufende Importe abschließen."
+            ),
         ),
         (
             budget,
-            "Der Staging-Bereich ist ausgelastet. Bitte zuerst laufende "
-            "Importe abschließen oder nicht mehr benötigte Uploads verwerfen.",
+            (
+                "Der Staging-Bereich ist ausgelastet. Bitte zuerst laufende "
+                "Importe abschließen oder nicht mehr benötigte Uploads verwerfen."
+            ),
         ),
     ]
     return min(grenzen, key=lambda grenze: grenze[0])

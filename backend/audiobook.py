@@ -773,6 +773,7 @@ def _cover_aus_datei_holen(buch: Path, quelle: Path, *, temp_name: str) -> bool:
             text=True,
             stdin=subprocess.DEVNULL,
             timeout=COVER_EINBETTEN_TIMEOUT,
+            check=False,
         )
         if ergebnis.returncode != 0 or not vorlaeufig.is_file():
             return False
@@ -836,7 +837,7 @@ def cover_nachziehen() -> int:
         try:
             if cover_nachziehen_buch(zustand.path):
                 geholt += 1
-        except Exception:  # noqa: BLE001 -- ein Buch darf den Lauf nicht beenden
+        except Exception:
             log.exception("Cover aus %s fehlgeschlagen", zustand.path)
     if geholt:
         log.info("%d Cover aus Hörbüchern geholt", geholt)
@@ -947,7 +948,7 @@ def _bauen(
         job.fehler = str(exc)
         job.meldung = f"Der m4b-Bau ist nach {job.dauer_text} fehlgeschlagen."
         log.warning("m4b-Bau abgebrochen: %s", exc)
-    except Exception as exc:  # noqa: BLE001 -- der Thread darf nie still sterben
+    except Exception as exc:
         job.beendet = time.monotonic()
         job.zustand = "fehler"
         job.fehler = f"Unerwarteter Fehler: {exc}"
@@ -1000,7 +1001,7 @@ def _beenden(prozess: Any) -> None:
             prozess.wait(timeout=10)
         except subprocess.TimeoutExpired:
             log.error("ffmpeg reagiert auch auf SIGKILL nicht.")
-    except Exception:  # noqa: BLE001 -- der Prozess war schon fort
+    except Exception:  # noqa: BLE001, S110 -- der Prozess war schon fort
         pass
 
 
@@ -1216,6 +1217,7 @@ def cover_einbetten(buch: Path, bild: Path) -> str:
                 text=True,
                 stdin=subprocess.DEVNULL,
                 timeout=COVER_EINBETTEN_TIMEOUT,
+                check=False,
             )
         except subprocess.TimeoutExpired as exc:
             raise AudiobookError(

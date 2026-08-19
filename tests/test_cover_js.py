@@ -25,6 +25,7 @@ SKRIPT = Path(__file__).parent / "js" / "cover.mjs"
 @braucht_node
 def test_mathematik_und_eckensuche():
     """Läuft die Prüfung in Node und übernimmt deren Urteil."""
+    assert NODE is not None
     ergebnis = subprocess.run(
         [NODE, str(SKRIPT)],
         cwd=Path(__file__).parent.parent,

@@ -96,7 +96,7 @@ def inspect_file(path: Path, display_name: str | None = None) -> AudioInfo:
         grund = str(exc).rsplit(": ", 1)[-1].strip() or "unbekannter Grund"
         info.error = f"Datei nicht lesbar: {grund}"
         return info
-    except Exception as exc:  # defekte Uploads sollen nicht die Seite killen
+    except Exception as exc:  # noqa: BLE001 -- defekte Uploads sollen nicht die Seite killen
         info.error = f"Fehler beim Lesen: {exc}"
         return info
 

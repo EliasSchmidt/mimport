@@ -238,10 +238,30 @@ textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; 
 }
 
 /* htmx blendet Indikatoren über diese Klasse ein und aus. */
-.spinner { color: var(--text-dim); font-size: 0.85rem; }
+.spinner { color: var(--text-dim); font-size: 0.85rem; display: inline-flex; align-items: center; gap: 0.4rem; }
 .htmx-indicator { display: none; }
 .htmx-request .htmx-indicator,
 .htmx-request.htmx-indicator { display: inline; }
+
+/* Kleiner rotierender Ring -- MusicBrainz-Anfragen dauern spürbar (Drosselung
+   auf ~1 Anfrage/Sekunde); reiner Text ("frage MusicBrainz …") ging vorher
+   im UI leicht unter. */
+.spinner-ring {
+    width: 0.9em;
+    height: 0.9em;
+    align-self: center;
+    flex: none;
+    border: 0.15em solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spinner-drehen 0.7s linear infinite;
+}
+.htmx-request .spinner-ring,
+.htmx-request.spinner-ring { display: inline-block; }
+
+@keyframes spinner-drehen {
+    to { transform: rotate(360deg); }
+}
 
 /* --- Hinweisfelder ---------------------------------------------------- */
 

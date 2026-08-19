@@ -7,6 +7,11 @@
     <strong>Noch kein MusicBrainz-Match gesucht</strong>
     <p>Gib erst einen Namen ein und starte dann die Suche.</p>
 </div>
+{% elif lookup_failed %}
+<div class="banner warn artist-match-banner">
+    <strong>MusicBrainz war gerade nicht erreichbar</strong>
+    <p>Das ist kein „kein Treffer“ -- bitte den Button einfach noch einmal drücken.</p>
+</div>
 {% elif not matches %}
 <div class="banner warn artist-match-banner">
     <strong>Kein MusicBrainz-Treffer für „{{ query }}“</strong>

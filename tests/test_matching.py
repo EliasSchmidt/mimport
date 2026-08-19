@@ -196,6 +196,58 @@ class TestFindCandidates:
         assert "MusicBrainz nicht erreichbar" in result.error
         assert not result.has_candidates
 
+    def test_nur_kuenstler_angegeben_geht_nicht_verloren(self, monkeypatch, tmp_path):
+        """beets' tag_album() verwirft *beide* Suchbegriffe, sobald einer fehlt
+        (``if not (search_artist and search_name): search_artist, search_name =
+        cur_artist, cur_album``) -- wer also nur den Künstler einträgt und das
+        Album leer lässt, würde sonst stillschweigend wieder mit den (oft
+        falschen) Tags aus der Datei statt der eigenen Eingabe suchen.
+        """
+        monkeypatch.setattr(matching, "load_items", lambda paths: [object()])
+
+        gesehen = {}
+
+        def stub(items, *, search_artist=None, search_name=None, search_ids=()):
+            gesehen["search_artist"] = search_artist
+            gesehen["search_name"] = search_name
+            from beets.autotag import Proposal, Recommendation
+
+            return "", "", Proposal([], Recommendation.none)
+
+        import beets.autotag
+
+        monkeypatch.setattr(beets.autotag, "tag_album", stub)
+
+        matching.find_candidates([tmp_path / "irgendwas.flac"], artist="Windsbacher Knabenchor")
+
+        assert gesehen["search_artist"] == "Windsbacher Knabenchor"
+        # Nur so wichtig, dass tag_album es nicht als "kein Suchbegriff" wertet --
+        # der eigentliche MusicBrainz-Query filtert Leerraum ohnehin wieder heraus.
+        assert gesehen["search_name"].strip() == ""
+
+    def test_kein_suchbegriff_laesst_beets_die_tags_verwenden(self, monkeypatch, tmp_path):
+        """Ohne jede Eingabe bleibt das bisherige Verhalten -- beets sucht selbst
+        anhand der vorhandenen Tags -- unverändert."""
+        monkeypatch.setattr(matching, "load_items", lambda paths: [object()])
+
+        gesehen = {}
+
+        def stub(items, *, search_artist=None, search_name=None, search_ids=()):
+            gesehen["search_artist"] = search_artist
+            gesehen["search_name"] = search_name
+            from beets.autotag import Proposal, Recommendation
+
+            return "", "", Proposal([], Recommendation.none)
+
+        import beets.autotag
+
+        monkeypatch.setattr(beets.autotag, "tag_album", stub)
+
+        matching.find_candidates([tmp_path / "irgendwas.flac"])
+
+        assert gesehen["search_artist"] is None
+        assert gesehen["search_name"] is None
+
 
 @pytest.mark.network
 class TestGegenMusicbrainz:
@@ -228,6 +280,31 @@ class TestGegenMusicbrainz:
         assert best.missing_tracks
         assert best.confidence < 100
         assert any("fehlen" in label for label, _ in best.penalties)
+
+    def test_nur_kuenstler_findet_den_richtigen_kuenstler_bei_beets(self, monkeypatch):
+        """End-zu-Ende-Beleg für den Leerzeichen-Platzhalter aus
+        ``find_candidates``: Dateien mit irreführenden Tags, aber ein Nutzer,
+        der nur den (leicht falsch geschriebenen) Künstler einträgt und das
+        Album-Feld leer lässt -- genau der vom Nutzer gemeldete Fall.
+        """
+        from beets.library import Item
+
+        # Bewusst nutzlose/irreführende Tags, wie sie ein schlecht getaggter
+        # Rip mitbringt -- ohne den Suchbegriff-Override würde beets damit
+        # suchen und Kandidaten liefern, die nichts mit dem Chor zu tun haben.
+        items = [
+            Item(artist="Unbekannt", album="Unbekanntes Album", title="Track 1", track=1)
+        ]
+        monkeypatch.setattr(matching, "load_items", lambda paths: items)
+
+        result = matching.find_candidates(
+            [], artist="Windsbacher Knabechor"  # Tippfehler wie vom Nutzer gemeldet
+        )
+
+        assert result.has_candidates, result.error or result.note
+        assert any(
+            "Windsbacher Knabenchor" in c.albumartist for c in result.candidates
+        ), [c.albumartist for c in result.candidates[:5]]
 
 
 class TestBeetCliVersion:

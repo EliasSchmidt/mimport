@@ -283,6 +283,45 @@ class TestImportSperre:
         response = client.post(f"/import/{session.session_id}", data={"pretend": "1"})
         assert "gesperrt" not in response.text
         assert "Probelauf" in response.text
+        # Ein Probelauf hat nichts abgeschlossen -- der "Fertig"-Knopf würde hier
+        # vorgaukeln, dass schon etwas passiert ist.
+        assert "Fertig" not in response.text
+
+    def test_abgeschlossener_import_bietet_einen_fertig_knopf(self, client, monkeypatch):
+        """Nach einem echten (nicht simulierten) Import soll es zurück in ein
+        sauberes /musik gehen, statt mitten in der abgehakten Sitzung
+        hängenzubleiben."""
+        from backend import beets_env, importer
+
+        monkeypatch.setattr(
+            beets_env,
+            "health",
+            lambda: {
+                "beets_version": "2.13.1",
+                "beet_cli_version": "2.13.1",
+                "metadata_sources": ["musicbrainz"],
+                "fingerprint": False,
+                "problems": [],
+                "import_ready": True,
+            },
+        )
+        monkeypatch.setattr(
+            importer,
+            "run_import",
+            lambda directory, pretend=False: importer.ImportResult(
+                command=["beet", "import", "-A", str(directory)],
+                returncode=0,
+                stdout="importiert",
+            ),
+        )
+
+        session = sessions.create_session()
+        (session.directory / "a.flac").write_bytes(b"fLaC\x00\x00\x00\x22")
+        response = client.post(f"/import/{session.session_id}", data={})
+
+        assert "Import abgeschlossen" in response.text
+        assert 'href="/musik"' in response.text
+        assert "Fertig" in response.text
 
 
 class TestUploadGrenzen:

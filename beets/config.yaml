@@ -125,4 +125,6 @@ fetchart:
   cautious: true
   cover_names: cover
   fetch_for_asis: yes
-  sources: filesystem coverart
+  sources:
+    - filesystem
+    - coverart

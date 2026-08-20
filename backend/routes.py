@@ -53,34 +53,53 @@ router = APIRouter()
 CHUNK_SIZE = 1024 * 1024
 
 
-def _interpret_modus(wert: str) -> trackparse.InterpretModus:
-    if wert in ("interpret_titel", "titel_interpret", "naechste_zeile"):
-        return wert
-    return ""
+_FELD_WERTE = {"titel", "interpret", "komponist"}
 
 
-def _track_zahl_warnung(erkannt: int, erwartet: int, interpret: trackparse.InterpretModus) -> str:
-    """Bei "nächste Zeile" halbiert sich die Trackzahl gegenüber den
+def _felder(*rohe: str) -> tuple[trackparse.Feld, ...]:
+    """Baut die Feld-Reihenfolge aus den drei Positions-Auswahlfeldern.
+
+    Leere Positionen (nichts ausgewählt) und Duplikate (dasselbe Feld
+    zweimal gewählt) fallen einfach raus, statt einen Fehler zu werfen --
+    bei einer Handvoll Dropdowns ist das plausibler als eine strenge
+    Validierung. Ganz leer (nichts gewählt) heißt "nur Titel", die Vorgabe.
+    """
+    ergebnis: list[trackparse.Feld] = []
+    for wert in rohe:
+        wert = wert.strip()
+        if wert in _FELD_WERTE and wert not in ergebnis:
+            ergebnis.append(wert)  # type: ignore[arg-type]
+    return tuple(ergebnis) or ("titel",)
+
+
+def _track_zahl_warnung(erkannt: int, erwartet: int, flags: trackparse.ParseFlags) -> str:
+    """Bei "zeilenweise" halbiert (o. ä.) sich die Trackzahl gegenüber den
     OCR-Zeilen -- "Zeile(n)" wäre dann eine falsche Einheit."""
-    einheit = "Track(s)" if interpret == "naechste_zeile" else "Zeile(n)"
+    zeilenweise = flags.zeilenweise and len(flags.felder) > 1
+    einheit = "Track(s)" if zeilenweise else "Zeile(n)"
     return f"Parser hat {erkannt} {einheit} erkannt, Session enthält {erwartet} Datei(en)."
 
 
 def _parse_flags(draft: dict[str, str]) -> trackparse.ParseFlags:
     """Die zuletzt gewählten Parser-Schalter aus dem Entwurf, sonst die Vorgabe.
 
-    Ein Kästchen (bzw. beim Interpret-Auswahlfeld: ein nicht-leerer Wert)
-    taucht im Entwurf nur auf, wenn es beim letzten Autosave gesetzt war --
-    Abwesenheit heißt "abgewählt", nicht "noch nie gesetzt". Für einen
-    frischen Entwurf (noch gar nichts gespeichert) gelten stattdessen die
-    Vorgaben aus ``ParseFlags``.
+    Ein Kästchen taucht im Entwurf nur auf, wenn es beim letzten Autosave
+    gesetzt war -- Abwesenheit heißt "abgewählt", nicht "noch nie gesetzt".
+    Für einen frischen Entwurf (noch gar nichts gespeichert) gelten
+    stattdessen die Vorgaben aus ``ParseFlags``.
     """
     if not draft:
         return trackparse.ParseFlags()
     return trackparse.ParseFlags(
         tracknummer="tracknummer" in draft,
-        interpret=_interpret_modus(str(draft.get("interpret") or "")),
         dauer="dauer" in draft,
+        felder=_felder(
+            str(draft.get("feld1") or ""),
+            str(draft.get("feld2") or ""),
+            str(draft.get("feld3") or ""),
+        ),
+        zeilenweise="zeilenweise" in draft,
+        trenner=str(draft.get("trenner") or " - "),
     )
 
 
@@ -105,19 +124,25 @@ def _entwurf_nach_ocr_lauf(
     for name, gesetzt in (
         ("tracknummer", flags.tracknummer),
         ("dauer", flags.dauer),
+        ("zeilenweise", flags.zeilenweise),
     ):
         if gesetzt:
             draft[name] = "true"
         else:
             draft.pop(name, None)
-    if flags.interpret:
-        draft["interpret"] = flags.interpret
-    else:
-        draft.pop("interpret", None)
+    for index in range(3):
+        name = f"feld{index + 1}"
+        wert = flags.felder[index] if index < len(flags.felder) else ""
+        if wert:
+            draft[name] = wert
+        else:
+            draft.pop(name, None)
+    draft["trenner"] = flags.trenner
     for row in rows:
         for praefix, wert in (
             ("titel", row["title"]),
             ("interpret", row["artist"]),
+            ("komponist", row["composer"]),
             ("nr", row["track"]),
         ):
             key = f"{praefix}:{row['key']}"
@@ -307,10 +332,9 @@ def _track_inputs(
         # verwirft sie selbst, sobald der Name danach abweicht (bevor der
         # nächste Autosave den veralteten Stand sichern könnte).
         mbid = str(draft.get(f"mbinterpret:{file['key']}") or "").strip()
-        # Kein Parser liefert das -- bei Klassik-Compilations hat jeder Track
-        # einen eigenen Komponisten, den kein OCR-Layout zuverlässig einer
-        # Zeile zuordnen könnte. Kommt daher ausschließlich aus dem Entwurf.
-        composer = str(draft.get(f"komponist:{file['key']}") or "").strip()
+        composer = (row.composer if row else "").strip()
+        if not composer:
+            composer = str(draft.get(f"komponist:{file['key']}") or "").strip()
         rows.append(
             {
                 "key": file["key"],
@@ -1352,14 +1376,22 @@ async def ocr_backcover(
     session_id: str,
     bild: UploadFile | None = File(default=None),
     tracknummer: bool = Form(default=False),
-    interpret: str = Form(default=""),
+    feld1: str = Form(default=""),
+    feld2: str = Form(default=""),
+    feld3: str = Form(default=""),
+    zeilenweise: bool = Form(default=False),
+    trenner: str = Form(default=" - "),
     dauer: bool = Form(default=False),
 ) -> HTMLResponse:
     """Liest Text aus einem Backcover-Bild und füllt die Trackliste vor."""
     session = _session_or_404(session_id)
     warnings: list[str] = []
     flags = trackparse.ParseFlags(
-        tracknummer=tracknummer, interpret=_interpret_modus(interpret), dauer=dauer
+        tracknummer=tracknummer,
+        dauer=dauer,
+        felder=_felder(feld1, feld2, feld3),
+        zeilenweise=zeilenweise,
+        trenner=trenner or " - ",
     )
 
     if bild is None:
@@ -1416,7 +1448,7 @@ async def ocr_backcover(
     )
     warnings.extend(result.warnings)
     if len(parsed) != len(session.audio_paths):
-        warnings.append(_track_zahl_warnung(len(parsed), len(session.audio_paths), flags.interpret))
+        warnings.append(_track_zahl_warnung(len(parsed), len(session.audio_paths), flags))
 
     rows = _track_inputs(session, parsed)
     _entwurf_nach_ocr_lauf(session, result.text, flags, rows)
@@ -1438,13 +1470,21 @@ async def ocr_parse(
     session_id: str,
     ocr_text: str = Form(default=""),
     tracknummer: bool = Form(default=False),
-    interpret: str = Form(default=""),
+    feld1: str = Form(default=""),
+    feld2: str = Form(default=""),
+    feld3: str = Form(default=""),
+    zeilenweise: bool = Form(default=False),
+    trenner: str = Form(default=" - "),
     dauer: bool = Form(default=False),
 ) -> HTMLResponse:
     """Wendet die gewählten Parser-Schalter auf den OCR-Text an."""
     session = _session_or_404(session_id)
     flags = trackparse.ParseFlags(
-        tracknummer=tracknummer, interpret=_interpret_modus(interpret), dauer=dauer
+        tracknummer=tracknummer,
+        dauer=dauer,
+        felder=_felder(feld1, feld2, feld3),
+        zeilenweise=zeilenweise,
+        trenner=trenner or " - ",
     )
 
     warnings: list[str] = []
@@ -1453,7 +1493,7 @@ async def ocr_parse(
     if not text:
         warnings.append("Noch kein OCR-Text vorhanden.")
     elif len(parsed) != len(session.audio_paths):
-        warnings.append(_track_zahl_warnung(len(parsed), len(session.audio_paths), flags.interpret))
+        warnings.append(_track_zahl_warnung(len(parsed), len(session.audio_paths), flags))
 
     rows = _track_inputs(session, parsed)
     if text:

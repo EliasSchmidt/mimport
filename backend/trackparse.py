@@ -3,12 +3,16 @@
 Der Zweck ist nicht, semantisch "klug" zu raten, sondern häufige Layouts mit
 klaren Regeln in ein editierbares Formular zu überführen.
 
-Statt eines festen Katalogs an Layout-"Modi" (die in Wahrheit immer dieselben
-Operationen kombinieren) sind das unabhängige Schalter: jede Zeile kann
-optional eine Tracknummer vorn und eine Dauer am Ende haben; der Interpret
-kann fehlen, in derselben Zeile stehen (in beiden Reihenfolgen) oder sich mit
-dem Titel zeilenweise abwechseln. Das deckt die üblichen Backcover-Layouts
-ab, ohne dass für jedes neue Layout ein neuer Modus erfunden werden muss.
+Statt eines festen Katalogs an Layout-"Modi" sind das unabhängige Schalter:
+jede Zeile kann optional eine Tracknummer vorn und eine Dauer am Ende haben
+(feste Position, deshalb je ein eigener Schalter statt Teil der Reihenfolge).
+Was dazwischen übrig bleibt -- Titel, Interpret, Komponist -- ordnet
+``felder`` in beliebiger Reihenfolge an; ``trenner`` legt fest, woran diese
+Felder in derselben Zeile auseinandergehalten werden, und ``zeilenweise``
+schaltet stattdessen auf ein Feld pro Zeile um (reihum). Das deckt sowohl
+Backcover mit "Interpret - Titel" als auch Klassik-Compilations mit
+"Komponist - Titel" (ganz ohne Track-Interpret) ab, ohne dass für jedes neue
+Layout ein neuer Modus erfunden werden muss.
 """
 
 from __future__ import annotations
@@ -17,7 +21,10 @@ import re
 from dataclasses import dataclass
 from typing import Literal
 
-InterpretModus = Literal["", "interpret_titel", "titel_interpret", "naechste_zeile"]
+Feld = Literal["titel", "interpret", "komponist"]
+
+#: Auf welches Feld von ``ParsedTrack`` sich ein Layout-Feld abbildet.
+_FELD_ATTR = {"titel": "title", "interpret": "artist", "komponist": "composer"}
 
 
 @dataclass
@@ -26,6 +33,7 @@ class ParsedTrack:
 
     number: str = ""
     artist: str = ""
+    composer: str = ""
     title: str = ""
     duration: str = ""
 
@@ -34,15 +42,18 @@ class ParsedTrack:
 class ParseFlags:
     """Welche Bestandteile eine Zeile hat -- Grundlage für den Parser.
 
-    ``interpret`` ist bewusst kein Ja/Nein-Schalter neben
-    ``tracknummer``/``dauer``: die möglichen Layouts schließen sich
-    gegenseitig aus, ein Auswahlfeld statt mehrerer Checkboxen macht das in
-    der Oberfläche und im Code unmissverständlich.
+    ``felder`` ist die Reihenfolge, in der Titel/Interpret/Komponist
+    vorkommen (fehlende Felder sind einfach nicht in der Liste, ein Feld
+    kann nur einmal vorkommen). ``trenner`` trennt sie innerhalb derselben
+    Zeile; ``zeilenweise`` schaltet stattdessen auf ein Feld pro Zeile um,
+    reihum in derselben Reihenfolge.
     """
 
     tracknummer: bool = True
-    interpret: InterpretModus = ""
     dauer: bool = True
+    felder: tuple[Feld, ...] = ("titel",)
+    zeilenweise: bool = False
+    trenner: str = " - "
 
 
 #: Ziffern *und* ihre klassischen OCR-Verwechslungen ("O" statt "0", "I"/"l"
@@ -79,59 +90,72 @@ def _strip_track_prefix(line: str) -> tuple[str, str]:
     return match.group("num"), match.group("rest").strip()
 
 
-def _split_zeile(text: str) -> tuple[str, str] | None:
-    """Trennt eine Zeile an " - " in zwei Teile, ohne sie zuzuordnen --
-    welcher Teil Titel und welcher Interpret ist, entscheidet der Aufrufer
-    anhand der gewählten Reihenfolge."""
-    if " - " not in text:
-        return None
-    erster, zweiter = text.split(" - ", 1)
-    return erster.strip(), zweiter.strip()
+def _teile_werte(text: str, felder: tuple[Feld, ...], trenner: str) -> dict[str, str]:
+    """Verteilt den freien Rest einer Zeile auf die gewählten Felder.
 
-
-def _zeilenpaare(lines: list[str], interpret: InterpretModus) -> list[tuple[str, str]]:
-    """Bildet (Titelzeile, Interpretzeile)-Paare -- oder Titelzeilen ohne Partner.
-
-    Bei ``naechste_zeile`` halbiert sich die Trackzahl gegenüber der
-    Zeilenzahl; eine Zeile ohne Partner (ungerade Zeilenzahl) bleibt als
-    Titel ohne Interpret stehen, statt verworfen zu werden.
+    Reihenfolge und Trennzeichen sind frei wählbar -- welches Feld an
+    welcher Stelle steht, entscheidet ausschließlich ``felder``. Lässt sich
+    die Zeile nicht in genügend Teile zerlegen (Trenner kommt zu selten vor,
+    oder es ist nur ein Feld gewählt), bleibt der komplette Rest im Titel
+    stehen, statt stillschweigend zu verschwinden.
     """
-    if interpret != "naechste_zeile":
-        return [(line, "") for line in lines]
-    paare = list(zip(lines[0::2], lines[1::2]))
-    if len(lines) % 2:
-        paare.append((lines[-1], ""))
-    return paare
+    text = text.strip()
+    if len(felder) > 1 and trenner:
+        teile = [teil.strip() for teil in text.split(trenner, len(felder) - 1)]
+        if len(teile) == len(felder):
+            return {_FELD_ATTR[feld]: teil for feld, teil in zip(felder, teile)}
+    return {"title": text}
+
+
+def _zeilengruppen(lines: list[str], groesse: int) -> list[list[str]]:
+    groesse = max(groesse, 1)
+    return [lines[i : i + groesse] for i in range(0, len(lines), groesse)]
+
+
+def _gruppenwerte(gruppe: list[str], felder: tuple[Feld, ...]) -> dict[str, str]:
+    """Ordnet eine Gruppe aufeinanderfolgender Zeilen den Feldern zu.
+
+    Passt eine Gruppe nicht voll (letzte Zeile ohne Partner, z. B. bei
+    ungerader Zeilenzahl), bleibt ihr Inhalt als Titel stehen, statt
+    verworfen zu werden -- die Oberfläche zeigt ihn dann als unvollständige
+    Zeile zum Nachbessern.
+    """
+    if len(gruppe) == len(felder):
+        return {_FELD_ATTR[feld]: zeile.strip() for feld, zeile in zip(felder, gruppe)}
+    return {"title": gruppe[0].strip()}
 
 
 def parse_text(text: str, flags: ParseFlags) -> list[ParsedTrack]:
     """Wendet die gewählten Schalter auf OCR-Rohtext an."""
-    result: list[ParsedTrack] = []
+    felder = flags.felder or ("titel",)
+    zeilenweise = flags.zeilenweise and len(felder) > 1
+    lines = _split_lines(text)
+    gruppen = _zeilengruppen(lines, len(felder)) if zeilenweise else [[line] for line in lines]
 
-    for titel_zeile, interpret_zeile in _zeilenpaare(_split_lines(text), flags.interpret):
-        line = titel_zeile
+    result: list[ParsedTrack] = []
+    for gruppe in gruppen:
+        kopf = gruppe[0]
         duration = ""
         if flags.dauer:
-            line, duration = _extract_duration(line)
+            kopf, duration = _extract_duration(kopf)
 
         number = ""
         if flags.tracknummer:
-            number, line = _strip_track_prefix(line)
+            number, kopf = _strip_track_prefix(kopf)
 
-        artist = ""
-        if flags.interpret == "naechste_zeile":
-            artist = interpret_zeile.strip()
-        elif flags.interpret in ("interpret_titel", "titel_interpret"):
-            geteilt = _split_zeile(line)
-            if geteilt is not None:
-                erster, zweiter = geteilt
-                if flags.interpret == "titel_interpret":
-                    line, artist = erster, zweiter
-                else:
-                    artist, line = erster, zweiter
+        if zeilenweise:
+            werte = _gruppenwerte([kopf, *gruppe[1:]], felder)
+        else:
+            werte = _teile_werte(kopf, felder, flags.trenner)
 
         result.append(
-            ParsedTrack(number=number, artist=artist, title=line.strip(), duration=duration)
+            ParsedTrack(
+                number=number,
+                artist=werte.get("artist", ""),
+                composer=werte.get("composer", ""),
+                title=werte.get("title", ""),
+                duration=duration,
+            )
         )
 
     return result

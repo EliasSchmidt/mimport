@@ -321,7 +321,46 @@ class TestImportSperre:
 
         assert "Import abgeschlossen" in response.text
         assert 'href="/musik"' in response.text
-        assert "Fertig" in response.text
+
+    def test_abgeschlossener_import_vergisst_den_zugehoerigen_rip(
+        self, client, monkeypatch
+    ):
+        """Nach dem Import einer gerippten CD darf der Audio-CD-Reiter beim
+        nächsten Öffnen nicht mehr den Kopf der längst importierten Session
+        zeigen -- sonst bleibt nur "Verwerfen" von Hand, um wieder rippen zu
+        können."""
+        from backend import beets_env, importer, rip, sessions
+
+        monkeypatch.setattr(
+            beets_env,
+            "health",
+            lambda: {
+                "beets_version": "2.13.1",
+                "beet_cli_version": "2.13.1",
+                "metadata_sources": ["musicbrainz"],
+                "fingerprint": False,
+                "problems": [],
+                "import_ready": True,
+            },
+        )
+        monkeypatch.setattr(
+            importer,
+            "run_import",
+            lambda directory, pretend=False: importer.ImportResult(
+                command=["beet", "import", "-A", str(directory)],
+                returncode=0,
+                stdout="importiert",
+            ),
+        )
+
+        session = sessions.create_session()
+        (session.directory / "a.flac").write_bytes(b"fLaC\x00\x00\x00\x22")
+        job = rip.RipJob(zustand="fertig", session_id=session.session_id)
+        monkeypatch.setattr(rip, "_job", job)
+
+        client.post(f"/import/{session.session_id}", data={})
+
+        assert rip.current() is None
 
 
 class TestUploadGrenzen:

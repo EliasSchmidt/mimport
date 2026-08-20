@@ -30,20 +30,26 @@
                 <th>Interpret</th>
                 <td>{{ album.albumartist or "–" }}</td>
                 <td class="tag-mb">
-                    {% if album.has_albumartist_mbid %}
-                    <span class="mb-badge" title="{{ album.mb_albumartistid }}">MB</span>
-                    {% else %}
-                    <details class="artist-fix">
-                        <summary class="button secondary">MB-Link fixen</summary>
-                        <form hx-post="/albums/{{ album.id }}/artist-lookup"
-                              hx-target="#artist-match-album" hx-swap="innerHTML"
-                              class="picker">
-                            <input type="text" name="name" value="{{ album.albumartist }}">
-                            <button type="submit" class="button">Suchen</button>
-                        </form>
-                        <div id="artist-match-album"></div>
-                    </details>
-                    {% endif %}
+                    {% for name, mbid in album.kuenstler_links %}
+                    <div class="kuenstler-link-zeile">
+                        {% if album.kuenstler_links|length > 1 %}<span class="small">{{ name }}</span>{% endif %}
+                        {% if mbid %}
+                        <a class="mb-badge" href="https://musicbrainz.org/artist/{{ mbid }}"
+                           target="_blank" rel="noopener" title="{{ mbid }}">MB</a>
+                        {% else %}
+                        <details class="artist-fix">
+                            <summary class="button secondary">MB-Link fixen</summary>
+                            <form hx-post="/albums/{{ album.id }}/artist-lookup/{{ loop.index0 }}"
+                                  hx-target="#artist-match-album-{{ loop.index0 }}" hx-swap="innerHTML"
+                                  class="picker">
+                                <input type="text" name="name" value="{{ name }}">
+                                <button type="submit" class="button">Suchen</button>
+                            </form>
+                            <div id="artist-match-album-{{ loop.index0 }}"></div>
+                        </details>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
                 </td>
             </tr>
             <tr><th>Album</th><td colspan="2">{{ album.album or "–" }}</td></tr>
@@ -118,20 +124,26 @@
                         Speichern
                     </button>
 
-                    {% if t.has_artist_mbid %}
-                    <span class="mb-badge" title="{{ t.mb_artistid }}">MB</span>
-                    {% else %}
-                    <details class="artist-fix">
-                        <summary class="button secondary">MB-Link fixen</summary>
-                        <form hx-post="/albums/{{ album.id }}/tracks/{{ t.id }}/artist-lookup"
-                              hx-target="#track-match-{{ t.id }}" hx-swap="innerHTML"
-                              class="picker">
-                            <input type="text" name="name" value="{{ t.artist }}">
-                            <button type="submit" class="button">Suchen</button>
-                        </form>
-                        <div id="track-match-{{ t.id }}"></div>
-                    </details>
-                    {% endif %}
+                    {% for name, mbid in t.kuenstler_links %}
+                    <div class="kuenstler-link-zeile">
+                        {% if t.kuenstler_links|length > 1 %}<span class="small">{{ name }}</span>{% endif %}
+                        {% if mbid %}
+                        <a class="mb-badge" href="https://musicbrainz.org/artist/{{ mbid }}"
+                           target="_blank" rel="noopener" title="{{ mbid }}">MB</a>
+                        {% else %}
+                        <details class="artist-fix">
+                            <summary class="button secondary">MB-Link fixen</summary>
+                            <form hx-post="/albums/{{ album.id }}/tracks/{{ t.id }}/artist-lookup/{{ loop.index0 }}"
+                                  hx-target="#track-match-{{ t.id }}-{{ loop.index0 }}" hx-swap="innerHTML"
+                                  class="picker">
+                                <input type="text" name="name" value="{{ name }}">
+                                <button type="submit" class="button">Suchen</button>
+                            </form>
+                            <div id="track-match-{{ t.id }}-{{ loop.index0 }}"></div>
+                        </details>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
                 </td>
             </tr>
             {% endfor %}

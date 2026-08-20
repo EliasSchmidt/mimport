@@ -944,4 +944,11 @@ pre.output { max-height: 22rem; overflow-y: auto; }
     font-size: 0.65rem;
     font-weight: 700;
     letter-spacing: 0.02em;
+    text-decoration: none;
 }
+
+/* Eine Zeile je Interpret, wenn ein Album/Titel mehrere hat ("A feat. B"):
+   verbundene bekommen einen Link statt eines Suchwidgets, unverbundene
+   bleiben einzeln durchsuchbar. */
+.kuenstler-link-zeile { display: flex; align-items: center; justify-content: flex-end; gap: 0.4rem; }
+.kuenstler-link-zeile + .kuenstler-link-zeile { margin-top: 0.35rem; }

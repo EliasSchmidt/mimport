@@ -36,7 +36,7 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-from backend import cover
+from backend import cover, tagging
 from backend.config import settings
 from backend.importer import library_lock
 
@@ -47,21 +47,45 @@ log = logging.getLogger(__name__)
 #: Pipe.
 _TRENNER = "\x1f"
 
+#: Womit beets mehrere Werte *innerhalb* eines Feldes trennt (siehe
+#: ``_ID_MEHRWERTIG`` in ``tagging.py``). Nicht zu verwechseln mit
+#: ``_TRENNER`` oben, das die Felder *untereinander* trennt.
+_ID_TRENNER = "; "
+
 #: Reihenfolge muss zu ``_aus_zeile`` passen. ``$path`` ist bei einem Album
 #: ein berechnetes Feld (der Ordner der ersten Spur), keine Datenbankspalte.
+#: ``$mb_albumartistids`` steht am Ende, damit bestehende Indizes stabil
+#: bleiben.
 _FELDER = (
     "$id", "$albumartist", "$album", "$year", "$path", "$mb_albumartistid",
-    "$genres", "$label",
+    "$genres", "$label", "$mb_albumartistids",
 )
 _FORMAT = _TRENNER.join(_FELDER)
 
 #: Reihenfolge muss zu ``_track_aus_zeile`` passen.
-_TRACK_FELDER = ("$id", "$track", "$title", "$artist", "$mb_artistid")
+_TRACK_FELDER = ("$id", "$track", "$title", "$artist", "$mb_artistid", "$mb_artistids")
 _TRACK_FORMAT = _TRENNER.join(_TRACK_FELDER)
 
 
 class AlbumError(Exception):
     """Die Library-Abfrage oder das Einbetten des Covers ist fehlgeschlagen."""
+
+
+def _kuenstler_ids(namen: list[str], roh_ids: str, einzel_mbid: str) -> list[str]:
+    """Baut positionsgleich zu ``namen`` eine MBID-Liste, ein Eintrag je Name.
+
+    Fällt auf den alten Einzelwert zurück, wenn die Mehrfachform (noch) leer
+    ist -- Alben/Titel, die vor der Einzel-Verknüpfung schon einmal einen MB-
+    Link bekommen haben, kennen nur ``mb_albumartistid``/``mb_artistid``.
+    Passt die Länge trotzdem nicht zur Namensliste (z. B. weil der
+    Interpretenname nachträglich geändert wurde, ohne die MBIDs
+    anzufassen), gilt das als unverbunden statt Namen und IDs falsch
+    zuzuordnen.
+    """
+    ids = roh_ids.split(_ID_TRENNER) if roh_ids else ([einzel_mbid] if einzel_mbid else [])
+    if len(ids) != len(namen):
+        return [""] * len(namen)
+    return ids
 
 
 @dataclass(frozen=True)
@@ -74,6 +98,7 @@ class Album:
     mb_albumartistid: str = ""
     genres: str = ""
     label: str = ""
+    mb_albumartistids: str = ""
 
     @property
     def year_editierbar(self) -> str:
@@ -105,6 +130,18 @@ class Album:
     def has_albumartist_mbid(self) -> bool:
         return bool(self.mb_albumartistid)
 
+    @property
+    def kuenstler_links(self) -> list[tuple[str, str]]:
+        """(Name, MBID) je Album-Interpret, MBID leer wenn (noch) unverbunden.
+
+        Bei mehreren Interpreten (``"A feat. B"``) einzeln aufgelöst, damit
+        das UI jeden für sich verlinken oder suchen lassen kann, statt das
+        ganze Feld hinter einer einzigen Ja/Nein-Verknüpfung zu verstecken.
+        """
+        namen = tagging.kuenstlerliste(self.albumartist)
+        ids = _kuenstler_ids(namen, self.mb_albumartistids, self.mb_albumartistid)
+        return list(zip(namen, ids))
+
 
 @dataclass(frozen=True)
 class Track:
@@ -113,10 +150,18 @@ class Track:
     title: str
     artist: str
     mb_artistid: str = ""
+    mb_artistids: str = ""
 
     @property
     def has_artist_mbid(self) -> bool:
         return bool(self.mb_artistid)
+
+    @property
+    def kuenstler_links(self) -> list[tuple[str, str]]:
+        """Wie ``Album.kuenstler_links``, für den Titel-Interpreten."""
+        namen = tagging.kuenstlerliste(self.artist)
+        ids = _kuenstler_ids(namen, self.mb_artistids, self.mb_artistid)
+        return list(zip(namen, ids))
 
 
 def _lauf(args: list[str], *, timeout: int) -> subprocess.CompletedProcess[str]:
@@ -149,7 +194,7 @@ def _aus_zeile(zeile: str) -> Album | None:
         # Liste unbrauchbar machen.
         log.warning("Unerwartete beet-list-Zeile ignoriert: %r", zeile)
         return None
-    id_roh, albumartist, album, year, pfad, mb_albumartistid, genres, label = teile
+    id_roh, albumartist, album, year, pfad, mb_albumartistid, genres, label, mb_albumartistids = teile
     try:
         id_ = int(id_roh)
     except ValueError:
@@ -164,6 +209,7 @@ def _aus_zeile(zeile: str) -> Album | None:
         mb_albumartistid=mb_albumartistid,
         genres=genres,
         label=label,
+        mb_albumartistids=mb_albumartistids,
     )
 
 
@@ -172,14 +218,19 @@ def _track_aus_zeile(zeile: str) -> Track | None:
     if len(teile) != len(_TRACK_FELDER):
         log.warning("Unerwartete beet-list-Zeile (Track) ignoriert: %r", zeile)
         return None
-    id_roh, track, title, artist, mb_artistid = teile
+    id_roh, track, title, artist, mb_artistid, mb_artistids = teile
     try:
         id_ = int(id_roh)
     except ValueError:
         log.warning("Track ohne gültige ID ignoriert: %r", zeile)
         return None
     return Track(
-        id=id_, track=track, title=title, artist=artist, mb_artistid=mb_artistid
+        id=id_,
+        track=track,
+        title=title,
+        artist=artist,
+        mb_artistid=mb_artistid,
+        mb_artistids=mb_artistids,
     )
 
 
@@ -235,6 +286,17 @@ def list_tracks(album_id: int) -> list[Track]:
     return tracks
 
 
+def get_track(track_id: int) -> Track | None:
+    """Ein einzelner Titel über seine beets-ID."""
+    proc = _lauf(["list", "-f", _TRACK_FORMAT, f"id:{track_id}"], timeout=30)
+    if proc.returncode != 0:
+        raise AlbumError(proc.stderr.strip() or "Der Titel ließ sich nicht abrufen.")
+    for zeile in proc.stdout.splitlines():
+        if (t := _track_aus_zeile(zeile)) is not None:
+            return t
+    return None
+
+
 def update_cover(album: Album, bild_pfad: Path) -> None:
     """Bettet ein Bild in alle Dateien eines Albums ein.
 
@@ -267,8 +329,15 @@ def _modify(vorwahl: list[str], query: str, felder: dict[str, str], *, timeout: 
         )
 
 
-def set_album_artist_mbid(album: Album, mbid: str) -> None:
-    """Verknüpft den Album-Interpreten nachträglich mit einer MusicBrainz-ID.
+def set_album_artist_mbid(album: Album, index: int, mbid: str) -> None:
+    """Verknüpft *einen* Album-Interpreten (bei "A feat. B" per Position) mit
+    einer MusicBrainz-ID, ohne die MBIDs der anderen Interpreten zu verlieren.
+
+    ``mb_albumartistids`` trägt weiterhin alle Positionen -- auch die noch
+    unverbundenen als leerer Platzhalter --, damit ``Album.kuenstler_links``
+    Namen und IDs später wieder richtig zuordnen kann. Das einzelne
+    ``mb_albumartistid`` bekommt zur Kompatibilität mit älteren Abspielern
+    die erste gesetzte ID.
 
     Zwei getrennte ``beet modify``-Aufrufe, weil Album- und Item-Zeilen in
     beets unabhängig sind und ``-a`` nicht zuverlässig in die Dateien
@@ -278,21 +347,38 @@ def set_album_artist_mbid(album: Album, mbid: str) -> None:
     den erneuten, hier überflüssigen Dateizugriff; ``-I`` das erneute
     Durchreichen an die (schon richtigen) Titel.
     """
-    felder = {"mb_albumartistid": mbid, "mb_albumartistids": mbid}
+    namen = tagging.kuenstlerliste(album.albumartist)
+    ids = _kuenstler_ids(namen, album.mb_albumartistids, album.mb_albumartistid)
+    if not 0 <= index < len(ids):
+        raise AlbumError("Ungültige Interpreten-Position.")
+    ids[index] = mbid
+    felder = {
+        "mb_albumartistid": next((i for i in ids if i), ""),
+        "mb_albumartistids": _ID_TRENNER.join(ids),
+    }
     with library_lock():
         _modify([], f"album_id:{album.id}", felder, timeout=120)
         _modify(["-a", "-W", "-I"], f"id:{album.id}", felder, timeout=30)
 
 
-def set_track_artist_mbid(track_id: int, mbid: str) -> None:
-    """Verknüpft den Interpreten eines einzelnen Titels mit einer MBID.
+def set_track_artist_mbid(track: Track, index: int, mbid: str) -> None:
+    """Wie ``set_album_artist_mbid``, für den Interpreten eines Titels.
 
     Anders als beim Album gibt es hier keine zweite, unabhängige Zeile --
     ``id:`` trifft direkt den Titel, ein Aufruf genügt für Datenbank und
     Datei.
     """
+    namen = tagging.kuenstlerliste(track.artist)
+    ids = _kuenstler_ids(namen, track.mb_artistids, track.mb_artistid)
+    if not 0 <= index < len(ids):
+        raise AlbumError("Ungültige Interpreten-Position.")
+    ids[index] = mbid
+    felder = {
+        "mb_artistid": next((i for i in ids if i), ""),
+        "mb_artistids": _ID_TRENNER.join(ids),
+    }
     with library_lock():
-        _modify([], f"id:{track_id}", {"mb_artistid": mbid, "mb_artistids": mbid}, timeout=60)
+        _modify([], f"id:{track.id}", felder, timeout=60)
 
 
 def update_album_fields(album: Album, felder: dict[str, str]) -> None:

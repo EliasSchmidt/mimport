@@ -19,9 +19,15 @@ from backend import albums
 T = albums._TRENNER
 
 
-def _zeile(id_, artist, album, year, pfad, mb_albumartistid="", genres="", label="") -> str:
+def _zeile(
+    id_, artist, album, year, pfad, mb_albumartistid="", genres="", label="",
+    mb_albumartistids="",
+) -> str:
     return T.join(
-        (str(id_), artist, album, str(year), str(pfad), mb_albumartistid, genres, label)
+        (
+            str(id_), artist, album, str(year), str(pfad), mb_albumartistid, genres, label,
+            mb_albumartistids,
+        )
     )
 
 
@@ -47,6 +53,7 @@ class TestAusZeile:
             mb_albumartistid="",
             genres="Rock",
             label="Apple Records",
+            mb_albumartistids="",
         )
 
     def test_falsche_feldanzahl_wird_ignoriert(self):
@@ -223,15 +230,56 @@ class TestAlbumProperties:
         assert mit.has_albumartist_mbid
 
 
-def _track_zeile(id_, track, title, artist, mb_artistid="") -> str:
-    return T.join((str(id_), track, title, artist, mb_artistid))
+class TestAlbumKuenstlerLinks:
+    MBID = "83d91898-7763-47d7-b03b-b92132375c47"
+    MBID2 = "0383dadf-2a4e-4d10-a46a-e9e041da8eb3"
+
+    def _album(self, tmp_path: Path, **kw) -> albums.Album:
+        kw.setdefault("albumartist", "X")
+        return albums.Album(id=1, album="Y", year="2020", path=tmp_path, **kw)
+
+    def test_ein_interpret_unverbunden(self, tmp_path):
+        album = self._album(tmp_path)
+        assert album.kuenstler_links == [("X", "")]
+
+    def test_ein_interpret_verbunden(self, tmp_path):
+        album = self._album(tmp_path, mb_albumartistid=self.MBID, mb_albumartistids=self.MBID)
+        assert album.kuenstler_links == [("X", self.MBID)]
+
+    def test_mehrere_interpreten_teilweise_verbunden(self, tmp_path):
+        """Genau der Fall, der bisher hinter der Alles-oder-nichts-MBID
+        verschwand: "A" noch offen, "B" schon verlinkt."""
+        album = self._album(
+            tmp_path, albumartist="A feat. B", mb_albumartistids=f"; {self.MBID2}",
+        )
+        assert album.kuenstler_links == [("A", ""), ("B", self.MBID2)]
+
+    def test_altes_album_nur_mit_einzelfeld_faellt_darauf_zurueck(self, tmp_path):
+        """Ein Album, das schon vor dieser Funktion einmal verbunden wurde,
+        kennt nur ``mb_albumartistid`` -- die Mehrfachform fehlt."""
+        album = self._album(tmp_path, mb_albumartistid=self.MBID)
+        assert album.kuenstler_links == [("X", self.MBID)]
+
+    def test_laengen_mismatch_gilt_als_unverbunden(self, tmp_path):
+        """Wurde der Name nachträglich geändert, ohne die MBIDs anzufassen,
+        darf die falsche Position nicht als verbunden erscheinen."""
+        album = self._album(
+            tmp_path, albumartist="A feat. B feat. C",
+            mb_albumartistids=f"{self.MBID}; {self.MBID2}",
+        )
+        assert album.kuenstler_links == [("A", ""), ("B", ""), ("C", "")]
+
+
+def _track_zeile(id_, track, title, artist, mb_artistid="", mb_artistids="") -> str:
+    return T.join((str(id_), track, title, artist, mb_artistid, mb_artistids))
 
 
 class TestTrackAusZeile:
     def test_gueltige_zeile(self):
         zeile = _track_zeile(5, "01", "Come Together", "The Beatles")
         assert albums._track_aus_zeile(zeile) == albums.Track(
-            id=5, track="01", title="Come Together", artist="The Beatles", mb_artistid=""
+            id=5, track="01", title="Come Together", artist="The Beatles",
+            mb_artistid="", mb_artistids="",
         )
 
     def test_falsche_feldanzahl_wird_ignoriert(self):
@@ -251,6 +299,40 @@ class TestTrackProperties:
         )
         assert not ohne.has_artist_mbid
         assert mit.has_artist_mbid
+
+
+class TestTrackKuenstlerLinks:
+    MBID = "83d91898-7763-47d7-b03b-b92132375c47"
+
+    def test_ein_interpret_unverbunden(self):
+        track = albums.Track(id=1, track="01", title="T", artist="X")
+        assert track.kuenstler_links == [("X", "")]
+
+    def test_mehrere_interpreten_teilweise_verbunden(self):
+        track = albums.Track(
+            id=1, track="01", title="T", artist="A feat. B", mb_artistids=f"{self.MBID}; ",
+        )
+        assert track.kuenstler_links == [("A", self.MBID), ("B", "")]
+
+
+class TestGetTrack:
+    def test_treffer_wird_geliefert(self, monkeypatch):
+        zeile = _track_zeile(5, "01", "Come Together", "The Beatles")
+        monkeypatch.setattr(albums.subprocess, "run", lambda cmd, **kw: _proc(stdout=zeile))
+        track = albums.get_track(5)
+        assert track is not None
+        assert track.id == 5
+
+    def test_kein_treffer_gibt_none(self, monkeypatch):
+        monkeypatch.setattr(albums.subprocess, "run", lambda cmd, **kw: _proc(stdout=""))
+        assert albums.get_track(1) is None
+
+    def test_fehlschlag_wird_gemeldet(self, monkeypatch):
+        monkeypatch.setattr(
+            albums.subprocess, "run", lambda cmd, **kw: _proc(returncode=1, stderr="kaputt")
+        )
+        with pytest.raises(albums.AlbumError, match="kaputt"):
+            albums.get_track(1)
 
 
 class TestListTracks:
@@ -287,9 +369,11 @@ class TestListTracks:
 
 class TestSetAlbumArtistMbid:
     MBID = "83d91898-7763-47d7-b03b-b92132375c47"
+    MBID2 = "0383dadf-2a4e-4d10-a46a-e9e041da8eb3"
 
-    def _album(self, tmp_path: Path) -> albums.Album:
-        return albums.Album(id=9, albumartist="X", album="Y", year="2020", path=tmp_path)
+    def _album(self, tmp_path: Path, **kw) -> albums.Album:
+        kw.setdefault("albumartist", "X")
+        return albums.Album(id=9, album="Y", year="2020", path=tmp_path, **kw)
 
     def test_setzt_singular_und_plural_auf_beiden_ebenen(self, tmp_path, monkeypatch):
         """Der beim Testen gefundene Stolperstein: ohne die Pluralform bleibt
@@ -302,7 +386,7 @@ class TestSetAlbumArtistMbid:
             return _proc()
 
         monkeypatch.setattr(albums.subprocess, "run", fake_run)
-        albums.set_album_artist_mbid(self._album(tmp_path), self.MBID)
+        albums.set_album_artist_mbid(self._album(tmp_path), 0, self.MBID)
 
         assert len(aufrufe) == 2
         titel_aufruf, album_aufruf = aufrufe
@@ -319,6 +403,34 @@ class TestSetAlbumArtistMbid:
         assert f"mb_albumartistid={self.MBID}" in album_aufruf
         assert f"mb_albumartistids={self.MBID}" in album_aufruf
 
+    def test_setzt_nur_die_gewaehlte_position_bei_mehreren_interpreten(
+        self, tmp_path, monkeypatch
+    ):
+        """"A feat. B": nur B verbinden darf A's (leere) Position nicht
+        anfassen und muss beide Positionen erhalten bleiben lassen."""
+        aufrufe = []
+        monkeypatch.setattr(
+            albums.subprocess, "run", lambda cmd, **kw: (aufrufe.append(cmd), _proc())[1]
+        )
+        album = self._album(
+            tmp_path, albumartist="A feat. B", mb_albumartistids=f"{self.MBID}; "
+        )
+        albums.set_album_artist_mbid(album, 1, self.MBID2)
+
+        titel_aufruf, _ = aufrufe
+        assert f"mb_albumartistids={self.MBID}; {self.MBID2}" in titel_aufruf
+        # A bleibt an Position 0 -- die Kompat-ID nimmt trotzdem den ersten
+        # gesetzten Wert, nicht den zuletzt geänderten.
+        assert f"mb_albumartistid={self.MBID}" in titel_aufruf
+
+    def test_ungueltige_position_wird_gemeldet(self, tmp_path, monkeypatch):
+        def darf_nicht_laufen(cmd, **kw):
+            pytest.fail("beet sollte bei ungültiger Position nicht aufgerufen werden")
+
+        monkeypatch.setattr(albums.subprocess, "run", darf_nicht_laufen)
+        with pytest.raises(albums.AlbumError, match="Ungültige Interpreten-Position"):
+            albums.set_album_artist_mbid(self._album(tmp_path), 5, self.MBID)
+
     def test_haelt_den_library_lock(self, tmp_path, monkeypatch):
         verlauf = []
 
@@ -334,7 +446,7 @@ class TestSetAlbumArtistMbid:
             "run",
             lambda cmd, **kw: (verlauf.append("beet"), _proc())[1],
         )
-        albums.set_album_artist_mbid(self._album(tmp_path), self.MBID)
+        albums.set_album_artist_mbid(self._album(tmp_path), 0, self.MBID)
         assert verlauf == ["enter", "beet", "beet", "exit"]
 
     def test_fehlschlag_beim_ersten_aufruf_wird_gemeldet(self, tmp_path, monkeypatch):
@@ -342,7 +454,7 @@ class TestSetAlbumArtistMbid:
             albums.subprocess, "run", lambda cmd, **kw: _proc(returncode=1, stderr="autsch")
         )
         with pytest.raises(albums.AlbumError, match="autsch"):
-            albums.set_album_artist_mbid(self._album(tmp_path), self.MBID)
+            albums.set_album_artist_mbid(self._album(tmp_path), 0, self.MBID)
 
     def test_fehlschlag_beim_zweiten_aufruf_wird_gemeldet(self, tmp_path, monkeypatch):
         aufrufe = []
@@ -355,11 +467,16 @@ class TestSetAlbumArtistMbid:
 
         monkeypatch.setattr(albums.subprocess, "run", fake_run)
         with pytest.raises(albums.AlbumError, match="Album-Zeile kaputt"):
-            albums.set_album_artist_mbid(self._album(tmp_path), self.MBID)
+            albums.set_album_artist_mbid(self._album(tmp_path), 0, self.MBID)
 
 
 class TestSetTrackArtistMbid:
     MBID = "83d91898-7763-47d7-b03b-b92132375c47"
+    MBID2 = "0383dadf-2a4e-4d10-a46a-e9e041da8eb3"
+
+    def _track(self, **kw) -> albums.Track:
+        kw.setdefault("artist", "X")
+        return albums.Track(id=42, track="01", title="T", **kw)
 
     def test_baut_das_richtige_kommando(self, monkeypatch):
         gesehen = {}
@@ -369,12 +486,30 @@ class TestSetTrackArtistMbid:
             return _proc()
 
         monkeypatch.setattr(albums.subprocess, "run", fake_run)
-        albums.set_track_artist_mbid(42, self.MBID)
+        albums.set_track_artist_mbid(self._track(), 0, self.MBID)
         cmd = gesehen["cmd"]
         assert cmd[1:4] == ["modify", "-y", "id:42"]
         assert cmd[4] == f"mb_artistid={self.MBID}"
         assert f"mb_artistids={self.MBID}" in cmd
         assert "-a" not in cmd
+
+    def test_setzt_nur_die_gewaehlte_position_bei_mehreren_interpreten(self, monkeypatch):
+        aufrufe = []
+        monkeypatch.setattr(
+            albums.subprocess, "run", lambda cmd, **kw: (aufrufe.append(cmd), _proc())[1]
+        )
+        track = self._track(artist="A feat. B", mb_artistids=f"{self.MBID}; ")
+        albums.set_track_artist_mbid(track, 1, self.MBID2)
+        assert f"mb_artistids={self.MBID}; {self.MBID2}" in aufrufe[0]
+        assert f"mb_artistid={self.MBID}" in aufrufe[0]
+
+    def test_ungueltige_position_wird_gemeldet(self, monkeypatch):
+        def darf_nicht_laufen(cmd, **kw):
+            pytest.fail("beet sollte bei ungültiger Position nicht aufgerufen werden")
+
+        monkeypatch.setattr(albums.subprocess, "run", darf_nicht_laufen)
+        with pytest.raises(albums.AlbumError, match="Ungültige Interpreten-Position"):
+            albums.set_track_artist_mbid(self._track(), 3, self.MBID)
 
     def test_haelt_den_library_lock(self, monkeypatch):
         verlauf = []
@@ -391,7 +526,7 @@ class TestSetTrackArtistMbid:
             "run",
             lambda cmd, **kw: (verlauf.append("beet"), _proc())[1],
         )
-        albums.set_track_artist_mbid(42, self.MBID)
+        albums.set_track_artist_mbid(self._track(), 0, self.MBID)
         assert verlauf == ["enter", "beet", "exit"]
 
     def test_fehlschlag_wird_gemeldet(self, monkeypatch):
@@ -399,7 +534,7 @@ class TestSetTrackArtistMbid:
             albums.subprocess, "run", lambda cmd, **kw: _proc(returncode=1, stderr="autsch")
         )
         with pytest.raises(albums.AlbumError, match="autsch"):
-            albums.set_track_artist_mbid(42, self.MBID)
+            albums.set_track_artist_mbid(self._track(), 0, self.MBID)
 
 
 class TestYearEditierbar:

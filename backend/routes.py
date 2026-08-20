@@ -37,6 +37,7 @@ from backend import (
     ocr,
     rip,
     sessions,
+    tag_catalog,
     tagging,
     trackparse,
 )
@@ -1812,6 +1813,10 @@ def _album_detail_fragment(
         tracks=tracks,
         fehler=fehler or listen_fehler,
         genre_vorschlaege=genres.katalog(),
+        album_gruppen=tag_catalog.ALBUM_GRUPPEN,
+        track_gruppen=tag_catalog.TRACK_GRUPPEN,
+        track_feld_nummer=tag_catalog.TRACK_FELDER_NACH_KEY["track"],
+        track_feld_titel=tag_catalog.TRACK_FELDER_NACH_KEY["title"],
     )
 
 
@@ -1827,6 +1832,10 @@ def album_detail(request: Request, album_id: int) -> HTMLResponse:
         tracks=tracks,
         fehler=fehler,
         genre_vorschlaege=genres.katalog(),
+        album_gruppen=tag_catalog.ALBUM_GRUPPEN,
+        track_gruppen=tag_catalog.TRACK_GRUPPEN,
+        track_feld_nummer=tag_catalog.TRACK_FELDER_NACH_KEY["track"],
+        track_feld_titel=tag_catalog.TRACK_FELDER_NACH_KEY["title"],
     )
 
 
@@ -1922,42 +1931,28 @@ def album_artist_apply(
     return _album_detail_fragment(request, album_id)
 
 
-@router.post("/albums/{album_id}/edit", response_class=HTMLResponse)
-def album_edit(
-    request: Request,
-    album_id: int,
-    albumartist: str = Form(default=""),
-    album: str = Form(default=""),
-    year: str = Form(default=""),
-    genre: str = Form(default=""),
-    label: str = Form(default=""),
+@router.post("/albums/{album_id}/field", response_class=HTMLResponse)
+def album_field(
+    request: Request, album_id: int, feld: str = Form(...), wert: str = Form(default="")
 ) -> HTMLResponse:
-    """Ändert Albumkünstler, Albumtitel, Jahr, Genre oder Label nachträglich.
+    """Setzt ein einzelnes Katalogfeld auf Album-Ebene (siehe ``tag_catalog``).
 
-    Leere Felder werden übersprungen, damit ein leeres Formularfeld nichts
-    überschreibt -- dieselbe Regel wie beim manuellen Taggen vor dem Import.
+    Ein Feld je Aufruf -- passend zum inline editierbaren Formular, das bei
+    jeder Änderung sofort speichert, statt auf ein gesammeltes "Absenden" zu
+    warten. Anders als früher überschreibt ein geleertes Eingabefeld den Tag
+    jetzt auch wirklich mit leer, statt ihn unangetastet zu lassen.
     """
     alb = albums.get_album(album_id)
     if alb is None:
         raise HTTPException(status_code=404, detail="Album nicht gefunden.")
-    felder = {
-        key: wert.strip()
-        for key, wert in {
-            "albumartist": albumartist,
-            "album": album,
-            "year": year,
-            "label": label,
-        }.items()
-        if wert.strip()
-    }
-    # "genre" und "genres" teilen sich beim Schreiben ins Datei-Tag denselben
-    # Speicherplatz -- derselbe Stolperstein wie bei mb_albumartistid/-ids
-    # (siehe Moduldoc), deshalb immer beide zusammen setzen.
-    if genre.strip():
-        felder["genre"] = genre.strip()
-        felder["genres"] = genre.strip()
+    katalog_feld = tag_catalog.ALBUM_FELDER_NACH_KEY.get(feld)
+    if katalog_feld is None:
+        raise HTTPException(status_code=400, detail="Unbekanntes Feld.")
     try:
-        albums.update_album_fields(alb, felder)
+        if katalog_feld.kuenstler_link:
+            albums.set_album_interpret(alb, wert)
+        else:
+            albums.set_album_field(alb, katalog_feld, wert)
     except albums.AlbumError as exc:
         return _album_detail_fragment(request, album_id, fehler=str(exc))
     return _album_detail_fragment(request, album_id)
@@ -1996,23 +1991,24 @@ def track_artist_apply(
 
 
 @router.post(
-    "/albums/{album_id}/tracks/{track_id}/edit", response_class=HTMLResponse
+    "/albums/{album_id}/tracks/{track_id}/field", response_class=HTMLResponse
 )
-def track_edit(
-    request: Request,
-    album_id: int,
-    track_id: int,
-    title: str = Form(default=""),
-    artist: str = Form(default=""),
+def track_field(
+    request: Request, album_id: int, track_id: int,
+    feld: str = Form(...), wert: str = Form(default=""),
 ) -> HTMLResponse:
-    """Ändert Titel oder Interpret eines einzelnen Titels nachträglich."""
-    felder = {
-        key: wert.strip()
-        for key, wert in {"title": title, "artist": artist}.items()
-        if wert.strip()
-    }
+    """Wie ``album_field``, für ein Katalogfeld auf Track-Ebene."""
+    track = albums.get_track(track_id)
+    if track is None:
+        raise HTTPException(status_code=404, detail="Titel nicht gefunden.")
+    katalog_feld = tag_catalog.TRACK_FELDER_NACH_KEY.get(feld)
+    if katalog_feld is None:
+        raise HTTPException(status_code=400, detail="Unbekanntes Feld.")
     try:
-        albums.update_track_fields(track_id, felder)
+        if katalog_feld.kuenstler_link:
+            albums.set_track_interpret(track, wert)
+        else:
+            albums.set_track_field(track, katalog_feld, wert)
     except albums.AlbumError as exc:
         return _album_detail_fragment(request, album_id, fehler=str(exc))
     return _album_detail_fragment(request, album_id)

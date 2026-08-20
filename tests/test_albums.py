@@ -14,21 +14,38 @@ from pathlib import Path
 
 import pytest
 
-from backend import albums
+from backend import albums, tag_catalog
 
 T = albums._TRENNER
+E = albums._SATZENDE
 
 
 def _zeile(
     id_, artist, album, year, pfad, mb_albumartistid="", genres="", label="",
-    mb_albumartistids="",
+    mb_albumartistids="", **erweitert,
 ) -> str:
-    return T.join(
-        (
-            str(id_), artist, album, str(year), str(pfad), mb_albumartistid, genres, label,
-            mb_albumartistids,
-        )
-    )
+    """Baut *einen* ``beet list``-Datensatz -- dynamisch aus den aktuellen
+    Kern-/Katalogfeldern, damit ein neues Feld im Katalog nicht jeden Test
+    hier zerreißt. Unbekannte ``erweitert``-Schlüssel sind ein Testfehler,
+    kein leiser Fallback. Ohne ``_SATZENDE`` -- das steuert ``_aus_zeile``
+    direkt an, so wie ``_saetze`` es ihm nach dem Trennen auch liefert. Für
+    mehrere Datensätze als Subprozess-Stdout siehe ``_stdout``."""
+    kern_werte = {
+        "id": str(id_), "albumartist": artist, "album": album, "year": str(year),
+        "path": str(pfad), "mb_albumartistid": mb_albumartistid, "genres": genres,
+        "label": label, "mb_albumartistids": mb_albumartistids,
+    }
+    kern = [kern_werte[f.lstrip("$")] for f in albums._ALBUM_KERN_FELDER]
+    erw_keys = {f.key for f in albums._ALBUM_ERWEITERT_FELDER}
+    assert set(erweitert) <= erw_keys, f"unbekannte Testfelder: {set(erweitert) - erw_keys}"
+    erw = [erweitert.get(f.key, "") for f in albums._ALBUM_ERWEITERT_FELDER]
+    return T.join(kern + erw)
+
+
+def _stdout(*zeilen: str) -> str:
+    """Reiht Datensätze so aneinander, wie ``beet list -f`` es mit dem
+    ``_SATZENDE``-Terminator tatsächlich tut (siehe ``_saetze``-Test)."""
+    return "".join(f"{z}{E}\n" for z in zeilen)
 
 
 def _proc(stdout: str = "", stderr: str = "", returncode: int = 0):
@@ -54,6 +71,7 @@ class TestAusZeile:
             genres="Rock",
             label="Apple Records",
             mb_albumartistids="",
+            erweitert={f.key: "" for f in albums._ALBUM_ERWEITERT_FELDER},
         )
 
     def test_falsche_feldanzahl_wird_ignoriert(self):
@@ -100,12 +118,9 @@ class TestListAlbums:
         assert gesehen["cmd"][-1] == albums._FORMAT
 
     def test_parst_und_sortiert(self, monkeypatch):
-        stdout = "\n".join(
-            [
-                _zeile(2, "Radiohead", "Kid A", 2000, "/music/Kid A"),
-                _zeile(1, "ABBA", "Waterloo", 1974, "/music/Waterloo"),
-                "",  # leere Zeile am Ende, wie bei echter beet-Ausgabe
-            ]
+        stdout = _stdout(
+            _zeile(2, "Radiohead", "Kid A", 2000, "/music/Kid A"),
+            _zeile(1, "ABBA", "Waterloo", 1974, "/music/Waterloo"),
         )
         monkeypatch.setattr(albums.subprocess, "run", lambda cmd, **kw: _proc(stdout=stdout))
         ergebnis = albums.list_albums()
@@ -150,8 +165,8 @@ class TestGetAlbum:
         assert albums.get_album(1) is None
 
     def test_treffer_wird_geliefert(self, monkeypatch):
-        zeile = _zeile(1, "X", "Y", 2000, "/music/Y")
-        monkeypatch.setattr(albums.subprocess, "run", lambda cmd, **kw: _proc(stdout=zeile))
+        stdout = _stdout(_zeile(1, "X", "Y", 2000, "/music/Y"))
+        monkeypatch.setattr(albums.subprocess, "run", lambda cmd, **kw: _proc(stdout=stdout))
         album = albums.get_album(1)
         assert album is not None
         assert album.id == 1
@@ -270,8 +285,19 @@ class TestAlbumKuenstlerLinks:
         assert album.kuenstler_links == [("A", ""), ("B", ""), ("C", "")]
 
 
-def _track_zeile(id_, track, title, artist, mb_artistid="", mb_artistids="") -> str:
-    return T.join((str(id_), track, title, artist, mb_artistid, mb_artistids))
+def _track_zeile(
+    id_, track, title, artist, mb_artistid="", mb_artistids="", **erweitert,
+) -> str:
+    """Wie ``_zeile``, für Titel."""
+    kern_werte = {
+        "id": str(id_), "track": track, "title": title, "artist": artist,
+        "mb_artistid": mb_artistid, "mb_artistids": mb_artistids,
+    }
+    kern = [kern_werte[f.lstrip("$")] for f in albums._TRACK_KERN_FELDER]
+    erw_keys = {f.key for f in albums._TRACK_ERWEITERT_FELDER}
+    assert set(erweitert) <= erw_keys, f"unbekannte Testfelder: {set(erweitert) - erw_keys}"
+    erw = [erweitert.get(f.key, "") for f in albums._TRACK_ERWEITERT_FELDER]
+    return T.join(kern + erw)
 
 
 class TestTrackAusZeile:
@@ -280,6 +306,7 @@ class TestTrackAusZeile:
         assert albums._track_aus_zeile(zeile) == albums.Track(
             id=5, track="01", title="Come Together", artist="The Beatles",
             mb_artistid="", mb_artistids="",
+            erweitert={f.key: "" for f in albums._TRACK_ERWEITERT_FELDER},
         )
 
     def test_falsche_feldanzahl_wird_ignoriert(self):
@@ -317,8 +344,8 @@ class TestTrackKuenstlerLinks:
 
 class TestGetTrack:
     def test_treffer_wird_geliefert(self, monkeypatch):
-        zeile = _track_zeile(5, "01", "Come Together", "The Beatles")
-        monkeypatch.setattr(albums.subprocess, "run", lambda cmd, **kw: _proc(stdout=zeile))
+        stdout = _stdout(_track_zeile(5, "01", "Come Together", "The Beatles"))
+        monkeypatch.setattr(albums.subprocess, "run", lambda cmd, **kw: _proc(stdout=stdout))
         track = albums.get_track(5)
         assert track is not None
         assert track.id == 5
@@ -349,11 +376,9 @@ class TestListTracks:
         assert gesehen["cmd"][-1] == "album_id:7"
 
     def test_sortiert_numerisch_nach_tracknummer(self, monkeypatch):
-        stdout = "\n".join(
-            [
-                _track_zeile(2, "10", "Zehn", "X"),
-                _track_zeile(1, "2", "Zwei", "X"),
-            ]
+        stdout = _stdout(
+            _track_zeile(2, "10", "Zehn", "X"),
+            _track_zeile(1, "2", "Zwei", "X"),
         )
         monkeypatch.setattr(albums.subprocess, "run", lambda cmd, **kw: _proc(stdout=stdout))
         ergebnis = albums.list_tracks(1)
@@ -554,11 +579,11 @@ class TestYearEditierbar:
         assert album.year_editierbar == ""
 
 
-class TestUpdateAlbumFields:
+class TestSetAlbumField:
     def _album(self, tmp_path: Path) -> albums.Album:
         return albums.Album(id=9, albumartist="X", album="Y", year="2020", path=tmp_path)
 
-    def test_setzt_felder_auf_beiden_ebenen(self, tmp_path, monkeypatch):
+    def test_einwertiges_feld_auf_beiden_ebenen(self, tmp_path, monkeypatch):
         aufrufe = []
 
         def fake_run(cmd, **kw):
@@ -566,41 +591,58 @@ class TestUpdateAlbumFields:
             return _proc()
 
         monkeypatch.setattr(albums.subprocess, "run", fake_run)
-        albums.update_album_fields(
-            self._album(tmp_path), {"albumartist": "Neu", "year": "1999"}
-        )
+        feld = tag_catalog.ALBUM_FELDER_NACH_KEY["album"]
+        albums.set_album_field(self._album(tmp_path), feld, "Neuer Titel")
 
         assert len(aufrufe) == 2
         titel_aufruf, album_aufruf = aufrufe
 
         assert titel_aufruf[1:4] == ["modify", "-y", "album_id:9"]
-        assert "albumartist=Neu" in titel_aufruf
-        assert "year=1999" in titel_aufruf
+        assert "album=Neuer Titel" in titel_aufruf
         assert "-a" not in titel_aufruf
 
         assert "-a" in album_aufruf
         assert "-W" in album_aufruf
         assert "-I" in album_aufruf
         assert "id:9" in album_aufruf
-        assert "albumartist=Neu" in album_aufruf
+        assert "album=Neuer Titel" in album_aufruf
 
-    def test_ohne_felder_passiert_nichts(self, tmp_path, monkeypatch):
+    def test_leerer_wert_loescht_das_feld(self, tmp_path, monkeypatch):
+        """Anders als das alte update_album_fields: ein geleertes Eingabefeld
+        muss den Tag auch wirklich leeren, nicht unangetastet lassen."""
         aufrufe = []
         monkeypatch.setattr(
             albums.subprocess, "run", lambda cmd, **kw: (aufrufe.append(cmd), _proc())[1]
         )
-        albums.update_album_fields(self._album(tmp_path), {})
-        assert aufrufe == []
+        feld = tag_catalog.ALBUM_FELDER_NACH_KEY["label"]
+        albums.set_album_field(self._album(tmp_path), feld, "")
+        assert "label=" in aufrufe[0]
+
+    def test_mehrwertiges_feld_setzt_einzelform_mit(self, tmp_path, monkeypatch):
+        aufrufe = []
+        monkeypatch.setattr(
+            albums.subprocess, "run", lambda cmd, **kw: (aufrufe.append(cmd), _proc())[1]
+        )
+        feld = tag_catalog.ALBUM_FELDER_NACH_KEY["genres"]
+        albums.set_album_field(self._album(tmp_path), feld, "Rock; Pop")
+        assert "genres=Rock; Pop" in aufrufe[0]
+        assert "genre=Rock; Pop" in aufrufe[0]
+
+    def test_kuenstler_feld_wird_abgelehnt(self, tmp_path):
+        feld = tag_catalog.ALBUM_FELDER_NACH_KEY["albumartists"]
+        with pytest.raises(albums.AlbumError, match="Künstler-Verknüpfung"):
+            albums.set_album_field(self._album(tmp_path), feld, "Neu")
 
     def test_fehlschlag_wird_gemeldet(self, tmp_path, monkeypatch):
         monkeypatch.setattr(
             albums.subprocess, "run", lambda cmd, **kw: _proc(returncode=1, stderr="autsch")
         )
+        feld = tag_catalog.ALBUM_FELDER_NACH_KEY["album"]
         with pytest.raises(albums.AlbumError, match="autsch"):
-            albums.update_album_fields(self._album(tmp_path), {"album": "Neu"})
+            albums.set_album_field(self._album(tmp_path), feld, "Neu")
 
 
-class TestUpdateTrackFields:
+class TestSetTrackField:
     def test_baut_das_richtige_kommando(self, monkeypatch):
         gesehen = {}
 
@@ -609,23 +651,89 @@ class TestUpdateTrackFields:
             return _proc()
 
         monkeypatch.setattr(albums.subprocess, "run", fake_run)
-        albums.update_track_fields(42, {"title": "Neuer Titel", "artist": "X"})
+        track = albums.Track(id=42, track="01", title="X", artist="Y")
+        feld = tag_catalog.TRACK_FELDER_NACH_KEY["title"]
+        albums.set_track_field(track, feld, "Neuer Titel")
         cmd = gesehen["cmd"]
         assert cmd[1:4] == ["modify", "-y", "id:42"]
         assert "title=Neuer Titel" in cmd
-        assert "artist=X" in cmd
 
-    def test_ohne_felder_passiert_nichts(self, monkeypatch):
+    def test_mehrwertiges_feld_setzt_einzelform_mit(self, monkeypatch):
         aufrufe = []
         monkeypatch.setattr(
             albums.subprocess, "run", lambda cmd, **kw: (aufrufe.append(cmd), _proc())[1]
         )
-        albums.update_track_fields(42, {})
-        assert aufrufe == []
+        track = albums.Track(id=42, track="01", title="X", artist="Y")
+        feld = tag_catalog.TRACK_FELDER_NACH_KEY["composers"]
+        albums.set_track_field(track, feld, "Bach; Mozart")
+        assert "composers=Bach; Mozart" in aufrufe[0]
+        assert "composer=Bach; Mozart" in aufrufe[0]
+
+    def test_kuenstler_feld_wird_abgelehnt(self):
+        track = albums.Track(id=42, track="01", title="X", artist="Y")
+        feld = tag_catalog.TRACK_FELDER_NACH_KEY["artists"]
+        with pytest.raises(albums.AlbumError, match="Künstler-Verknüpfung"):
+            albums.set_track_field(track, feld, "Neu")
 
     def test_fehlschlag_wird_gemeldet(self, monkeypatch):
         monkeypatch.setattr(
             albums.subprocess, "run", lambda cmd, **kw: _proc(returncode=1, stderr="autsch")
         )
+        track = albums.Track(id=42, track="01", title="X", artist="Y")
+        feld = tag_catalog.TRACK_FELDER_NACH_KEY["title"]
         with pytest.raises(albums.AlbumError, match="autsch"):
-            albums.update_track_fields(42, {"title": "Neu"})
+            albums.set_track_field(track, feld, "Neu")
+
+
+class TestSetAlbumInterpret:
+    def _album(self, tmp_path: Path, **kw) -> albums.Album:
+        kw.setdefault("albumartist", "X")
+        return albums.Album(id=9, album="Y", year="2020", path=tmp_path, **kw)
+
+    def test_setzt_namen_und_liste(self, tmp_path, monkeypatch):
+        aufrufe = []
+        monkeypatch.setattr(
+            albums.subprocess, "run", lambda cmd, **kw: (aufrufe.append(cmd), _proc())[1]
+        )
+        albums.set_album_interpret(self._album(tmp_path), "A feat. B")
+        assert "albumartist=A feat. B" in aufrufe[0]
+        assert "albumartists=A; B" in aufrufe[0]
+
+    def test_verwirft_bestehende_mbids(self, tmp_path, monkeypatch):
+        """Eine geänderte Schreibweise kann nicht mehr sicher zu den alten
+        Positionen gehören -- wie beim manuellen Taggen vor dem Import."""
+        aufrufe = []
+        monkeypatch.setattr(
+            albums.subprocess, "run", lambda cmd, **kw: (aufrufe.append(cmd), _proc())[1]
+        )
+        album = self._album(
+            tmp_path, mb_albumartistid="83d91898-7763-47d7-b03b-b92132375c47",
+            mb_albumartistids="83d91898-7763-47d7-b03b-b92132375c47",
+        )
+        albums.set_album_interpret(album, "Anderer Name")
+        assert "mb_albumartistid=" in aufrufe[0]
+        assert "mb_albumartistids=" in aufrufe[0]
+        # Nicht bloß irgendein "=", sondern wirklich geleert.
+        felder = dict(teil.split("=", 1) for teil in aufrufe[0] if "=" in teil)
+        assert felder["mb_albumartistid"] == ""
+        assert felder["mb_albumartistids"] == ""
+
+
+class TestSetTrackInterpret:
+    def test_setzt_namen_und_liste_und_verwirft_mbids(self, monkeypatch):
+        aufrufe = []
+        monkeypatch.setattr(
+            albums.subprocess, "run", lambda cmd, **kw: (aufrufe.append(cmd), _proc())[1]
+        )
+        track = albums.Track(
+            id=42, track="01", title="X", artist="Y",
+            mb_artistid="83d91898-7763-47d7-b03b-b92132375c47",
+            mb_artistids="83d91898-7763-47d7-b03b-b92132375c47",
+        )
+        albums.set_track_interpret(track, "A / B")
+        cmd = aufrufe[0]
+        assert "artist=A / B" in cmd
+        assert "artists=A; B" in cmd
+        felder = dict(teil.split("=", 1) for teil in cmd if "=" in teil)
+        assert felder["mb_artistid"] == ""
+        assert felder["mb_artistids"] == ""

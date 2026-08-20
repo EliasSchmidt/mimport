@@ -33,10 +33,10 @@ from __future__ import annotations
 
 import logging
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
-from backend import cover, tagging
+from backend import cover, tag_catalog, tagging
 from backend.config import settings
 from backend.importer import library_lock
 
@@ -47,24 +47,60 @@ log = logging.getLogger(__name__)
 #: Pipe.
 _TRENNER = "\x1f"
 
+#: Trennt *Datensätze* (ein Album/Titel je Aufruf von ``beet list``)
+#: voneinander -- ``splitlines()`` reicht dafür nicht: Freitextfelder wie
+#: ``albumdisambig`` können selbst einen Zeilenumbruch enthalten, und der
+#: würde eine einzelne Zeile sonst mitten im Datensatz zerreißen (siehe
+#: ``_saetze``). Ein eigenes Zeichen statt einer echten Zeile macht das
+#: unabhängig vom Inhalt jedes einzelnen Feldes.
+_SATZENDE = "\x1e"
+
 #: Womit beets mehrere Werte *innerhalb* eines Feldes trennt (siehe
 #: ``_ID_MEHRWERTIG`` in ``tagging.py``). Nicht zu verwechseln mit
 #: ``_TRENNER`` oben, das die Felder *untereinander* trennt.
 _ID_TRENNER = "; "
 
-#: Reihenfolge muss zu ``_aus_zeile`` passen. ``$path`` ist bei einem Album
+#: Katalogfelder, die schon ein eigenes Dataclass-Attribut haben (mit
+#: Sonderverhalten wie ``year_editierbar`` oder dem MusicBrainz-Link-UI) --
+#: der Rest aus ``tag_catalog`` landet generisch im ``erweitert``-Dict. Die
+#: Künstler-Felder (``albumartists``/``artists``, ``mb_*artistids``) bleiben
+#: bewusst außen vor: Namen und MBID-Zuordnung laufen weiter über
+#: ``kuenstler_links``, nicht über den generischen Katalog-Mechanismus.
+_ALBUM_KERNFELDER = {"albumartists", "album", "year", "genres", "label", "mb_albumartistids"}
+_ALBUM_ERWEITERT_FELDER = tuple(
+    f for f in tag_catalog.ALBUM_FELDER if f.key not in _ALBUM_KERNFELDER
+)
+_TRACK_KERNFELDER = {"artists", "title", "mb_artistids"}
+_TRACK_ERWEITERT_FELDER = tuple(
+    f for f in tag_catalog.TRACK_FELDER if f.key not in _TRACK_KERNFELDER
+)
+
+#: Reihenfolge muss zu ``_aus_satz`` passen. ``$path`` ist bei einem Album
 #: ein berechnetes Feld (der Ordner der ersten Spur), keine Datenbankspalte.
-#: ``$mb_albumartistids`` steht am Ende, damit bestehende Indizes stabil
-#: bleiben.
-_FELDER = (
+#: Die ersten neun Felder sind die "Kernfelder" mit eigenem Attribut, danach
+#: kommt für jedes übrige Katalogfeld ein weiterer Wert.
+_ALBUM_KERN_FELDER = (
     "$id", "$albumartist", "$album", "$year", "$path", "$mb_albumartistid",
     "$genres", "$label", "$mb_albumartistids",
 )
-_FORMAT = _TRENNER.join(_FELDER)
+_FELDER = _ALBUM_KERN_FELDER + tuple(f"${f.key}" for f in _ALBUM_ERWEITERT_FELDER)
+_FORMAT = _TRENNER.join(_FELDER) + _SATZENDE
 
-#: Reihenfolge muss zu ``_track_aus_zeile`` passen.
-_TRACK_FELDER = ("$id", "$track", "$title", "$artist", "$mb_artistid", "$mb_artistids")
-_TRACK_FORMAT = _TRENNER.join(_TRACK_FELDER)
+#: Reihenfolge muss zu ``_track_aus_satz`` passen.
+_TRACK_KERN_FELDER = ("$id", "$track", "$title", "$artist", "$mb_artistid", "$mb_artistids")
+_TRACK_FELDER = _TRACK_KERN_FELDER + tuple(f"${f.key}" for f in _TRACK_ERWEITERT_FELDER)
+_TRACK_FORMAT = _TRENNER.join(_TRACK_FELDER) + _SATZENDE
+
+
+def _saetze(stdout: str) -> list[str]:
+    """Zerlegt eine ``beet list``-Ausgabe in ihre Datensätze.
+
+    Nicht per ``splitlines()`` -- ein Datensatz kann selbst einen
+    Zeilenumbruch enthalten (siehe ``_SATZENDE``). beets hängt nach jedem
+    ``_SATZENDE`` noch das eigene Zeilenende an; das führende ``\\n`` jedes
+    Datensatzes (außer dem ersten) gehört also nicht zum Inhalt.
+    """
+    return [teil.lstrip("\n") for teil in stdout.split(_SATZENDE) if teil.strip("\n")]
 
 
 class AlbumError(Exception):
@@ -99,6 +135,9 @@ class Album:
     genres: str = ""
     label: str = ""
     mb_albumartistids: str = ""
+    #: Alle übrigen Katalogfelder (``tag_catalog.ALBUM_FELDER`` minus den
+    #: Kernfeldern oben), Katalog-Schlüssel auf Wert.
+    erweitert: dict[str, str] = field(default_factory=dict)
 
     @property
     def year_editierbar(self) -> str:
@@ -142,6 +181,20 @@ class Album:
         ids = _kuenstler_ids(namen, self.mb_albumartistids, self.mb_albumartistid)
         return list(zip(namen, ids))
 
+    @property
+    def alle_werte(self) -> dict[str, str]:
+        """Jedes Katalogfeld außer den Künstler-Feldern (siehe
+        ``kuenstler_links``) auf seinen aktuellen Wert -- Kernattribute und
+        ``erweitert`` zusammengeführt, für generisches Rendering im Template.
+        """
+        return {
+            "album": self.album,
+            "year": self.year_editierbar,
+            "genres": self.genres,
+            "label": self.label,
+            **self.erweitert,
+        }
+
 
 @dataclass(frozen=True)
 class Track:
@@ -151,6 +204,8 @@ class Track:
     artist: str
     mb_artistid: str = ""
     mb_artistids: str = ""
+    #: Wie ``Album.erweitert``, für ``tag_catalog.TRACK_FELDER``.
+    erweitert: dict[str, str] = field(default_factory=dict)
 
     @property
     def has_artist_mbid(self) -> bool:
@@ -162,6 +217,11 @@ class Track:
         namen = tagging.kuenstlerliste(self.artist)
         ids = _kuenstler_ids(namen, self.mb_artistids, self.mb_artistid)
         return list(zip(namen, ids))
+
+    @property
+    def alle_werte(self) -> dict[str, str]:
+        """Wie ``Album.alle_werte``, für ``tag_catalog.TRACK_FELDER``."""
+        return {"title": self.title, **self.erweitert}
 
 
 def _lauf(args: list[str], *, timeout: int) -> subprocess.CompletedProcess[str]:
@@ -186,19 +246,20 @@ def _lauf(args: list[str], *, timeout: int) -> subprocess.CompletedProcess[str]:
         raise AlbumError("beets antwortet nicht.") from exc
 
 
-def _aus_zeile(zeile: str) -> Album | None:
-    teile = zeile.split(_TRENNER)
+def _aus_zeile(satz: str) -> Album | None:
+    teile = satz.split(_TRENNER)
     if len(teile) != len(_FELDER):
         # Eine Ausgabe, die nicht zum Format passt, ignorieren statt
-        # abzubrechen -- eine einzelne kaputte Zeile soll nicht die ganze
-        # Liste unbrauchbar machen.
-        log.warning("Unerwartete beet-list-Zeile ignoriert: %r", zeile)
+        # abzubrechen -- ein einzelner kaputter Datensatz soll nicht die
+        # ganze Liste unbrauchbar machen.
+        log.warning("Unerwartete beet-list-Ausgabe ignoriert: %r", satz)
         return None
-    id_roh, albumartist, album, year, pfad, mb_albumartistid, genres, label, mb_albumartistids = teile
+    kern, erweitert_werte = teile[: len(_ALBUM_KERN_FELDER)], teile[len(_ALBUM_KERN_FELDER) :]
+    id_roh, albumartist, album, year, pfad, mb_albumartistid, genres, label, mb_albumartistids = kern
     try:
         id_ = int(id_roh)
     except ValueError:
-        log.warning("Album ohne gültige ID ignoriert: %r", zeile)
+        log.warning("Album ohne gültige ID ignoriert: %r", satz)
         return None
     return Album(
         id=id_,
@@ -210,19 +271,22 @@ def _aus_zeile(zeile: str) -> Album | None:
         genres=genres,
         label=label,
         mb_albumartistids=mb_albumartistids,
+        erweitert=dict(zip((f.key for f in _ALBUM_ERWEITERT_FELDER), erweitert_werte)),
     )
 
 
-def _track_aus_zeile(zeile: str) -> Track | None:
-    teile = zeile.split(_TRENNER)
+def _track_aus_zeile(satz: str) -> Track | None:
+    teile = satz.split(_TRENNER)
     if len(teile) != len(_TRACK_FELDER):
-        log.warning("Unerwartete beet-list-Zeile (Track) ignoriert: %r", zeile)
+        log.warning("Unerwartete beet-list-Ausgabe (Track) ignoriert: %r", satz)
         return None
-    id_roh, track, title, artist, mb_artistid, mb_artistids = teile
+    kern = teile[: len(_TRACK_KERN_FELDER)]
+    erweitert_werte = teile[len(_TRACK_KERN_FELDER) :]
+    id_roh, track, title, artist, mb_artistid, mb_artistids = kern
     try:
         id_ = int(id_roh)
     except ValueError:
-        log.warning("Track ohne gültige ID ignoriert: %r", zeile)
+        log.warning("Track ohne gültige ID ignoriert: %r", satz)
         return None
     return Track(
         id=id_,
@@ -231,6 +295,7 @@ def _track_aus_zeile(zeile: str) -> Track | None:
         artist=artist,
         mb_artistid=mb_artistid,
         mb_artistids=mb_artistids,
+        erweitert=dict(zip((f.key for f in _TRACK_ERWEITERT_FELDER), erweitert_werte)),
     )
 
 
@@ -257,7 +322,7 @@ def list_albums(query: str = "") -> list[Album]:
         raise AlbumError(
             proc.stderr.strip() or "Die Albenliste ließ sich nicht abrufen."
         )
-    alben = [a for zeile in proc.stdout.splitlines() if (a := _aus_zeile(zeile))]
+    alben = [a for satz in _saetze(proc.stdout) if (a := _aus_zeile(satz))]
     alben.sort(key=lambda a: (a.albumartist.lower(), a.year, a.album.lower()))
     return alben
 
@@ -281,7 +346,7 @@ def list_tracks(album_id: int) -> list[Track]:
         raise AlbumError(
             proc.stderr.strip() or "Die Titelliste ließ sich nicht abrufen."
         )
-    tracks = [t for zeile in proc.stdout.splitlines() if (t := _track_aus_zeile(zeile))]
+    tracks = [t for satz in _saetze(proc.stdout) if (t := _track_aus_zeile(satz))]
     tracks.sort(key=lambda t: _track_sortschluessel(t.track))
     return tracks
 
@@ -291,8 +356,8 @@ def get_track(track_id: int) -> Track | None:
     proc = _lauf(["list", "-f", _TRACK_FORMAT, f"id:{track_id}"], timeout=30)
     if proc.returncode != 0:
         raise AlbumError(proc.stderr.strip() or "Der Titel ließ sich nicht abrufen.")
-    for zeile in proc.stdout.splitlines():
-        if (t := _track_aus_zeile(zeile)) is not None:
+    for satz in _saetze(proc.stdout):
+        if (t := _track_aus_zeile(satz)) is not None:
             return t
     return None
 
@@ -381,28 +446,75 @@ def set_track_artist_mbid(track: Track, index: int, mbid: str) -> None:
         _modify([], f"id:{track.id}", felder, timeout=60)
 
 
-def update_album_fields(album: Album, felder: dict[str, str]) -> None:
-    """Ändert Albumkünstler, Albumtitel, Jahr oder Genre nachträglich.
+def set_album_interpret(album: Album, wert: str) -> None:
+    """Ändert den rohen Interpretennamen-Text (nicht die MB-Verknüpfung).
 
-    Dasselbe zweistufige Muster wie bei ``set_album_artist_mbid``: erst die
-    Titel über ``album_id:`` -- das schreibt Datenbank *und* Datei --, danach
-    die Album-Zeile selbst über ``id:`` mit ``-a``, nur für die eigene
-    Anzeige.
+    Setzt zugleich die mehrwertige Namensliste (``albumartists``) neu, damit
+    Navidrome & Co. bei mehreren Interpreten korrekt gruppieren -- und
+    verwirft alle bisherigen MusicBrainz-IDs: eine geänderte Schreibweise
+    kann nicht mehr sicher zu den alten Positionen gehören (siehe
+    ``_kuenstler_ids``). Genau das tut auch das manuelle Taggen vor dem
+    Import, wenn der Name nach einer MB-Auswahl geändert wird
+    (``static/index.js``, "Name geändert -- Match bitte neu prüfen").
     """
-    if not felder:
-        return
+    namen = tagging.kuenstlerliste(wert)
+    felder = {
+        "albumartist": wert,
+        "albumartists": _ID_TRENNER.join(namen),
+        "mb_albumartistid": "",
+        "mb_albumartistids": "",
+    }
     with library_lock():
         _modify([], f"album_id:{album.id}", felder, timeout=120)
         _modify(["-a", "-W", "-I"], f"id:{album.id}", felder, timeout=30)
 
 
-def update_track_fields(track_id: int, felder: dict[str, str]) -> None:
-    """Ändert Titel oder Interpret eines einzelnen Titels nachträglich.
-
-    Wie ``set_track_artist_mbid``: ``id:`` trifft direkt den Titel, ein
-    Aufruf genügt für Datenbank und Datei.
-    """
-    if not felder:
-        return
+def set_track_interpret(track: Track, wert: str) -> None:
+    """Wie ``set_album_interpret``, für den Interpreten eines Titels."""
+    namen = tagging.kuenstlerliste(wert)
+    felder = {
+        "artist": wert,
+        "artists": _ID_TRENNER.join(namen),
+        "mb_artistid": "",
+        "mb_artistids": "",
+    }
     with library_lock():
-        _modify([], f"id:{track_id}", felder, timeout=60)
+        _modify([], f"id:{track.id}", felder, timeout=60)
+
+
+def set_album_field(album: Album, feld: tag_catalog.Feld, wert: str) -> None:
+    """Setzt ein beliebiges Katalogfeld auf Album-Ebene, egal ob leer oder nicht.
+
+    Anders als ``update_album_fields``: ein leerer Wert *löscht* das Feld,
+    statt es unangetastet zu lassen -- ein direkt editierbares Eingabefeld
+    muss den Tag auch wirklich leeren können, wenn man seinen Inhalt
+    entfernt. Mehrwertige Felder (``feld.einzelform`` gesetzt) bekommen ihre
+    Einzelform automatisch mit demselben Wert mitgesetzt (siehe Moduldoc --
+    nachgemessen harmlos, selbst wenn beets die Einzelform selbst als
+    deprecated behandelt).
+
+    Künstler-Felder (``feld.kuenstler_link``) laufen nicht hierüber, sondern
+    über ``set_album_interpret``/``set_album_artist_mbid`` -- die brauchen
+    die MBID-Invalidierung bzw. Positions-Logik, die hier fehlt.
+    """
+    if feld.kuenstler_link:
+        raise AlbumError("Dieses Feld läuft über die Künstler-Verknüpfung.")
+    felder = {feld.key: wert}
+    if feld.einzelform:
+        felder[feld.einzelform] = wert
+    with library_lock():
+        _modify([], f"album_id:{album.id}", felder, timeout=120)
+        _modify(["-a", "-W", "-I"], f"id:{album.id}", felder, timeout=30)
+
+
+def set_track_field(track: Track, feld: tag_catalog.Feld, wert: str) -> None:
+    """Wie ``set_album_field``, für ein Katalogfeld auf Track-Ebene."""
+    if feld.kuenstler_link:
+        raise AlbumError("Dieses Feld läuft über die Künstler-Verknüpfung.")
+    felder = {feld.key: wert}
+    if feld.einzelform:
+        felder[feld.einzelform] = wert
+    with library_lock():
+        _modify([], f"id:{track.id}", felder, timeout=60)
+
+

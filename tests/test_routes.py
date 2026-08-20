@@ -648,6 +648,52 @@ class TestRip:
         assert "Weitere Disc rippen" in response.text
         assert f'value="{session.session_id}"' in response.text
 
+    def test_fertiger_rip_bietet_zurueckstellen_an(
+        self, client, werkzeuge_da, monkeypatch
+    ):
+        """Für ein anderes Album muss sich das Laufwerk freigeben lassen, ohne
+        den fertigen Rip zu verwerfen."""
+        from backend import rip, sessions
+
+        session = sessions.create_session()
+        job = rip.RipJob(zustand="fertig", session_id=session.session_id)
+        monkeypatch.setattr(rip, "_job", job)
+
+        response = client.get("/rip")
+        assert "/rip?sitzung_loeschen=false" in response.text
+
+    def test_zurueckstellen_behaelt_die_session_und_gibt_das_laufwerk_frei(
+        self, client, werkzeuge_da, monkeypatch
+    ):
+        from backend import rip, sessions
+
+        session = sessions.create_session()
+        (session.directory / "01 Track 1.flac").write_bytes(b"fLaC\x00\x00\x00\x22")
+        job = rip.RipJob(zustand="fertig", session_id=session.session_id)
+        monkeypatch.setattr(rip, "_job", job)
+
+        response = client.request("DELETE", "/rip?sitzung_loeschen=false")
+
+        assert "Audio-CD lesen" in response.text
+        assert session.directory.exists()
+        assert (session.directory / "01 Track 1.flac").is_file()
+        assert rip.current() is None
+
+        # Das Laufwerk ist wirklich frei -- ein neuer Rip lässt sich starten.
+        from tests.test_discid import CDPARANOIA_AUSGABE
+        from tests.test_rip import _FakeThread
+
+        monkeypatch.setattr(
+            rip, "read_toc", lambda: rip.discid.parse_cdparanoia_toc(CDPARANOIA_AUSGABE)
+        )
+        monkeypatch.setattr(rip.threading, "Thread", _FakeThread)
+
+        neuer_start = client.post("/rip")
+        assert neuer_start.status_code == 200
+        neuer_job = rip.current()
+        assert neuer_job is not None
+        assert neuer_job.session_id != session.session_id
+
     def test_weitere_disc_haengt_an_dieselbe_session_an(
         self, client, werkzeuge_da, monkeypatch
     ):

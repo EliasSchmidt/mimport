@@ -159,6 +159,11 @@
         lassen, bevor unten gematcht wird -- danach zählen alle bisher
         gelesenen Discs als eine Session.
     </p>
+    <p class="hint">
+        Soll stattdessen ein anderes Album dran? Diese Sitzung bleibt dabei
+        erhalten und steht oben unter „offene Sitzungen", bis sie fortgesetzt
+        wird.
+    </p>
     <div class="actions">
         <form hx-post="/rip" hx-target="#rip" hx-swap="innerHTML"
               hx-disabled-elt="button" hx-indicator="#rip-weitere-spinner">
@@ -169,6 +174,11 @@
             startet …
         </span>
         <button type="button" class="button secondary"
+                hx-delete="/rip?sitzung_loeschen=false" hx-target="#rip" hx-swap="innerHTML"
+                hx-on::after-request="htmx.ajax('GET', '/sessions', {target: '#sessions', swap: 'innerHTML'})">
+            Zurückstellen, Laufwerk freigeben
+        </button>
+        <button type="button" class="button danger"
                 hx-delete="/rip" hx-target="#rip" hx-swap="innerHTML"
                 hx-confirm="Gelesene Tracks verwerfen und Laufwerk freigeben?">
             Verwerfen

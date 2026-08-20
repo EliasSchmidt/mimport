@@ -382,6 +382,63 @@ class TestMehrwertigeTags:
         assert medien.mb_artistid in (None, "")
         assert medien.mb_artistids in (None, [])
 
+    def test_leerer_track_kuenstler_faellt_auf_albumkuenstler_zurueck(self, tmp_path):
+        """Ohne diesen Fallback bekäme die Datei gar keinen ARTIST-Tag --
+        Navidrome zeigt dann "Unknown Artist", obwohl der Albumkünstler
+        bekannt ist. Betrifft nur Nicht-Sampler, siehe Test unten."""
+        import mediafile
+
+        from backend import tagging
+        from tests.flacfixture import write_flac
+
+        pfad = write_flac(tmp_path / "t.flac", seconds=5)
+        tagging.apply_manual_tags(
+            [pfad], {"albumartist": "Peter Heinrich", "album": "4 Kantaten"}
+        )
+
+        medien = mediafile.MediaFile(pfad)
+        assert medien.artist == "Peter Heinrich"
+        assert medien.artists == ["Peter Heinrich"]
+
+    def test_fallback_uebernimmt_die_bereits_aufgeloeste_mbid(self, tmp_path):
+        """Der Albumkünstler wurde schon per Lupe bestätigt -- der
+        übernommene Track-Künstler soll dieselbe MBID tragen, statt sie noch
+        einmal (unnötig) bei MusicBrainz nachzuschlagen."""
+        import mediafile
+
+        from backend import tagging
+        from tests.flacfixture import write_flac
+
+        pfad = write_flac(tmp_path / "t.flac", seconds=5)
+        tagging.apply_manual_tags(
+            [pfad],
+            {
+                "albumartist": "Peter Heinrich",
+                "mb_albumartistids": "935372a8-52c8-4a75-a90b-5e08de2e912a",
+            },
+        )
+
+        medien = mediafile.MediaFile(pfad)
+        assert medien.artist == "Peter Heinrich"
+        assert medien.mb_artistid == "935372a8-52c8-4a75-a90b-5e08de2e912a"
+
+    def test_sampler_bekommt_keinen_albumkuenstler_als_fallback(self, tmp_path):
+        """Der Fallback gilt ausdrücklich nicht für Sampler -- sonst stünde
+        "Various Artists" auf jedem Track, obwohl dort ja gerade
+        unterschiedliche Interpreten stehen sollen."""
+        import mediafile
+
+        from backend import tagging
+        from tests.flacfixture import write_flac
+
+        pfad = write_flac(tmp_path / "t.flac", seconds=5)
+        tagging.apply_manual_tags(
+            [pfad], {"albumartist": "Various Artists", "comp": True}
+        )
+
+        medien = mediafile.MediaFile(pfad)
+        assert medien.artist in (None, "")
+
     def test_sampler_bekommt_je_track_einen_kuenstler(self, tmp_path, monkeypatch):
         """Der Fall Various Artists: Albumkünstler gleich, Interpret je Track."""
         import mediafile

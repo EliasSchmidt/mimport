@@ -252,6 +252,20 @@ def apply_manual_tags(
     if fields.get("comp") is True and not str(fields.get("albumartist", "")).strip():
         fields["albumartist"] = sampler_name()
 
+    # Kein Sampler, aber der Track-Künstler blieb leer: ohne Fallback bekäme
+    # die Datei gar keinen ARTIST-Tag (nicht einmal einen leeren) -- Navidrome
+    # & Co. zeigen dann "Unknown Artist", obwohl der Albumkünstler ja bekannt
+    # ist. Bei einem Sampler dagegen wäre "Various Artists" auf jedem Track
+    # falsch, deshalb nur außerhalb von "comp". ``albumartist`` ist in diesem
+    # Zweig serverseitig Pflicht (siehe ``routes.manual``), kann hier also
+    # nicht leer sein. Die MBID gleich mitnehmen erspart ``_ergänze_kuenstler_ids``
+    # unten den doppelten Nachschlag für denselben Namen.
+    if fields.get("comp") is not True and not str(fields.get("artists", "")).strip():
+        if str(fields.get("albumartist", "")).strip():
+            fields["artists"] = fields["albumartist"]
+            if str(fields.get("mb_albumartistids", "")).strip():
+                fields["mb_artistids"] = fields["mb_albumartistids"]
+
     fields = _ergänze_kuenstler_ids(fields)
     je_track = {key: _ergänze_kuenstler_ids(value) for key, value in (je_track or {}).items()}
 

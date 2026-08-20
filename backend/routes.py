@@ -636,12 +636,15 @@ def rip_reset(request: Request, sitzung_loeschen: bool = True) -> HTMLResponse:
     """Verwirft einen abgeschlossenen Auftrag, damit die nächste CD kann.
 
     Normalerweise verschwindet mit dem Auftrag auch die Session -- das ist das
-    "Verwerfen" in der Oberfläche. Nach einer fehlgeschlagenen weiteren Disc
-    eines Mehrfach-CD-Albums soll das aber *nicht* passieren: die zuvor
+    "Verwerfen" in der Oberfläche. Zwei Fälle sollen das aber *nicht* auslösen:
+    eine fehlgeschlagene weitere Disc eines Mehrfach-CD-Albums (die zuvor
     erfolgreich gelesenen Discs sollen nicht mit in den Abfluss gehen, nur weil
-    die neueste nicht lesbar war. Für diesen Fall schickt "Laufwerk freigeben"
-    in ``_rip.html`` ``sitzung_loeschen=false`` und die Session bleibt als
-    offene Sitzung stehen.
+    die neueste nicht lesbar war) und ein fertiger Rip, der für ein anderes
+    Album zurückgestellt wird, statt gleich weiter gematcht zu werden -- sonst
+    gäbe es keinen Weg, das Laufwerk für ein zweites Album freizugeben, ohne
+    das erste zu verwerfen. Für beide Fälle schicken "Laufwerk freigeben" und
+    "Zurückstellen, Laufwerk freigeben" in ``_rip.html`` ``sitzung_loeschen=false``,
+    und die Session bleibt als offene Sitzung stehen.
     """
     job = rip.current()
     try:

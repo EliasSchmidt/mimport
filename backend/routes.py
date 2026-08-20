@@ -53,6 +53,27 @@ router = APIRouter()
 CHUNK_SIZE = 1024 * 1024
 
 
+#: Katalogfelder, die das manuelle Tagging zusätzlich zu den schon
+#: benannten Basis-Feldern (Albumkünstler/Album/Jahr/Genre/Sampler, eigene
+#: Form-Namen aus historischen Gründen) generisch anbietet. Künstler-Felder
+#: laufen über die MusicBrainz-Lupe, nicht hier drüber; eine Album- oder
+#: Release-ID setzen wir beim Handtaggen bewusst nicht (siehe Docstring von
+#: ``manual`` unten) -- die ganze "musicbrainz"-Gruppe bleibt deshalb außen
+#: vor. Track-seitige "erweitert"-Felder (ISRC, BPM, Tonart, ...) fehlen hier
+#: bewusst: die Tabelle "Titel je Track" wäre mit einer Spalte je Feld
+#: sofort wieder so breit, wie die /albums-Detailseite es gerade nicht mehr
+#: sein soll -- nachträglich sind sie dort im "Weitere Felder"-Dialog pro
+#: Titel erreichbar.
+_MANUAL_ALBUM_BASIS_ZUSATZ = tuple(
+    f
+    for f in tag_catalog.ALBUM_FELDER
+    if f.gruppe == "basis" and not f.kuenstler_link
+    and f.key not in ("album", "year", "genres", "comp")
+)
+_MANUAL_ALBUM_ERWEITERT = tuple(
+    f for f in tag_catalog.ALBUM_FELDER if f.gruppe == "erweitert" and not f.kuenstler_link
+)
+
 _FELD_WERTE = {"titel", "interpret", "komponist"}
 
 
@@ -374,6 +395,8 @@ def _files_fragment(request: Request, session: sessions.StagingSession) -> HTMLR
         track_inputs=_track_inputs(session, draft=draft),
         draft=draft,
         genre_vorschlaege=genres.katalog(),
+        manual_basis_zusatz=_MANUAL_ALBUM_BASIS_ZUSATZ,
+        manual_erweitert=_MANUAL_ALBUM_ERWEITERT,
         cover_present=cover.vorhanden(session.directory),
         cover_version=_session_cover_version(session),
         ocr_overlay=None,
@@ -1325,6 +1348,8 @@ def match(
         track_inputs=_track_inputs(session, draft=draft),
         draft=draft,
         genre_vorschlaege=genres.katalog(),
+        manual_basis_zusatz=_MANUAL_ALBUM_BASIS_ZUSATZ,
+        manual_erweitert=_MANUAL_ALBUM_ERWEITERT,
         ocr_overlay=None,
     )
 
@@ -1621,6 +1646,8 @@ def manual_start(request: Request, session_id: str) -> HTMLResponse:
         track_inputs=_track_inputs(session, draft=draft),
         draft=draft,
         genre_vorschlaege=genres.katalog(),
+        manual_basis_zusatz=_MANUAL_ALBUM_BASIS_ZUSATZ,
+        manual_erweitert=_MANUAL_ALBUM_ERWEITERT,
         ocr_overlay=None,
     )
 
@@ -1700,21 +1727,29 @@ async def manual(
             message="Ohne MusicBrainz-Treffer bitte noch ausfüllen: " + "; ".join(fehlende),
         )
 
+    felder = {
+        "albumartist": albumartist,
+        "mb_albumartistids": str(formular.get("mb_albumartistids") or "").strip(),
+        "album": album,
+        "artists": artist,
+        "mb_artistids": str(formular.get("mb_artistids") or "").strip(),
+        "composers": composer,
+        "year": year,
+        # In beets 2.x heißt das Feld "genres"; als "genre" gesetzt landete
+        # es früher nur als flexibles Attribut und nie in der Datei.
+        "genres": genre,
+        "comp": compilation,
+    }
+    # Restlicher Katalog (Label, Katalognummer, Album-Typ, ...) -- der
+    # Formularname entspricht hier direkt dem Katalog-Schlüssel, eine
+    # eigene Übersetzungstabelle wie oben braucht es nur für die historisch
+    # anders benannten Basis-Felder.
+    for katalog_feld in _MANUAL_ALBUM_BASIS_ZUSATZ + _MANUAL_ALBUM_ERWEITERT:
+        felder[katalog_feld.key] = str(formular.get(katalog_feld.key) or "").strip()
+
     write_result = tagging.apply_manual_tags(
         paths,
-        {
-            "albumartist": albumartist,
-            "mb_albumartistids": str(formular.get("mb_albumartistids") or "").strip(),
-            "album": album,
-            "artists": artist,
-            "mb_artistids": str(formular.get("mb_artistids") or "").strip(),
-            "composers": composer,
-            "year": year,
-            # In beets 2.x heißt das Feld "genres"; als "genre" gesetzt landete
-            # es früher nur als flexibles Attribut und nie in der Datei.
-            "genres": genre,
-            "comp": compilation,
-        },
+        felder,
         je_track=je_track,
         relative_to=session.directory,
     )

@@ -152,6 +152,12 @@
                            required>
                     <small>Beim Tippen erscheinen Vorschläge aus dem Projektkatalog; Freitext bleibt erlaubt.</small>
                 </label>
+                {% for feld in manual_basis_zusatz %}
+                <label>{{ feld.label }}
+                    <input type="text" name="{{ feld.key }}" value="{{ draft.get(feld.key, '') }}">
+                    {% if feld.hinweis %}<small>{{ feld.hinweis }}</small>{% endif %}
+                </label>
+                {% endfor %}
             </div>
 
             <datalist id="genre-vorschlaege-{{ session_id }}" data-genre-vorschlaege>
@@ -169,6 +175,31 @@
                 Track-Künstler bitte pro Track unten eintragen -- dort ist dann
                 jede Zeile Pflicht statt des Albumkünstlers oben.
             </p>
+
+            {% if manual_erweitert %}
+            {# Seltener gebrauchte Album-Felder (Katalognummer, Album-Typ, ...) liegen
+               im Dialog statt die Karte in die Höhe zu ziehen -- anders als bei
+               /albums gibt es hier noch nichts Gespeichertes, zu dem ein
+               Zurücksetzen-Knopf zurückkönnte; "Schließen" reicht. #}
+            <button type="button" class="button secondary"
+                    onclick="document.getElementById('manual-weitere-{{ session_id }}').showModal()">
+                Weitere Felder
+            </button>
+            <dialog id="manual-weitere-{{ session_id }}" class="felder-dialog">
+                <h3>Weitere Felder -- Album</h3>
+                <div class="felder-gruppe">
+                    {% for feld in manual_erweitert %}
+                    <label>{{ feld.label }}
+                        <input type="text" name="{{ feld.key }}" value="{{ draft.get(feld.key, '') }}">
+                        {% if feld.hinweis %}<small>{{ feld.hinweis }}</small>{% endif %}
+                    </label>
+                    {% endfor %}
+                </div>
+                <div class="actions">
+                    <button type="button" class="button" onclick="this.closest('dialog').close()">Schließen</button>
+                </div>
+            </dialog>
+            {% endif %}
         </div>
 
         <div class="actions">

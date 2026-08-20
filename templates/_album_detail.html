@@ -24,12 +24,34 @@
                hx-swap="none"
                {% if feld.key == "genres" %}list="genre-vorschlaege-album" autocomplete="off" data-genre-input{% endif %}>
         {% endif %}
-        <button type="button" class="button secondary feld-zuruecksetzen" data-feld-reset hidden>
-            Zurücksetzen
-        </button>
+        {{ rewind_knopf() }}
     </div>
     {% if feld.hinweis %}<small class="hint">{{ feld.hinweis }}</small>{% endif %}
 </div>
+{% endmacro %}
+
+{# Bare Eingabe ohne Label/Hinweis -- für Tabellenzellen, deren Spaltenkopf
+   die Beschriftung schon liefert (siehe Titelliste unten). #}
+{% macro feld_kompakt(pfad, feld, wert) %}
+<span class="feld-zeile feld-zeile-kompakt" data-feld-zeile data-feld="{{ feld.key }}" data-original="{{ wert }}">
+    <input type="text" name="wert" value="{{ wert }}" data-feld-eingabe
+           hx-post="{{ pfad }}" hx-vals='{"feld": "{{ feld.key }}"}' hx-trigger="change"
+           hx-swap="none">
+    {{ rewind_knopf() }}
+</span>
+{% endmacro %}
+
+{# Kleiner Rundknopf mit Rewind-Pfeil statt ausgeschriebenem "Zurücksetzen" --
+   sitzt direkt neben dem Feld, taucht per data-feld-reset erst auf, wenn
+   static/index.js einen vom Ausgangswert abweichenden Inhalt erkennt. #}
+{% macro rewind_knopf() %}
+<button type="button" class="button secondary feld-zuruecksetzen" data-feld-reset hidden
+        aria-label="Zurücksetzen" title="Zurücksetzen">
+    <svg class="icon" viewBox="0 0 16 16" aria-hidden="true">
+        <path d="M4.6 3.6V7h3.4"/>
+        <path d="M4.9 6.9A5.5 5.5 0 1 1 4.2 10.7"/>
+    </svg>
+</button>
 {% endmacro %}
 
 {% macro kuenstler_zeile(links, lookup_pfad, match_id_praefix) %}
@@ -80,14 +102,22 @@
 
     {% for gruppen_name, felder in album_gruppen %}
     {% if gruppen_name == "erweitert" %}
-    <details class="artist-fix">
-        <summary class="button secondary">Weitere Felder</summary>
+    <button type="button" class="button secondary"
+            onclick="document.getElementById('weitere-album-{{ album.id }}').showModal()">
+        Weitere Felder
+    </button>
+    <dialog id="weitere-album-{{ album.id }}" class="felder-dialog" data-felder-dialog>
+        <h3>Weitere Felder -- Album</h3>
         <div class="felder-gruppe">
             {% for feld in felder %}
             {{ feld_zeile("/albums/" ~ album.id ~ "/field", feld, album.alle_werte.get(feld.key, "")) }}
             {% endfor %}
         </div>
-    </details>
+        <div class="actions">
+            <button type="button" class="button" data-dialog-speichern>Speichern</button>
+            <button type="button" class="button secondary" data-dialog-zuruecksetzen>Zurücksetzen</button>
+        </div>
+    </dialog>
     {% else %}
     <div class="felder-gruppe">
         {% for feld in felder %}
@@ -101,9 +131,7 @@
                 <input type="text" name="wert" value="{{ album.albumartist }}" data-feld-eingabe
                        hx-post="/albums/{{ album.id }}/field" hx-vals='{"feld": "albumartists"}'
                        hx-trigger="change" hx-target="#album-detail" hx-swap="innerHTML">
-                <button type="button" class="button secondary feld-zuruecksetzen" data-feld-reset hidden>
-                    Zurücksetzen
-                </button>
+                {{ rewind_knopf() }}
             </div>
             {{ kuenstler_zeile(album.kuenstler_links, "/albums/" ~ album.id ~ "/artist-lookup", "artist-match-album") }}
         </div>
@@ -136,10 +164,10 @@
             {% set track_pfad = "/albums/" ~ album.id ~ "/tracks/" ~ t.id ~ "/field" %}
             <tr>
                 <td class="mono small" data-spalte="#">
-                    {{ feld_zeile(track_pfad, track_feld_nummer, t.alle_werte.get("track", t.track)) }}
+                    {{ feld_kompakt(track_pfad, track_feld_nummer, t.alle_werte.get("track", t.track)) }}
                 </td>
                 <td data-spalte="Titel">
-                    {{ feld_zeile(track_pfad, track_feld_titel, t.alle_werte.get("title", "")) }}
+                    {{ feld_kompakt(track_pfad, track_feld_titel, t.alle_werte.get("title", "")) }}
                 </td>
                 <td data-spalte="Interpret">
                     <div class="feld-zeile" data-feld-zeile data-feld="artists" data-original="{{ t.artist }}">
@@ -147,16 +175,18 @@
                             <input type="text" name="wert" value="{{ t.artist }}" data-feld-eingabe
                                    hx-post="{{ track_pfad }}" hx-vals='{"feld": "artists"}'
                                    hx-trigger="change" hx-target="#album-detail" hx-swap="innerHTML">
-                            <button type="button" class="button secondary feld-zuruecksetzen" data-feld-reset hidden>
-                                Zurücksetzen
-                            </button>
+                            {{ rewind_knopf() }}
                         </div>
                         {{ kuenstler_zeile(t.kuenstler_links, track_pfad|replace("/field","/artist-lookup"), "track-match-" ~ t.id) }}
                     </div>
                 </td>
                 <td>
-                    <details class="artist-fix">
-                        <summary class="button secondary">Weitere Felder</summary>
+                    <button type="button" class="button secondary"
+                            onclick="document.getElementById('weitere-track-{{ t.id }}').showModal()">
+                        Weitere Felder
+                    </button>
+                    <dialog id="weitere-track-{{ t.id }}" class="felder-dialog" data-felder-dialog>
+                        <h3>Weitere Felder -- {{ t.alle_werte.get("title", "") }}</h3>
                         <div class="felder-gruppe">
                             {% for gruppen_name, felder in track_gruppen %}
                             {% for feld in felder %}
@@ -166,7 +196,11 @@
                             {% endfor %}
                             {% endfor %}
                         </div>
-                    </details>
+                        <div class="actions">
+                            <button type="button" class="button" data-dialog-speichern>Speichern</button>
+                            <button type="button" class="button secondary" data-dialog-zuruecksetzen>Zurücksetzen</button>
+                        </div>
+                    </dialog>
                 </td>
             </tr>
             {% endfor %}

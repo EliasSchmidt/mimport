@@ -85,8 +85,14 @@
                         <input type="text" name="albumartist" data-albumartist data-artist-field="albumartist"
                                placeholder="z. B. The Beatles" value="{{ draft.albumartist or '' }}"
                                {% if not draft.compilation %}required{% endif %}>
+                        {# data-selected-name lässt das Input-Skript erkennen, dass diese
+                           ID schon zu einem Namen gehört -- ohne das würde eine Änderung
+                           des Namens nach "Entwurf vom Server laden" oder "Fortsetzen" die
+                           alte ID nicht verwerfen, weil der Vergleich sonst gegen einen nie
+                           gesetzten Wert liefe. #}
                         <input type="hidden" name="mb_albumartistids" data-artist-mbid="albumartist"
-                               value="{{ draft.mb_albumartistids or '' }}">
+                               value="{{ draft.mb_albumartistids or '' }}"
+                               data-selected-name="{{ draft.albumartist if draft.mb_albumartistids else '' }}">
                         <button type="button" class="button secondary lookup-button" aria-label="Bei MusicBrainz suchen">
                             <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M11 11l4 4M7.2 12.4a5.2 5.2 0 1 0 0-10.4 5.2 5.2 0 0 0 0 10.4z"/></svg>
                         </button>
@@ -118,7 +124,8 @@
                         <input type="text" name="artist" data-artist-field="artist" placeholder="z. B. Harmonic Brass"
                                value="{{ draft.artist or '' }}">
                         <input type="hidden" name="mb_artistids" data-artist-mbid="artist"
-                               value="{{ draft.mb_artistids or '' }}">
+                               value="{{ draft.mb_artistids or '' }}"
+                               data-selected-name="{{ draft.artist if draft.mb_artistids else '' }}">
                         <button type="button" class="button secondary lookup-button" aria-label="Bei MusicBrainz suchen">
                             <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M11 11l4 4M7.2 12.4a5.2 5.2 0 1 0 0-10.4 5.2 5.2 0 0 0 0 10.4z"/></svg>
                         </button>

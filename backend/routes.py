@@ -117,6 +117,12 @@ def _entwurf_nach_ocr_lauf(
             ("nr", row["track"]),
         ):
             key = f"{praefix}:{row['key']}"
+            if praefix == "interpret" and str(draft.get(key) or "") != wert:
+                # Der Parser überschreibt den Track-Künstler hier mit einem
+                # anderen Namen als dem, für den zuvor per Lupe eine
+                # Artist-ID bestätigt wurde -- die galt fürs alte Wort und
+                # bliebe sonst unbemerkt am neuen kleben.
+                draft.pop(f"mbinterpret:{row['key']}", None)
             if wert:
                 draft[key] = wert
             else:
@@ -228,6 +234,11 @@ def _ocr_overlay(result: ocr.OcrResult, image_url: str) -> dict[str, object]:
 
 
 def _field_label(field: str) -> str:
+    # "interpret:<Dateiname>" adressiert den Track-Künstler einer einzelnen
+    # Zeile in "Titel je Track" -- fachlich derselbe Künstler-Lookup wie das
+    # albumweite Feld, nur je Track statt einmal fürs ganze Album.
+    if field.startswith("interpret:"):
+        return "Track-Künstler"
     return {
         "albumartist": "Albumkünstler",
         "artist": "Track-Künstler",
@@ -235,6 +246,8 @@ def _field_label(field: str) -> str:
 
 
 def _mbid_field(field: str) -> str:
+    if field.startswith("interpret:"):
+        return "mbinterpret:" + field.partition(":")[2]
     return {
         "albumartist": "mb_albumartistids",
         "artist": "mb_artistids",
@@ -261,12 +274,18 @@ def _track_inputs(
         title = (row.title if row else "").strip()
         artist = (row.artist if row else "").strip()
         track = (row.number if row else "").strip()
-        if not title:
-            title = str(draft.get(f"titel:{file['key']}") or "").strip()
         if not artist:
             artist = str(draft.get(f"interpret:{file['key']}") or "").strip()
+        if not title:
+            title = str(draft.get(f"titel:{file['key']}") or "").strip()
         if not track:
             track = str(draft.get(f"nr:{file['key']}") or "").strip()
+        # Passt zum Namen aus genau demselben Entwurf-Feld -- kein separater
+        # Abgleich nötig: ``data-selected-name`` im Template merkt sich beim
+        # Rendern, zu welchem Namen diese ID gehört, und das Browser-Skript
+        # verwirft sie selbst, sobald der Name danach abweicht (bevor der
+        # nächste Autosave den veralteten Stand sichern könnte).
+        mbid = str(draft.get(f"mbinterpret:{file['key']}") or "").strip()
         # Kein Parser liefert das -- bei Klassik-Compilations hat jeder Track
         # einen eigenen Komponisten, den kein OCR-Layout zuverlässig einer
         # Zeile zuordnen könnte. Kommt daher ausschließlich aus dem Entwurf.
@@ -276,6 +295,7 @@ def _track_inputs(
                 "key": file["key"],
                 "display": file["display"],
                 "title": title,
+                "mbid": mbid,
                 "artist": artist,
                 "track": track,
                 "composer": composer,
@@ -1352,9 +1372,19 @@ async def artist_match(
     if not session.audio_paths:
         return _fragment(request, "_error.html", message="In dieser Sitzung liegen keine Dateien.")
 
+    # "interpret:<Dateiname>" ist derselbe Künstler-Lookup, nur je Track statt
+    # einmal fürs ganze Album -- der Feldname trägt die Dateikennung schon in
+    # sich, weil jede Tabellenzeile ihre eigene Trefferliste braucht. Die
+    # Dateikennung muss dabei wirklich zu dieser Sitzung gehören, sonst könnte
+    # ein beliebiger Feldname hier eine MusicBrainz-Anfrage auslösen.
+    gueltiges_feld = field in {"albumartist", "artist"}
+    if not gueltiges_feld and field.startswith("interpret:"):
+        dateiname = field.partition(":")[2]
+        gueltiges_feld = any(datei["key"] == dateiname for datei in _track_files(session))
+
     formular = await request.form()
     query = name.strip()
-    if not query and field in {"artist", "albumartist"}:
+    if not query and gueltiges_feld:
         query = str(formular.get(field) or "").strip()
 
     # " / "-getrennte Namen (Kollaboration, Chor + Dirigent, ...) suchen wir
@@ -1394,7 +1424,7 @@ async def artist_match(
         lookup_failed=einzel["lookup_failed"] if einzel else False,
         namen_treffer=namen_treffer,
         mehrfach=len(namen_treffer) > 1,
-        invalid_field=field not in {"albumartist", "artist"},
+        invalid_field=not gueltiges_feld,
     )
 
 
@@ -1471,7 +1501,9 @@ async def manual(
     gilt dort für keinen Track richtig; ohne eigenen Eintrag je Zeile bleibt
     es aber weiter die Vorbelegung. Die Tracknummer korrigiert eine falsch
     erkannte Reihenfolge, statt sich auf die Position in der Dateiliste zu
-    verlassen.
+    verlassen. ``mbinterpret:<Dateiname>`` trägt die per Lupe-Suche bestätigte
+    Artist-ID -- ohne sie greift beim Schreiben pro Track derselbe stille
+    Exakt-Treffer-Abgleich wie beim albumweiten Künstler.
     """
     session = _session_or_404(session_id)
     paths = session.audio_paths
@@ -1486,6 +1518,7 @@ async def manual(
             "titel": "title",
             "interpret": "artists",
             "komponist": "composers",
+            "mbinterpret": "mb_artistids",
             "nr": "track",
         }.get(praefix)
         if feld and dateiname and str(wert).strip():

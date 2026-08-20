@@ -107,8 +107,25 @@ def test_seiten_passen_in_die_breite(browser, server, pfad):
         seite.close()
 
 
-def test_dateiliste_nach_upload_passt(browser, server):
+def test_dateiliste_nach_upload_passt(browser, server, monkeypatch):
     """Die Tabelle mit langen Dateinamen -- dort war es am engsten."""
+    from backend import artist_ids
+
+    monkeypatch.setattr(
+        artist_ids,
+        "search",
+        lambda name, **kwargs: (
+            artist_ids.ArtistMatch(
+                name=name,
+                mbid="cafebabe-0000-0000-0000-000000000000",
+                disambiguation="ein ziemlich langer Erklärtext zur Einordnung",
+                area="Vereinigte Staaten von Amerika",
+                kind="Person",
+                exact=True,
+            ),
+        ),
+    )
+
     seite = browser.new_page(viewport={"width": BREITE, "height": 780})
     try:
         seite.goto(server + "/musik", wait_until="networkidle")
@@ -134,6 +151,15 @@ def test_dateiliste_nach_upload_passt(browser, server):
         seite.wait_for_selector("details.manual > summary")
         seite.click("details.manual > summary")
         seite.wait_for_timeout(200)
+        assert ueberlauf(seite) <= 0
+
+        # Und mit einer eingeblendeten Trefferliste bei der Track-Künstler-
+        # Lupe -- der breiteste Zustand dieser Zeile.
+        erste_zeile = seite.locator(".je-track tbody tr").first
+        erste_zeile.locator('[data-artist-field^="interpret:"]').fill("Ein langer Künstlername")
+        erste_zeile.locator(".lookup-button").click()
+        erste_zeile.locator(".artist-match-item").wait_for(timeout=5000)
+        seite.wait_for_timeout(150)
         assert ueberlauf(seite) <= 0
     finally:
         seite.close()
@@ -363,6 +389,123 @@ def test_artist_lookup_trifft_nur_das_angeklickte_feld(browser, server, monkeypa
         seite.locator("[data-artist-field=albumartist]").press("Enter")
         albumartist_ergebnis.locator(".artist-match-item").wait_for(timeout=5000)
         assert albumartist_ergebnis.locator(".artist-match-item").count() == 1
+    finally:
+        seite.close()
+
+
+def test_track_kuenstler_lupe_zeigt_treffer_nur_fuer_diese_zeile(browser, server, monkeypatch):
+    """Die MusicBrainz-Zuordnung für Track-Künstler lief bisher nur still im
+    Hintergrund beim Schreiben mit -- ohne dass der Nutzer sie je sah oder
+    hätte korrigieren können. Die Lupe je Zeile in "Titel je Track" macht sie
+    jetzt sichtbar: Suche, Auswahl und geschriebene Datei-Tags nur für die
+    angeklickte Zeile."""
+    from backend import artist_ids
+
+    def stub(name, **kwargs):
+        return (
+            artist_ids.ArtistMatch(name=name, mbid="cafebabe-0000-0000-0000-000000000000", exact=True),
+        )
+
+    monkeypatch.setattr(artist_ids, "search", stub)
+
+    seite = browser.new_page(viewport={"width": 900, "height": 800})
+    try:
+        seite.goto(server + "/musik", wait_until="networkidle")
+        seite.set_input_files(
+            "#upload-files",
+            [
+                {"name": "01 Erstes.flac", "mimeType": "audio/flac",
+                 "buffer": b"fLaC\x00\x00\x00\x22" + b"\x00" * 34},
+                {"name": "02 Zweites.flac", "mimeType": "audio/flac",
+                 "buffer": b"fLaC\x00\x00\x00\x22" + b"\x00" * 34},
+            ],
+        )
+        seite.click("#upload-submit")
+        seite.wait_for_selector("#files-inner", timeout=20000)
+        seite.click("button:has-text('Ohne MusicBrainz von Hand taggen')")
+        seite.wait_for_selector("details.manual > summary")
+        seite.click("details.manual > summary")
+
+        zeilen = seite.locator(".je-track tbody tr")
+        erste_zeile = zeilen.nth(0)
+        zweite_zeile = zeilen.nth(1)
+        erste_zeile.locator('[data-artist-field^="interpret:"]').fill("Bill Evans")
+        zweite_zeile.locator('[data-artist-field^="interpret:"]').fill("Bill Evans")
+
+        # Nur die erste Zeile abgleichen -- die zweite bleibt unberührt.
+        erste_zeile.locator(".lookup-button").click()
+
+        erstes_ergebnis = erste_zeile.locator(".artist-match")
+        zweites_ergebnis = zweite_zeile.locator(".artist-match")
+        erstes_ergebnis.locator(".artist-match-item").wait_for(timeout=5000)
+        assert erstes_ergebnis.locator(".artist-match-item").count() == 1
+        assert zweites_ergebnis.locator(".artist-match-item").count() == 0
+
+        erstes_ergebnis.get_by_role("button", name="Übernehmen").click()
+        erste_mbid = erste_zeile.locator('[data-artist-mbid^="interpret:"]')
+        zweite_mbid = zweite_zeile.locator('[data-artist-mbid^="interpret:"]')
+        assert erste_mbid.input_value() == "cafebabe-0000-0000-0000-000000000000"
+        assert zweite_mbid.input_value() == ""
+
+        # Name danach geändert: die Bestätigung passt nicht mehr und wird
+        # verworfen, statt an der falschen ID kleben zu bleiben.
+        erste_zeile.locator('[data-artist-field^="interpret:"]').fill("Jemand anders")
+        seite.wait_for_timeout(150)
+        assert erste_mbid.input_value() == ""
+    finally:
+        seite.close()
+
+
+def test_vom_server_geladene_artist_id_wird_bei_namensaenderung_verworfen(browser, server):
+    """Anders als eine frisch in dieser Seite ausgewählte Zuordnung (siehe
+    oben) kommt eine über einen Entwurf geladene Artist-ID nie durch den
+    "Übernehmen"-Klick, der ``dataset.selectedName`` setzt -- ohne dass das
+    Template denselben Namen beim Rendern in ``data-selected-name`` einträgt,
+    bemerkt das Browser-Skript eine spätere Namensänderung gar nicht und die
+    alte ID bliebe unbemerkt kleben."""
+    import requests
+
+    seite = browser.new_page(viewport={"width": 900, "height": 800})
+    try:
+        seite.goto(server + "/musik", wait_until="networkidle")
+        seite.set_input_files(
+            "#upload-files",
+            [{"name": "01 Stück.flac", "mimeType": "audio/flac",
+              "buffer": b"fLaC\x00\x00\x00\x22" + b"\x00" * 34}],
+        )
+        seite.click("#upload-submit")
+        seite.wait_for_selector("#files-inner", timeout=20000)
+        session_id = seite.locator("#files-inner").get_attribute("data-session")
+
+        # "Anderes Gerät" hat hier schon einen Track-Künstler samt Artist-ID
+        # bestätigt und im Entwurf gesichert.
+        requests.post(
+            f"{server}/entwurf/{session_id}",
+            data={
+                "interpret:01 Stück.flac": "Bill Evans",
+                "mbinterpret:01 Stück.flac": "5b689d33-aca8-4c64-9a6d-c3e7f9f7d9e5",
+            },
+            timeout=5,
+        ).raise_for_status()
+
+        # Ein Entwurf liegt schon vor dem Öffnen vor -- die Karte klappt sich
+        # deshalb gleich auf (kein zusätzlicher Klick auf die Summary nötig,
+        # der sie hier sonst wieder zuklappen würde).
+        seite.click("button:has-text('Ohne MusicBrainz von Hand taggen')")
+        seite.wait_for_selector("details.manual[open] > summary")
+        seite.click("button:has-text('Entwurf vom Server laden')")
+        seite.wait_for_timeout(300)
+
+        zeile = seite.locator(".je-track tbody tr").first
+        interpret_feld = zeile.locator('[data-artist-field^="interpret:"]')
+        mbid_feld = zeile.locator('[data-artist-mbid^="interpret:"]')
+        assert interpret_feld.input_value() == "Bill Evans"
+        assert mbid_feld.input_value() == "5b689d33-aca8-4c64-9a6d-c3e7f9f7d9e5"
+
+        interpret_feld.fill("Bill Evans Trio")
+        seite.wait_for_timeout(150)
+        assert mbid_feld.input_value() == ""
+        assert "bitte neu prüfen" in zeile.locator(".artist-match").inner_text()
     finally:
         seite.close()
 

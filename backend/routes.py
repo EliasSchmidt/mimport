@@ -1892,26 +1892,31 @@ def _mb_matches_fragment(
     )
 
 
-@router.post("/albums/{album_id}/artist-lookup", response_class=HTMLResponse)
+@router.post("/albums/{album_id}/artist-lookup/{index}", response_class=HTMLResponse)
 def album_artist_lookup(
-    request: Request, album_id: int, name: str = Form(default="")
+    request: Request, album_id: int, index: int, name: str = Form(default="")
 ) -> HTMLResponse:
-    """MusicBrainz-Kandidaten für den Album-Interpreten."""
+    """MusicBrainz-Kandidaten für einen Album-Interpreten.
+
+    ``index`` ist die Position in der Interpretenliste (bei "A feat. B" mehr
+    als eine) -- so bleibt bei mehreren Interpreten klar, welchen der Treffer
+    am Ende verknüpft.
+    """
     return _mb_matches_fragment(
-        request, name.strip(), f"/albums/{album_id}/artist-apply", "#album-detail"
+        request, name.strip(), f"/albums/{album_id}/artist-apply/{index}", "#album-detail"
     )
 
 
-@router.post("/albums/{album_id}/artist-apply", response_class=HTMLResponse)
+@router.post("/albums/{album_id}/artist-apply/{index}", response_class=HTMLResponse)
 def album_artist_apply(
-    request: Request, album_id: int, mbid: str = Form(...)
+    request: Request, album_id: int, index: int, mbid: str = Form(...)
 ) -> HTMLResponse:
-    """Verknüpft den Album-Interpreten mit der gewählten MusicBrainz-ID."""
+    """Verknüpft einen Album-Interpreten (per Position) mit der gewählten MBID."""
     album = albums.get_album(album_id)
     if album is None:
         raise HTTPException(status_code=404, detail="Album nicht gefunden.")
     try:
-        albums.set_album_artist_mbid(album, mbid)
+        albums.set_album_artist_mbid(album, index, mbid)
     except albums.AlbumError as exc:
         return _album_detail_fragment(request, album_id, fehler=str(exc))
     return _album_detail_fragment(request, album_id)
@@ -1957,29 +1962,32 @@ def album_edit(
 
 
 @router.post(
-    "/albums/{album_id}/tracks/{track_id}/artist-lookup", response_class=HTMLResponse
+    "/albums/{album_id}/tracks/{track_id}/artist-lookup/{index}", response_class=HTMLResponse
 )
 def track_artist_lookup(
-    request: Request, album_id: int, track_id: int, name: str = Form(default="")
+    request: Request, album_id: int, track_id: int, index: int, name: str = Form(default="")
 ) -> HTMLResponse:
-    """MusicBrainz-Kandidaten für den Interpreten eines einzelnen Titels."""
+    """MusicBrainz-Kandidaten für einen Interpreten eines einzelnen Titels."""
     return _mb_matches_fragment(
         request,
         name.strip(),
-        f"/albums/{album_id}/tracks/{track_id}/artist-apply",
+        f"/albums/{album_id}/tracks/{track_id}/artist-apply/{index}",
         "#album-detail",
     )
 
 
 @router.post(
-    "/albums/{album_id}/tracks/{track_id}/artist-apply", response_class=HTMLResponse
+    "/albums/{album_id}/tracks/{track_id}/artist-apply/{index}", response_class=HTMLResponse
 )
 def track_artist_apply(
-    request: Request, album_id: int, track_id: int, mbid: str = Form(...)
+    request: Request, album_id: int, track_id: int, index: int, mbid: str = Form(...)
 ) -> HTMLResponse:
-    """Verknüpft den Interpreten eines einzelnen Titels mit der gewählten MBID."""
+    """Verknüpft einen Interpreten eines einzelnen Titels (per Position) mit der MBID."""
+    track = albums.get_track(track_id)
+    if track is None:
+        raise HTTPException(status_code=404, detail="Titel nicht gefunden.")
     try:
-        albums.set_track_artist_mbid(track_id, mbid)
+        albums.set_track_artist_mbid(track, index, mbid)
     except albums.AlbumError as exc:
         return _album_detail_fragment(request, album_id, fehler=str(exc))
     return _album_detail_fragment(request, album_id)

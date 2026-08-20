@@ -255,6 +255,107 @@ def test_samplerhaken_stellt_die_felder_ein(browser, server):
         seite.close()
 
 
+def test_samplerhaken_verwirft_bestaetigte_track_kuenstler_id(browser, server, monkeypatch):
+    """"Sampler" leert das Feld "Track-Künstler für alle Tracks" per Skript --
+    ohne "input"-Ereignis, das den sonst üblichen Abgleich auslösen würde.
+    War dort zuvor eine Artist-ID per Lupe bestätigt, muss sie mit dem jetzt
+    leeren Namen verschwinden, sonst würde sie beim Schreiben ohne
+    erkennbaren Grund in jeden Track ohne eigene Bestätigung übernommen."""
+    from backend import artist_ids
+
+    monkeypatch.setattr(
+        artist_ids,
+        "search",
+        lambda name, **kwargs: (
+            artist_ids.ArtistMatch(name=name, mbid="cafebabe-0000-0000-0000-000000000000", exact=True),
+        ),
+    )
+
+    seite = browser.new_page(viewport={"width": 900, "height": 800})
+    try:
+        seite.goto(server + "/musik", wait_until="networkidle")
+        seite.set_input_files(
+            "#upload-files",
+            [{"name": "01 Stück.flac", "mimeType": "audio/flac",
+              "buffer": b"fLaC\x00\x00\x00\x22" + b"\x00" * 34}],
+        )
+        seite.click("#upload-submit")
+        seite.wait_for_selector("#files-inner", timeout=20000)
+        seite.click("button:has-text('Ohne MusicBrainz von Hand taggen')")
+        seite.wait_for_selector("details.manual > summary")
+        seite.click("details.manual > summary")
+
+        seite.fill("[data-artist-field=artist]", "Harmonic Brass")
+        seite.locator("[data-artist-field=artist]").locator(
+            "xpath=ancestor::div[contains(@class,'lookup-field')]"
+        ).locator(".lookup-button").click()
+        artist_ergebnis = seite.locator("[data-artist-results=artist]")
+        artist_ergebnis.locator(".artist-match-item").wait_for(timeout=5000)
+        artist_ergebnis.get_by_role("button", name="Übernehmen").click()
+
+        interpret = seite.locator("[data-alle-interpreten] input[type=text]")
+        mbid = seite.locator("[data-artist-mbid=artist]")
+        assert interpret.input_value() == "Harmonic Brass"
+        assert mbid.input_value() == "cafebabe-0000-0000-0000-000000000000"
+
+        seite.check("[data-sampler]")
+        assert interpret.input_value() == ""
+        assert mbid.input_value() == ""
+        assert "Noch kein MusicBrainz-Match" in artist_ergebnis.inner_text()
+    finally:
+        seite.close()
+
+
+def test_samplerhaken_verwirft_bestaetigte_albumkuenstler_id_beim_zuruecknehmen(browser, server, monkeypatch):
+    """"Various Artists" ist selbst ein echter MusicBrainz-Eintrag -- wird er
+    per Lupe bestätigt, während "Sampler" ihn selbst eingesetzt hat, und dann
+    "Sampler" wieder abgehakt, leert das Skript den Albumkünstler zurück auf
+    "" (siehe "Nur zurücknehmen, was wir selbst gesetzt haben"). Ohne
+    passenden Fix bliebe die bestätigte Artist-ID an diesem jetzt leeren
+    Namen kleben und würde beim Schreiben in jeden Track ohne eigenen
+    Albumkünstler übernommen."""
+    from backend import artist_ids
+
+    monkeypatch.setattr(
+        artist_ids,
+        "search",
+        lambda name, **kwargs: (
+            artist_ids.ArtistMatch(name=name, mbid="89ad4ac3-39f7-470e-963a-56509c546377", exact=True),
+        ),
+    )
+
+    seite = browser.new_page(viewport={"width": 900, "height": 800})
+    try:
+        seite.goto(server + "/musik", wait_until="networkidle")
+        seite.set_input_files(
+            "#upload-files",
+            [{"name": "01 Stück.flac", "mimeType": "audio/flac",
+              "buffer": b"fLaC\x00\x00\x00\x22" + b"\x00" * 34}],
+        )
+        seite.click("#upload-submit")
+        seite.wait_for_selector("#files-inner", timeout=20000)
+        seite.click("button:has-text('Ohne MusicBrainz von Hand taggen')")
+        seite.wait_for_selector("details.manual > summary")
+        seite.click("details.manual > summary")
+
+        seite.check("[data-sampler]")
+        albumartist = seite.locator("[data-albumartist]")
+        mbid = seite.locator("[data-artist-mbid=albumartist]")
+        assert albumartist.input_value() == "Various Artists"
+
+        seite.locator("[data-albumartist-label] .lookup-button").click()
+        albumartist_ergebnis = seite.locator("[data-artist-results=albumartist]")
+        albumartist_ergebnis.locator(".artist-match-item").wait_for(timeout=5000)
+        albumartist_ergebnis.get_by_role("button", name="Übernehmen").click()
+        assert mbid.input_value() == "89ad4ac3-39f7-470e-963a-56509c546377"
+
+        seite.uncheck("[data-sampler]")
+        assert albumartist.input_value() == ""
+        assert mbid.input_value() == ""
+    finally:
+        seite.close()
+
+
 def test_eigener_albumkuenstler_bleibt_stehen(browser, server):
     """Wer ein Label einträgt, will es behalten -- auch beim Umschalten."""
     seite = browser.new_page(viewport={"width": 900, "height": 800})

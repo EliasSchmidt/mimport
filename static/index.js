@@ -269,6 +269,11 @@ bindGenreInputs();
 
 // Die Abschnitte 3 und 4 tauchen erst auf, wenn dort etwas landet.
 document.body.addEventListener("htmx:afterSwap", (event) => {
+  // Ein von der SSE-Extension ausgelöster Swap (Fortschritts-Ticks aus
+  // /rip/events, /audiobook/events) liefert kein event.detail.target -- das
+  // gibt es nur beim regulären htmx-Request/Response-Zyklus.
+  if (!event.detail.target) return;
+
   bindUploadWidgets(event.detail.target);
   bindGenreInputs(event.detail.target);
   initSamplerZustand(event.detail.target);

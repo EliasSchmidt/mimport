@@ -47,14 +47,19 @@
     <div hx-ext="sse" sse-connect="/audiobook/events" sse-close="fertig"
          hx-trigger="sse:fertig" hx-get="/audiobook" hx-target="#audiobook" hx-swap="innerHTML">
 
+        {# hx-target="this" ist Pflicht auf beiden: ohne eigenes hx-target
+           erben sie das hx-target="#audiobook" des Eltern-Divs -- dann swapt
+           der erste Tick #audiobook komplett und reißt den Div samt seinem
+           SSE-Listener aus dem DOM. Der Folge-Tick findet ihn nicht mehr,
+           meldet sich still ab -- genau ein Event, dann für immer Stille. #}
         {% if job and job.laeuft %}
-        <div sse-swap="fortschritt-rip" hx-swap="innerHTML">
+        <div sse-swap="fortschritt-rip" hx-target="this" hx-swap="innerHTML">
             {% include "_audiobook_rip_fortschritt.html" %}
         </div>
         {% endif %}
 
         {% if m4b and m4b.laeuft %}
-        <div sse-swap="fortschritt-m4b" hx-swap="innerHTML">
+        <div sse-swap="fortschritt-m4b" hx-target="this" hx-swap="innerHTML">
             {% include "_audiobook_m4b_fortschritt.html" %}
         </div>
         {% endif %}

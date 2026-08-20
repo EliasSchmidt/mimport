@@ -28,6 +28,13 @@ log = logging.getLogger(__name__)
 _lock = threading.RLock()
 _loaded = False
 
+# beet_cli_version() startet einen eigenen Python-Interpreter und ist damit
+# der teuerste Teil von health() -- und health() hängt an praktisch jeder
+# Seiten- und Fragment-Antwort. Ungecached kostete jede Navigation einen
+# Subprozessstart, auf schwacher Hardware spürbar. Das Binary wechselt
+# zur Laufzeit nicht, ein Neustart genügt als Invalidierung.
+_cli_version_cache: dict[str, str | None] = {}
+
 
 def ensure_loaded() -> None:
     """Lädt Konfiguration und Plugins genau einmal pro Prozess.
@@ -77,8 +84,21 @@ def library_version() -> str:
 def beet_cli_version(beet_bin: str) -> str | None:
     """Version des ``beet``-Executables, an das wir den Import übergeben.
 
-    ``None``, wenn das Binary nicht aufrufbar ist.
+    ``None``, wenn das Binary nicht aufrufbar ist. Gecached pro Prozess --
+    siehe ``_cli_version_cache``.
     """
+    with _lock:
+        if beet_bin in _cli_version_cache:
+            return _cli_version_cache[beet_bin]
+
+    version = _beet_cli_version_uncached(beet_bin)
+
+    with _lock:
+        _cli_version_cache[beet_bin] = version
+    return version
+
+
+def _beet_cli_version_uncached(beet_bin: str) -> str | None:
     try:
         proc = subprocess.run(
             [beet_bin, "version"],

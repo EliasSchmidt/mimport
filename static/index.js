@@ -279,6 +279,7 @@ document.body.addEventListener("htmx:afterSwap", (event) => {
   bindGenreInputs(event.detail.target);
   initSamplerZustand(event.detail.target);
   initFeldZeilen(event.detail.target);
+  initFelderDialoge(event.detail.target);
 
   const reveal = { candidates: "match-step", result: "result-step" };
   const stepId = reveal[event.detail.target.id];
@@ -582,7 +583,13 @@ function bindGenreInputs(root = document) {
 function feldSpeicherSchluessel(zeile) {
   const eingabe = zeile.querySelector("[data-feld-eingabe]");
   if (!eingabe) return null;
-  return `mimport:feld-original:${eingabe.getAttribute("hx-post")}:${zeile.dataset.feld}`;
+  // hx-post trägt normalerweise schon Album-/Track-ID und ist damit
+  // eindeutig genug. Felder ohne eigenen Speicher-Request (z. B. im
+  // manuellen Tagging vor dem Import) tragen stattdessen data-feld-scope
+  // am umschließenden Container.
+  const bereich = eingabe.getAttribute("hx-post") || zeile.closest("[data-feld-scope]")?.dataset.feldScope;
+  if (!bereich) return null;
+  return `mimport:feld-original:${bereich}:${zeile.dataset.feld}`;
 }
 
 function feldWert(eingabe) {
@@ -639,6 +646,36 @@ function initFeldZeile(zeile) {
 function initFeldZeilen(root = document) {
   root.querySelectorAll?.("[data-feld-zeile]").forEach(initFeldZeile);
 }
+
+/* --------------------------------------------------- "Weitere Felder" ----
+ *
+ * Der Dialog trägt unten zusätzlich Speichern/Zurücksetzen -- die einzelnen
+ * Felder darin speichern aber weiterhin sofort bei Änderung, genau wie
+ * außerhalb des Dialogs. "Speichern" schließt daher nur das Fenster, und
+ * "Zurücksetzen" klickt für jedes veränderte Feld einfach dessen eigenen
+ * Rewind-Knopf -- der kennt Ausgangswert und Speicher-Request schon.
+ */
+function initFelderDialog(dialog) {
+  if (dialog.dataset.dialogGebunden === "ja") return;
+  dialog.dataset.dialogGebunden = "ja";
+
+  const speichern = dialog.querySelector("[data-dialog-speichern]");
+  speichern?.addEventListener("click", () => dialog.close());
+
+  const zuruecksetzen = dialog.querySelector("[data-dialog-zuruecksetzen]");
+  zuruecksetzen?.addEventListener("click", () => {
+    dialog.querySelectorAll("[data-feld-zeile]").forEach((zeile) => {
+      const knopf = zeile.querySelector("[data-feld-reset]");
+      if (knopf && !knopf.hidden) knopf.click();
+    });
+  });
+}
+
+function initFelderDialoge(root = document) {
+  root.querySelectorAll?.("[data-felder-dialog]").forEach(initFelderDialog);
+}
+
+initFelderDialoge();
 
 /* ------------------------------------------------------------- Tabs ------
  *

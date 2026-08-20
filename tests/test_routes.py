@@ -1954,13 +1954,33 @@ class TestAlbenCover:
         monkeypatch.setattr(routes.albums, "list_tracks", lambda album_id: [])
         return eintrag
 
+    def test_seite_laedt_liste_erst_per_htmx_nach(self, client, monkeypatch):
+        """``/albums`` selbst darf nicht auf ``list_albums`` warten -- das geht
+        über den ``beet``-Subprozess und würde sonst jede Navigation auf diese
+        Seite blockieren. Die Liste hängt hinter einem hx-get."""
+
+        def nicht_aufrufen(q=""):
+            raise AssertionError("list_albums() darf beim ersten Laden nicht laufen")
+
+        monkeypatch.setattr(routes.albums, "list_albums", nicht_aufrufen)
+        response = client.get("/albums")
+        assert response.status_code == 200
+        assert 'hx-get="/albums/liste"' in response.text
+        assert 'hx-trigger="load"' in response.text
+        assert 'id="cover-dialog"' in response.text
+
+    def test_liste_haengt_suchbegriff_an_den_hx_get_an(self, client, monkeypatch):
+        monkeypatch.setattr(routes.albums, "list_albums", lambda q="": [])
+        response = client.get("/albums?q=Beatles")
+        assert response.status_code == 200
+        assert 'hx-get="/albums/liste?q=Beatles"' in response.text
+
     def test_seite_listet_alben(self, client, album, monkeypatch):
         monkeypatch.setattr(routes.albums, "list_albums", lambda q="": [album])
-        response = client.get("/albums")
+        response = client.get("/albums/liste")
         assert response.status_code == 200
         assert "Abbey Road" in response.text
         assert "The Beatles" in response.text
-        assert 'id="cover-dialog"' in response.text
 
     def test_fehler_beim_listen_wird_angezeigt(self, client, monkeypatch):
         from backend import albums
@@ -1969,7 +1989,7 @@ class TestAlbenCover:
             raise albums.AlbumError("beets antwortet nicht.")
 
         monkeypatch.setattr(routes.albums, "list_albums", kaputt)
-        response = client.get("/albums")
+        response = client.get("/albums/liste")
         assert response.status_code == 200
         assert "beets antwortet nicht." in response.text
 

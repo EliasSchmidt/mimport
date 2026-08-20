@@ -16,6 +16,7 @@ import base64
 import logging
 import shutil
 from pathlib import Path
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse
@@ -1539,9 +1540,25 @@ def _alben_oder_fehler(q: str = "") -> tuple[list[albums.Album], str]:
 
 @router.get("/albums", response_class=HTMLResponse)
 def album_list(request: Request, q: str = "") -> HTMLResponse:
-    """Bereits importierte Alben durchsuchen."""
+    """Bereits importierte Alben durchsuchen.
+
+    Die Liste selbst kommt erst per HTMX nach (``/albums/liste``) -- sie geht
+    über den ``beet``-Subprozess und damit über die gefüllte Library, das
+    dauert spürbar. Ungebremst hätte das jede Navigation auf diese Seite
+    blockiert, auch wenn man nur vorbeischaut. So steht das Gerüst sofort,
+    die Liste blendet mit Ladeanzeige nach.
+    """
+    liste_url = "/albums/liste"
+    if q:
+        liste_url += "?" + urlencode({"q": q})
+    return _seite(request, "albums.html", "alben", q=q, liste_url=liste_url)
+
+
+@router.get("/albums/liste", response_class=HTMLResponse)
+def album_list_fragment(request: Request, q: str = "") -> HTMLResponse:
+    """Nur die Albentabelle -- Ziel des lazy-load auf ``/albums``."""
     treffer, fehler = _alben_oder_fehler(q)
-    return _seite(request, "albums.html", "alben", alben=treffer, q=q, fehler=fehler)
+    return _fragment(request, "_albums_liste.html", alben=treffer, fehler=fehler)
 
 
 def _album_mit_tracks(album_id: int) -> tuple[albums.Album, list[albums.Track], str]:

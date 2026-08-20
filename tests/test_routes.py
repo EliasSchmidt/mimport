@@ -1946,6 +1946,41 @@ class TestManuellTaggen:
         assert medien.composer == "Johann Sebastian Bach"
         assert medien.composers == ["Johann Sebastian Bach"]
 
+    def test_restlicher_katalog_landet_ebenfalls_in_der_datei(self, client):
+        """Label, Katalognummer & Co. kamen früher gar nicht am Formular an --
+        jetzt reicht der Formularname direkt dem Katalog-Schlüssel (siehe
+        ``_MANUAL_ALBUM_BASIS_ZUSATZ``/``_MANUAL_ALBUM_ERWEITERT`` in
+        routes.py), keine eigene Übersetzung nötig. ``albumtypes`` ist
+        mehrwertig -- prüft gleich mit, dass die Einzelform (``albumtype``)
+        automatisch mitgeschrieben wird."""
+        import mediafile
+
+        session = self._session_mit(["01.flac"])
+        client.post(
+            f"/manual/{session.session_id}",
+            data={
+                "albumartist": "Can",
+                "album": "Tago Mago",
+                "genre": "Krautrock",
+                "year": "1971",
+                "label": "United Artists",
+                "catalognum": "UAS 29 211/12",
+                "country": "DE",
+                "disctotal": "2",
+                "albumtypes": "album; live",
+                "barcode": "042284226626",
+            },
+        )
+
+        medien = mediafile.MediaFile(session.directory / "01.flac")
+        assert medien.label == "United Artists"
+        assert medien.catalognum == "UAS 29 211/12"
+        assert medien.country == "DE"
+        assert medien.disctotal == 2
+        assert medien.albumtypes == ["album", "live"]
+        assert medien.albumtype == "album"
+        assert medien.barcode == "042284226626"
+
     def test_mehrere_komponisten_werden_aufgetrennt(self, client):
         import mediafile
 

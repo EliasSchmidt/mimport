@@ -267,6 +267,10 @@ def _track_inputs(
             artist = str(draft.get(f"interpret:{file['key']}") or "").strip()
         if not track:
             track = str(draft.get(f"nr:{file['key']}") or "").strip()
+        # Kein Parser liefert das -- bei Klassik-Compilations hat jeder Track
+        # einen eigenen Komponisten, den kein OCR-Layout zuverlässig einer
+        # Zeile zuordnen könnte. Kommt daher ausschließlich aus dem Entwurf.
+        composer = str(draft.get(f"komponist:{file['key']}") or "").strip()
         rows.append(
             {
                 "key": file["key"],
@@ -274,6 +278,7 @@ def _track_inputs(
                 "title": title,
                 "artist": artist,
                 "track": track,
+                "composer": composer,
             }
         )
     return rows
@@ -1455,13 +1460,18 @@ async def manual(
 ) -> HTMLResponse:
     """Schreibt selbst eingetragene Tags, wenn kein Match passt.
 
-    Neben den albumweiten Feldern kommen Titel, Interpret und Tracknummer je
-    Datei an -- als ``titel:<Dateiname>``, ``interpret:<Dateiname>`` und
+    Neben den albumweiten Feldern kommen Titel, Interpret, Komponist und
+    Tracknummer je Datei an -- als ``titel:<Dateiname>``,
+    ``interpret:<Dateiname>``, ``komponist:<Dateiname>`` und
     ``nr:<Dateiname>``. Eine Sampler-CD braucht Titel/Interpret je Zeile:
     dort hat jeder Track einen anderen Interpreten, während der
     Albumkünstler „Various Artists" bleibt und das Compilation-Flag die
-    Tracks zusammenhält. Die Tracknummer korrigiert eine falsch erkannte
-    Reihenfolge, statt sich auf die Position in der Dateiliste zu verlassen.
+    Tracks zusammenhält. Der Komponist je Track deckt den Klassik-Fall ab, in
+    dem eine Compilation mehrere Komponisten mischt -- das albumweite Feld
+    gilt dort für keinen Track richtig; ohne eigenen Eintrag je Zeile bleibt
+    es aber weiter die Vorbelegung. Die Tracknummer korrigiert eine falsch
+    erkannte Reihenfolge, statt sich auf die Position in der Dateiliste zu
+    verlassen.
     """
     session = _session_or_404(session_id)
     paths = session.audio_paths
@@ -1472,7 +1482,12 @@ async def manual(
     je_track: dict[str, dict[str, str]] = {}
     for schluessel, wert in formular.items():
         praefix, _, dateiname = str(schluessel).partition(":")
-        feld = {"titel": "title", "interpret": "artists", "nr": "track"}.get(praefix)
+        feld = {
+            "titel": "title",
+            "interpret": "artists",
+            "komponist": "composers",
+            "nr": "track",
+        }.get(praefix)
         if feld and dateiname and str(wert).strip():
             je_track.setdefault(dateiname, {})[feld] = str(wert)
 

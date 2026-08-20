@@ -521,3 +521,49 @@ class TestSamplerAlbumkuenstler:
 
         # Nicht fest verdrahtet: wer va_name ändert, soll es wiederfinden.
         assert tagging.sampler_name() == "Various Artists"
+
+
+class TestKomponistJeTrack:
+    """Klassik-Compilations mischen mehrere Komponisten -- das albumweite
+    Komponisten-Feld gilt dort für keinen Track richtig. Der Komponist je
+    Track überschreibt es, genau wie der Track-Künstler beim Sampler."""
+
+    def test_eigener_komponist_ueberschreibt_das_albumweite_feld(self, tmp_path):
+        import mediafile
+
+        from backend import tagging
+        from tests.flacfixture import write_flac
+
+        dateien = [write_flac(tmp_path / f"{i:02d}.flac", seconds=5) for i in (1, 2)]
+        tagging.apply_manual_tags(
+            dateien,
+            {"composers": "Johann Sebastian Bach", "album": "Klassik-Sampler"},
+            je_track={"02.flac": {"composers": "Ludwig van Beethoven"}},
+        )
+
+        erste, zweite = (mediafile.MediaFile(p) for p in dateien)
+        # Ohne eigenen Eintrag gilt weiter das albumweite Feld ...
+        assert erste.composer == "Johann Sebastian Bach"
+        assert erste.composers == ["Johann Sebastian Bach"]
+        # ... eine Zeile mit eigenem Komponisten überschreibt nur sich selbst.
+        assert zweite.composer == "Ludwig van Beethoven"
+        assert zweite.composers == ["Ludwig van Beethoven"]
+
+    def test_mehrere_komponisten_je_track_werden_getrennt(self, tmp_path):
+        import mediafile
+
+        from backend import tagging
+        from tests.flacfixture import write_flac
+
+        pfad = write_flac(tmp_path / "01.flac", seconds=5)
+        tagging.apply_manual_tags(
+            [pfad], {}, je_track={"01.flac": {"composers": "Bach; Vivaldi"}}
+        )
+
+        medien = mediafile.MediaFile(pfad)
+        # Anders als bei Genre/Künstler legt mediafile für Komponisten keinen
+        # separaten einwertigen Vorbis-Tag an -- "composer" und "composers"
+        # teilen sich denselben Tag, der hier zwei echte COMPOSER-Einträge
+        # bekommt. Ein Scanner, der nur den ersten liest, sieht "Bach".
+        assert medien.composers == ["Bach", "Vivaldi"]
+        assert medien.composer == "Bach"

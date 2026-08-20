@@ -1606,6 +1606,35 @@ class TestManuellTaggen:
         assert erste.albumartist == "Various Artists"
         assert erste.comp is True
 
+    def test_komponist_je_track_ueberschreibt_das_albumweite_feld(self, client):
+        """Klassik-Compilation: das albumweite Komponisten-Feld bleibt leer,
+        weil kein einzelner Komponist fürs ganze Album stimmt -- stattdessen
+        trägt jede Zeile ihren eigenen ein."""
+        import mediafile
+
+        session = self._session_mit(["01.flac", "02.flac"])
+        client.post(
+            f"/manual/{session.session_id}",
+            data={
+                "albumartist": "Various Artists",
+                "album": "Klassik-Sampler",
+                "compilation": "true",
+                "genre": "Klassik",
+                "year": "2001",
+                "titel:01.flac": "Erstes",
+                "interpret:01.flac": "Berliner Philharmoniker",
+                "komponist:01.flac": "Johann Sebastian Bach",
+                "titel:02.flac": "Zweites",
+                "interpret:02.flac": "Wiener Philharmoniker",
+                "komponist:02.flac": "Bach; Vivaldi",
+            },
+        )
+
+        erste = mediafile.MediaFile(session.directory / "01.flac")
+        zweite = mediafile.MediaFile(session.directory / "02.flac")
+        assert erste.composer == "Johann Sebastian Bach"
+        assert zweite.composers == ["Bach", "Vivaldi"]
+
     def test_manuell_korrigierte_tracknummer_wird_uebernommen(self, client):
         """"Nr." in der Tabelle überschreibt die sonst aus der Position
         abgeleitete Tracknummer -- wichtig, wenn die Dateireihenfolge nicht
@@ -1851,6 +1880,7 @@ class TestEntwurfWiederherstellen:
                 "genre": "Chormusik",
                 "compilation": "true",
                 "titel:01.flac": "Stille Nacht",
+                "komponist:01.flac": "Franz Gruber",
             },
         )
 
@@ -1859,6 +1889,7 @@ class TestEntwurfWiederherstellen:
         assert 'value="Nun singet und seid froh"' in html
         assert 'value="1985"' in html
         assert 'value="Chormusik"' in html
+        assert 'name="komponist:01.flac" value="Franz Gruber"' in html
         assert 'name="compilation" value="true" data-sampler checked' in html
         assert 'name="titel:01.flac" value="Stille Nacht"' in html
 

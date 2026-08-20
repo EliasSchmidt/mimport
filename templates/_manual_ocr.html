@@ -117,7 +117,7 @@
         <h4>Titel je Track ({{ track_inputs | length }})</h4>
         <table class="files">
             <thead>
-                <tr><th>Datei</th><th>Nr.</th><th>Titel</th><th>Track-Künstler</th></tr>
+                <tr><th>Datei</th><th>Nr.</th><th>Titel</th><th>Track-Künstler</th><th>Komponist</th></tr>
             </thead>
             <tbody>
                 {% for row in track_inputs %}
@@ -127,15 +127,18 @@
                                name="nr:{{ row.key }}" value="{{ row.track }}"></td>
                     <td><input type="text" name="titel:{{ row.key }}" value="{{ row.title }}"></td>
                     <td><input type="text" name="interpret:{{ row.key }}" value="{{ row.artist }}"></td>
+                    <td><input type="text" name="komponist:{{ row.key }}" value="{{ row.composer }}"></td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
         <p class="hint">
-            Mehrere Track-Künstler mit <span class="mono">;</span> oder
-            <span class="mono">feat.</span> trennen. „Text erkennen" oben füllt
-            diese Tabelle aus dem Backcover vor; sie bleibt danach vollständig
-            bearbeitbar.
+            Mehrere Track-Künstler oder -Komponisten mit <span class="mono">;</span> oder
+            <span class="mono">feat.</span> trennen. Ein Komponist je Track überschreibt
+            für diese Zeile das albumweite Komponisten-Feld oben -- leer gelassen gilt
+            dort weiter dessen Eintrag. „Text erkennen" oben füllt Titel, Track-Künstler
+            und Nummer aus dem Backcover vor; der Komponist bleibt reine Handarbeit und
+            die ganze Tabelle danach vollständig bearbeitbar.
         </p>
     </div>
 </div>

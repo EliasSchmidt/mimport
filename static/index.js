@@ -325,6 +325,12 @@ function samplerUmschalten(haken) {
       feld.value = "";
       feld.disabled = true;
     }
+    // feld.value wird hier programmgesteuert geleert -- das löst kein
+    // "input"-Ereignis aus, also greift der Abgleich weiter unten nicht von
+    // selbst. Ohne das hier bliebe eine zuvor per Lupe bestätigte Artist-ID
+    // am jetzt leeren Namen kleben und würde beim Schreiben in jeden Track
+    // ohne eigene Bestätigung übernommen.
+    artistBestaetigungVerwerfen(formular, "artist");
     alleInterpreten?.classList.add("abgeschaltet");
     if (hinweis) hinweis.hidden = false;
   } else {
@@ -333,6 +339,10 @@ function samplerUmschalten(haken) {
     if (albumartist?.dataset.vonUns === "ja") {
       albumartist.value = "";
       delete albumartist.dataset.vonUns;
+      // "Various Artists" ist selbst ein echter MusicBrainz-Eintrag -- wurde
+      // dafür zwischenzeitlich eine Artist-ID bestätigt, muss sie mit dem
+      // jetzt wieder geleerten Namen verschwinden (siehe "artist" oben).
+      artistBestaetigungVerwerfen(formular, "albumartist");
     }
     if (albumartist) albumartist.required = true;
     if (albumartistStern) albumartistStern.hidden = false;
@@ -376,6 +386,22 @@ function artistZielMbid(form, field) {
 
 function artistZielErgebnis(form, field) {
   return form?.querySelector(`[data-artist-results="${field}"]`);
+}
+
+/** Verwirft eine bestätigte MusicBrainz-Zuordnung, ohne dass der Nutzer den
+ * Namen selbst geändert hätte -- z.B. weil "Sampler" das Feld gerade
+ * programmgesteuert geleert hat. Anders als beim "input"-Ereignis unten gibt
+ * es hier keine "Name geändert"-Warnung, sondern der neutrale Ausgangsstand:
+ * die Änderung kam ja nicht von einer Eingabe, die neu geprüft werden muss. */
+function artistBestaetigungVerwerfen(form, field) {
+  const mbid = artistZielMbid(form, field);
+  if (!mbid || !mbid.value) return;
+  mbid.value = "";
+  delete mbid.dataset.selectedName;
+  const ergebnis = artistZielErgebnis(form, field);
+  if (ergebnis) {
+    ergebnis.innerHTML = '<div class="hint">Noch kein MusicBrainz-Match ausgewählt.</div>';
+  }
 }
 
 document.body.addEventListener("click", (event) => {

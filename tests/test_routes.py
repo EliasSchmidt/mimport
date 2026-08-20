@@ -1606,6 +1606,35 @@ class TestManuellTaggen:
         assert erste.albumartist == "Various Artists"
         assert erste.comp is True
 
+    def test_komponist_je_track_ueberschreibt_das_albumweite_feld(self, client):
+        """Klassik-Compilation: das albumweite Komponisten-Feld bleibt leer,
+        weil kein einzelner Komponist fürs ganze Album stimmt -- stattdessen
+        trägt jede Zeile ihren eigenen ein."""
+        import mediafile
+
+        session = self._session_mit(["01.flac", "02.flac"])
+        client.post(
+            f"/manual/{session.session_id}",
+            data={
+                "albumartist": "Various Artists",
+                "album": "Klassik-Sampler",
+                "compilation": "true",
+                "genre": "Klassik",
+                "year": "2001",
+                "titel:01.flac": "Erstes",
+                "interpret:01.flac": "Berliner Philharmoniker",
+                "komponist:01.flac": "Johann Sebastian Bach",
+                "titel:02.flac": "Zweites",
+                "interpret:02.flac": "Wiener Philharmoniker",
+                "komponist:02.flac": "Bach; Vivaldi",
+            },
+        )
+
+        erste = mediafile.MediaFile(session.directory / "01.flac")
+        zweite = mediafile.MediaFile(session.directory / "02.flac")
+        assert erste.composer == "Johann Sebastian Bach"
+        assert zweite.composers == ["Bach", "Vivaldi"]
+
     def test_manuell_korrigierte_tracknummer_wird_uebernommen(self, client):
         """"Nr." in der Tabelle überschreibt die sonst aus der Position
         abgeleitete Tracknummer -- wichtig, wenn die Dateireihenfolge nicht
@@ -1793,6 +1822,68 @@ class TestManuellTaggen:
         assert "Windsbacher Knabenchor" in response.text
         assert "Karl-Friedrich Beringer" in response.text
 
+    def test_artist_match_funktioniert_auch_je_track(self, client, monkeypatch):
+        """Bisher lief die MusicBrainz-Zuordnung für Track-Künstler in der
+        Tabelle "Titel je Track" nur still beim Schreiben mit -- ohne dass der
+        Nutzer sie je zu sehen bekam. Die Lupe je Zeile nutzt denselben
+        Lookup-Endpunkt wie beim albumweiten Feld, nur mit einem
+        "interpret:<Dateiname>"-Feldnamen statt "artist"."""
+        from backend import routes
+        from backend.artist_ids import ArtistMatch
+
+        session = self._session_mit(["01.flac", "02.flac"])
+        monkeypatch.setattr(
+            routes.artist_ids,
+            "search",
+            lambda name: (
+                ArtistMatch(name="Bill Evans", mbid="5b689d33-aca8-4c64-9a6d-c3e7f9f7d9e5", exact=True),
+            ),
+        )
+
+        response = client.post(
+            f"/artist-match/{session.session_id}",
+            data={"field": "interpret:02.flac", "interpret:02.flac": "Bill Evans"},
+        )
+        assert response.status_code == 200
+        assert "Eindeutiger MusicBrainz-Treffer gefunden" in response.text
+        assert "5b689d33-aca8-4c64-9a6d-c3e7f9f7d9e5" in response.text
+        assert 'data-field="interpret:02.flac"' in response.text
+
+    def test_bestaetigte_artist_id_gilt_nur_fuer_diesen_track(self, client, monkeypatch):
+        """Die Lupe-Suche schreibt die gewählte Artist-ID über
+        "mbinterpret:<Dateiname>" -- nur für die Zeile, in der sie bestätigt
+        wurde. Ein anderer Track mit demselben Interpretennamen, aber ohne
+        eigene Bestätigung, bleibt vom stillen Exakt-Treffer-Abgleich beim
+        Schreiben unberührt (hier: kein Treffer, also keine ID)."""
+        import mediafile
+
+        from backend import tagging
+
+        monkeypatch.setattr(tagging.artist_ids, "lookup_exact", lambda name, **kwargs: None)
+
+        session = self._session_mit(["01.flac", "02.flac"])
+        client.post(
+            f"/manual/{session.session_id}",
+            data={
+                "albumartist": "Various Artists",
+                "compilation": "true",
+                "genre": "Jazz",
+                "year": "1965",
+                "titel:01.flac": "Erstes",
+                "interpret:01.flac": "Bill Evans",
+                "mbinterpret:01.flac": "5b689d33-aca8-4c64-9a6d-c3e7f9f7d9e5",
+                "titel:02.flac": "Zweites",
+                "interpret:02.flac": "Bill Evans",
+            },
+        )
+
+        erste = mediafile.MediaFile(session.directory / "01.flac")
+        zweite = mediafile.MediaFile(session.directory / "02.flac")
+        assert erste.mb_artistids == ["5b689d33-aca8-4c64-9a6d-c3e7f9f7d9e5"]
+        # lookup_exact liefert absichtlich nichts zurück -- ohne eigene
+        # Bestätigung bleibt der zweite Track ohne Artist-ID.
+        assert zweite.mb_artistids in (None, [])
+
     def test_ohne_eingabe_wird_nichts_geschrieben(self, client):
         session = self._session_mit(["01.flac"])
         response = client.post(f"/manual/{session.session_id}", data={})
@@ -1851,6 +1942,9 @@ class TestEntwurfWiederherstellen:
                 "genre": "Chormusik",
                 "compilation": "true",
                 "titel:01.flac": "Stille Nacht",
+                "komponist:01.flac": "Franz Gruber",
+                "interpret:01.flac": "Windsbacher Knabenchor",
+                "mbinterpret:01.flac": "3079b492-4324-4894-83b0-e0b19d59b2ca",
             },
         )
 
@@ -1859,8 +1953,52 @@ class TestEntwurfWiederherstellen:
         assert 'value="Nun singet und seid froh"' in html
         assert 'value="1985"' in html
         assert 'value="Chormusik"' in html
+        assert 'name="komponist:01.flac" value="Franz Gruber"' in html
         assert 'name="compilation" value="true" data-sampler checked' in html
         assert 'name="titel:01.flac" value="Stille Nacht"' in html
+        # Die im Entwurf gemerkte Artist-ID kommt mit zurück, zusammen mit dem
+        # Namen, zu dem sie gehört -- verwirft das Browser-Skript die ID
+        # selbst, sobald der Name in dieser Zeile künftig abweicht.
+        assert 'name="mbinterpret:01.flac" data-artist-mbid="interpret:01.flac"' in html
+        assert 'value="3079b492-4324-4894-83b0-e0b19d59b2ca"' in html
+        assert 'data-selected-name="Windsbacher Knabenchor"' in html
+
+    def test_entwurf_ueberschreiben_nimmt_eine_veraltete_artist_id_mit(self, client):
+        """``save_draft`` ersetzt den gespeicherten Stand komplett (siehe
+        dessen Docstring) statt einzelne Felder zu mischen. Tippt ein zweites
+        Gerät in derselben Zeile einen neuen Namen und sichert, ohne je die ID
+        des ersten Geräts gesehen zu haben, verschwindet dessen
+        "mbinterpret:"-Eintrag also mit -- es bleibt kein Rest einer Zuordnung
+        stehen, die zum neuen Namen gar nicht mehr passt."""
+        session = self._session_mit(["01.flac"])
+        client.post(
+            f"/entwurf/{session.session_id}",
+            data={
+                "interpret:01.flac": "Bill Evans",
+                "mbinterpret:01.flac": "5b689d33-aca8-4c64-9a6d-c3e7f9f7d9e5",
+            },
+        )
+        client.post(
+            f"/entwurf/{session.session_id}",
+            data={"interpret:01.flac": "Bill Evans Trio"},
+        )
+
+        html = client.get(f"/session/{session.session_id}").text
+        assert 'value="Bill Evans Trio"' in html
+        assert "5b689d33-aca8-4c64-9a6d-c3e7f9f7d9e5" not in html
+
+    def test_formular_bietet_refresh_button_fuer_geraetewechsel(self, client):
+        """Wer zwischen Handy und PC wechselt, soll den zuletzt gesicherten
+        Entwurf direkt aus dem Formular heraus nachladen können, statt über
+        das Sitzungen-Dropdown zu müssen."""
+        session = self._session_mit(["01.flac"])
+        formular = client.post(f"/manual-start/{session.session_id}").text
+        assert "Entwurf vom Server laden" in formular
+        refresh_start = formular.index("Entwurf vom Server laden")
+        knopf = formular[max(0, refresh_start - 700):refresh_start]
+        assert f'hx-post="/manual-start/{session.session_id}"' in knopf
+        assert 'hx-target="#candidates"' in knopf
+        assert "event.stopPropagation()" in knopf
 
     def test_ohne_entwurf_bleibt_das_formular_beim_fortsetzen_zu(self, client):
         """Ohne Entwurf gibt es nichts zum Wiederherstellen -- Schritt 3 bleibt
@@ -1947,6 +2085,52 @@ class TestEntwurfWiederherstellen:
         assert draft["interpret:01.flac"] == "William Byrd"
         assert draft["titel:02.flac"] == "Five Pieces"
         assert draft["interpret:02.flac"] == "Anthony Holborn"
+
+    def test_parser_lauf_verwirft_artist_id_bei_geaendertem_namen(self, client):
+        """Zeile 1 hatte schon eine per Lupe bestätigte Artist-ID im Entwurf.
+        Läuft der Parser danach erneut und liefert für dieselbe Zeile einen
+        anderen Namen, überschreibt er "interpret:01.flac" -- die alte
+        Artist-ID galt fürs alte Wort und darf nicht daran kleben bleiben."""
+        session = self._session_mit(["01.flac"])
+        client.post(
+            f"/entwurf/{session.session_id}",
+            data={
+                "interpret:01.flac": "William Byrd",
+                "mbinterpret:01.flac": "5b689d33-aca8-4c64-9a6d-c3e7f9f7d9e5",
+            },
+        )
+
+        client.post(
+            f"/ocr/parse/{session.session_id}",
+            data={"ocr_text": "01 Anthony Holborn - Titel", "tracknummer": "true", "interpret": "interpret_titel"},
+        )
+
+        draft = sessions.load_draft(session)
+        assert draft["interpret:01.flac"] == "Anthony Holborn"
+        assert "mbinterpret:01.flac" not in draft
+
+    def test_parser_lauf_behaelt_artist_id_bei_gleichem_namen(self, client):
+        """Liefert der Parser für dieselbe Zeile denselben Namen wie schon im
+        Entwurf, bleibt die dazu bestätigte Artist-ID stehen -- ein erneuter
+        Parser-Lauf (z. B. nach einem neuen Foto mit demselben Text) darf eine
+        gültige Zuordnung nicht grundlos wegwerfen."""
+        session = self._session_mit(["01.flac"])
+        client.post(
+            f"/entwurf/{session.session_id}",
+            data={
+                "interpret:01.flac": "William Byrd",
+                "mbinterpret:01.flac": "5b689d33-aca8-4c64-9a6d-c3e7f9f7d9e5",
+            },
+        )
+
+        client.post(
+            f"/ocr/parse/{session.session_id}",
+            data={"ocr_text": "01 William Byrd - Titel", "tracknummer": "true", "interpret": "interpret_titel"},
+        )
+
+        draft = sessions.load_draft(session)
+        assert draft["interpret:01.flac"] == "William Byrd"
+        assert draft["mbinterpret:01.flac"] == "5b689d33-aca8-4c64-9a6d-c3e7f9f7d9e5"
 
     def test_datei_upload_wird_beim_entwurf_ignoriert(self, client):
         """``hx-params=\"not bild\"`` verhindert, dass jeder Autosave-Tick das

@@ -5,7 +5,11 @@
    Attributzugriff, und bricht deshalb nicht wie ein direktes draft.feld es
    bei einem undefinierten draft täte. #}
 {% set draft = draft or {} %}
-<details class="manual">
+{# Ein vorhandener Entwurf beweist, dass hier schon von Hand getaggt wurde --
+   dann soll die Karte offen dastehen, statt die gerade nachgeladenen Felder
+   (Fortsetzen, Refresh-Knopf) hinter einem erneuten Klick auf die Summary zu
+   verstecken. #}
+<details class="manual" {% if draft %}open{% endif %}>
     <summary>Tags selbst setzen (von Hand taggen)</summary>
     <div class="manual-form"
          data-manual-form
@@ -26,6 +30,34 @@
              hx-params="not bild"
              hx-swap="none"
              hx-on::after-request="event.stopPropagation()"></div>
+
+        {# Wer zwischen Handy und PC wechselt, tippt sonst gegen einen
+           veralteten Stand -- der Umweg über das eingeklappte
+           Sitzungen-Dropdown oben auf der Seite ist dafür zu umständlich.
+           Lädt einfach das Formular über denselben Weg wie beim Einstieg neu
+           (/manual-start füllt es aus dem zuletzt gesicherten Entwurf) --
+           anders als /session/{id} trifft das auch ohne vorhandenen Entwurf
+           zuverlässig #candidates, statt nur die unbeteiligte Dateiliste in
+           Schritt 2 zu aktualisieren. stopPropagation verhindert wie beim
+           Autosave oben, dass dieser Klick wie ein Formular-Absenden aussieht
+           und Schritt 4 aufdeckt. #}
+        <div class="manual-refresh">
+            <div class="actions">
+                <button type="button"
+                        class="button secondary"
+                        hx-post="/manual-start/{{ session_id }}"
+                        hx-target="#candidates"
+                        hx-swap="innerHTML"
+                        hx-indicator="#manual-refresh-spinner-{{ session_id }}"
+                        hx-on::after-request="event.stopPropagation()">
+                    <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 8a5.5 5.5 0 0 1 9.62-3.6M13.5 8a5.5 5.5 0 0 1-9.62 3.6M12 2v3h-3M4 14v-3h3"/></svg>
+                    Entwurf vom Server laden
+                </button>
+                <span id="manual-refresh-spinner-{{ session_id }}" class="htmx-indicator spinner">lädt …</span>
+            </div>
+            <p class="hint">Falls du auf einem anderen Gerät weitergetippt hast -- ersetzt die Felder unten mit dem zuletzt gesicherten Stand.</p>
+        </div>
+
         {% include "_manual_ocr.html" %}
 
         <div class="card">
@@ -53,8 +85,14 @@
                         <input type="text" name="albumartist" data-albumartist data-artist-field="albumartist"
                                placeholder="z. B. The Beatles" value="{{ draft.albumartist or '' }}"
                                {% if not draft.compilation %}required{% endif %}>
+                        {# data-selected-name lässt das Input-Skript erkennen, dass diese
+                           ID schon zu einem Namen gehört -- ohne das würde eine Änderung
+                           des Namens nach "Entwurf vom Server laden" oder "Fortsetzen" die
+                           alte ID nicht verwerfen, weil der Vergleich sonst gegen einen nie
+                           gesetzten Wert liefe. #}
                         <input type="hidden" name="mb_albumartistids" data-artist-mbid="albumartist"
-                               value="{{ draft.mb_albumartistids or '' }}">
+                               value="{{ draft.mb_albumartistids or '' }}"
+                               data-selected-name="{{ draft.albumartist if draft.mb_albumartistids else '' }}">
                         <button type="button" class="button secondary lookup-button" aria-label="Bei MusicBrainz suchen">
                             <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M11 11l4 4M7.2 12.4a5.2 5.2 0 1 0 0-10.4 5.2 5.2 0 0 0 0 10.4z"/></svg>
                         </button>
@@ -69,10 +107,10 @@
                 <label>Album
                     <input type="text" name="album" placeholder="z. B. Abbey Road" value="{{ draft.album or '' }}">
                 </label>
-                <label>Komponist <small>(mehrere mit <span class="mono">/</span> oder <span class="mono">;</span>)</small>
+                <label>Komponist <small>(Vorbelegung für alle Tracks; mehrere mit <span class="mono">/</span> oder <span class="mono">;</span>)</small>
                     <input type="text" name="composer" placeholder="z. B. Johann Sebastian Bach"
                            value="{{ draft.composer or '' }}">
-                    <small>Bei Klassik: der Komponist, getrennt vom ausführenden Chor/Orchester bei Albumkünstler und Track-Künstler.</small>
+                    <small>Bei Klassik: der Komponist, getrennt vom ausführenden Chor/Orchester bei Albumkünstler und Track-Künstler. Bei einer Compilation mit mehreren Komponisten stattdessen unten je Track eintragen -- das überschreibt dieses Feld nur für die ausgefüllten Zeilen, die übrigen behalten es als Vorbelegung.</small>
                 </label>
                 <label data-alle-interpreten>Track-Künstler <small>(für alle Tracks)</small>
                     <div class="lookup-field"
@@ -86,7 +124,8 @@
                         <input type="text" name="artist" data-artist-field="artist" placeholder="z. B. Harmonic Brass"
                                value="{{ draft.artist or '' }}">
                         <input type="hidden" name="mb_artistids" data-artist-mbid="artist"
-                               value="{{ draft.mb_artistids or '' }}">
+                               value="{{ draft.mb_artistids or '' }}"
+                               data-selected-name="{{ draft.artist if draft.mb_artistids else '' }}">
                         <button type="button" class="button secondary lookup-button" aria-label="Bei MusicBrainz suchen">
                             <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M11 11l4 4M7.2 12.4a5.2 5.2 0 1 0 0-10.4 5.2 5.2 0 0 0 0 10.4z"/></svg>
                         </button>

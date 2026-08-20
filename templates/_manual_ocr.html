@@ -117,25 +117,62 @@
         <h4>Titel je Track ({{ track_inputs | length }})</h4>
         <table class="files">
             <thead>
-                <tr><th>Datei</th><th>Nr.</th><th>Titel</th><th>Track-Künstler</th></tr>
+                <tr><th>Datei</th><th>Nr.</th><th>Titel</th><th>Track-Künstler</th><th>Komponist</th></tr>
             </thead>
             <tbody>
                 {% for row in track_inputs %}
+                {% set feld = "interpret:" ~ row.key %}
+                {% set ergebnis_id = "artist-match-interpret-" ~ session_id ~ "-" ~ loop.index0 %}
                 <tr>
                     <td class="name small">{{ row.display }}</td>
                     <td><input type="text" inputmode="numeric"
                                name="nr:{{ row.key }}" value="{{ row.track }}"></td>
                     <td><input type="text" name="titel:{{ row.key }}" value="{{ row.title }}"></td>
-                    <td><input type="text" name="interpret:{{ row.key }}" value="{{ row.artist }}"></td>
+                    <td>
+                        {# Dieselbe Lupe-Suche wie beim albumweiten Track-Künstler, nur
+                           je Zeile: ohne sie bekäme diese eine Zeile beim Schreiben still
+                           im Hintergrund eine Artist-ID, sobald der Name zufällig genau
+                           einen eindeutigen MusicBrainz-Treffer hat -- ohne dass der
+                           Nutzer das je zu sehen bekäme oder eine falsche Verknüpfung
+                           korrigieren könnte. #}
+                        <div class="lookup-field"
+                             hx-post="/artist-match/{{ session_id }}"
+                             hx-trigger="click from:find .lookup-button, keydown[key=='Enter'] from:find input consume"
+                             hx-include="this"
+                             hx-vals='{"field":"{{ feld }}"}'
+                             hx-target="#{{ ergebnis_id }}"
+                             hx-swap="innerHTML"
+                             hx-indicator="#lookup-spinner-{{ ergebnis_id }}">
+                            <input type="text" name="{{ feld }}" data-artist-field="{{ feld }}"
+                                   value="{{ row.artist }}">
+                            {# data-selected-name: siehe Albumkünstler/Track-Künstler oben --
+                               ohne das würde ein geänderter Name nach "Entwurf vom Server
+                               laden" die hier schon gespeicherte ID nicht verwerfen. #}
+                            <input type="hidden" name="mb{{ feld }}" data-artist-mbid="{{ feld }}"
+                                   value="{{ row.mbid }}"
+                                   data-selected-name="{{ row.artist if row.mbid else '' }}">
+                            <button type="button" class="button secondary lookup-button" aria-label="Bei MusicBrainz suchen">
+                                <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M11 11l4 4M7.2 12.4a5.2 5.2 0 1 0 0-10.4 5.2 5.2 0 0 0 0 10.4z"/></svg>
+                            </button>
+                            <span id="lookup-spinner-{{ ergebnis_id }}" class="htmx-indicator spinner-ring" aria-hidden="true"></span>
+                        </div>
+                        <div id="{{ ergebnis_id }}" class="artist-match" data-artist-results="{{ feld }}"></div>
+                    </td>
+                    <td><input type="text" name="komponist:{{ row.key }}" value="{{ row.composer }}"></td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
         <p class="hint">
-            Mehrere Track-Künstler mit <span class="mono">;</span> oder
-            <span class="mono">feat.</span> trennen. „Text erkennen" oben füllt
-            diese Tabelle aus dem Backcover vor; sie bleibt danach vollständig
-            bearbeitbar.
+            Mehrere Track-Künstler oder -Komponisten mit <span class="mono">;</span> oder
+            <span class="mono">feat.</span> trennen. Ein Komponist je Track überschreibt
+            für diese Zeile das albumweite Komponisten-Feld oben -- leer gelassen gilt
+            dort weiter dessen Eintrag. Die Lupe neben dem Track-Künstler sucht MusicBrainz
+            gezielt für diese Zeile; ohne bewusste Auswahl bekommt ein eindeutiger
+            Namenstreffer die Artist-ID trotzdem still beim Schreiben -- mit der Lupe siehst
+            und korrigierst du die Verknüpfung vorher. „Text erkennen" oben füllt Titel,
+            Track-Künstler und Nummer aus dem Backcover vor; der Komponist bleibt reine
+            Handarbeit und die ganze Tabelle danach vollständig bearbeitbar.
         </p>
     </div>
 </div>

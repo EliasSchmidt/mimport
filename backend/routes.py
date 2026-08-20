@@ -1930,8 +1930,9 @@ def album_edit(
     album: str = Form(default=""),
     year: str = Form(default=""),
     genre: str = Form(default=""),
+    label: str = Form(default=""),
 ) -> HTMLResponse:
-    """Ändert Albumkünstler, Albumtitel, Jahr oder Genre nachträglich.
+    """Ändert Albumkünstler, Albumtitel, Jahr, Genre oder Label nachträglich.
 
     Leere Felder werden übersprungen, damit ein leeres Formularfeld nichts
     überschreibt -- dieselbe Regel wie beim manuellen Taggen vor dem Import.
@@ -1945,6 +1946,7 @@ def album_edit(
             "albumartist": albumartist,
             "album": album,
             "year": year,
+            "label": label,
         }.items()
         if wert.strip()
     }

@@ -2680,7 +2680,7 @@ class TestAlbenBearbeiten:
         ordner.mkdir(parents=True)
         eintrag = albums.Album(
             id=1, albumartist="The Beatles", album="Abbey Road", year="1969",
-            path=ordner, genres="Rock",
+            path=ordner, genres="Rock", label="Apple Records",
         )
         monkeypatch.setattr(
             routes.albums, "get_album", lambda album_id: eintrag if album_id == 1 else None
@@ -2696,6 +2696,7 @@ class TestAlbenBearbeiten:
         assert "Bearbeiten" in response.text
         assert 'name="album" value="Abbey Road"' in response.text
         assert 'name="genre" value="Rock"' in response.text
+        assert 'name="label" value="Apple Records"' in response.text
 
     def test_leeres_jahr_wird_nicht_mit_sentinel_vorbefuellt(self, tmp_path, client, monkeypatch):
         """Die eigentliche Logik prüft TestYearEditierbar in test_albums.py --
@@ -2729,6 +2730,17 @@ class TestAlbenBearbeiten:
         # Leere Felder werden nicht mitgeschickt -- sie sollen den
         # bestehenden Wert nicht überschreiben.
         assert aufrufe == [(1, {"album": "Abbey Road (Remaster)"})]
+
+    def test_label_wird_uebernommen(self, client, album, monkeypatch):
+        aufrufe = []
+        monkeypatch.setattr(
+            routes.albums,
+            "update_album_fields",
+            lambda a, felder: aufrufe.append((a.id, felder)),
+        )
+        response = client.post("/albums/1/edit", data={"label": "Deutsche Grammophon"})
+        assert response.status_code == 200
+        assert aufrufe == [(1, {"label": "Deutsche Grammophon"})]
 
     def test_genre_wird_einzeln_und_mehrfach_zusammen_gesetzt(self, client, album, monkeypatch):
         """Wie bei mb_albumartistid/-ids: "genre" und "genres" teilen sich

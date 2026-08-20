@@ -82,6 +82,9 @@
                        list="genre-vorschlaege-album" autocomplete="off"
                        data-genre-input>
             </label>
+            <label>Label
+                <input type="text" name="label" value="{{ album.label }}">
+            </label>
             <datalist id="genre-vorschlaege-album" data-genre-vorschlaege>
                 {% for genre in genre_vorschlaege %}
                 <option value="{{ genre }}"></option>

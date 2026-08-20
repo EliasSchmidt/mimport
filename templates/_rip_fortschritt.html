@@ -1,0 +1,21 @@
+{# Nur der Fortschrittsbalken eines laufenden Musik-Rips. Eigenes Template,
+   damit das Erst-Rendering in _rip.html und der SSE-Push aus /rip/events
+   garantiert dasselbe Markup erzeugen -- sonst driften beide Wege irgendwann
+   auseinander. #}
+<div class="banner info">
+    <strong>{{ job.meldung }}</strong>
+    {% if job.tracks_gesamt %}
+    <p>
+        {{ job.track }} von {{ job.tracks_gesamt }} Tracks fertig –
+        {{ job.prozent }} %
+        {%- if job.muehsam %} · <em>{{ job.muehsam }}</em>{% endif %}
+    </p>
+    <div class="progress" role="progressbar"
+         aria-valuenow="{{ job.prozent }}" aria-valuemin="0" aria-valuemax="100">
+        <div class="progress-bar" style="width: {{ job.prozent }}%"></div>
+    </div>
+    {% endif %}
+    <p class="hint">
+        läuft seit {{ job.dauer_text }} · die Seite kann offen bleiben
+    </p>
+</div>

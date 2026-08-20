@@ -1613,6 +1613,14 @@ def run_import(
         # Nach einem Verschiebe-Import ist der Ordner leer; dann kann er weg.
         sessions.cleanup_if_empty(session)
 
+        # Stammte diese Session von einem Rip, ist der Auftrag jetzt Geschichte
+        # -- sonst zeigt der Audio-CD-Reiter beim nächsten Öffnen wieder den
+        # Kopf der längst importierten Session an, bis jemand von Hand auf
+        # "Verwerfen" drückt.
+        job = rip.current()
+        if job is not None and not job.laeuft and job.session_id == session_id:
+            rip.reset()
+
     return _fragment(
         request,
         "_import.html",

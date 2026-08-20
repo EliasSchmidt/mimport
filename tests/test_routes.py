@@ -2281,14 +2281,20 @@ class TestEntwurfWiederherstellen:
         session = self._session_mit(["01.flac"])
         response = client.post(
             f"/ocr/parse/{session.session_id}",
-            data={"ocr_text": "01 Interpret - Titel", "tracknummer": "true", "interpret": "interpret_titel"},
+            data={
+                "ocr_text": "01 Interpret - Titel",
+                "tracknummer": "true",
+                "feld1": "interpret",
+                "feld2": "titel",
+            },
         )
         assert response.status_code == 200
 
         draft = sessions.load_draft(session)
         assert draft["ocr_text"] == "01 Interpret - Titel"
         assert draft["tracknummer"] == "true"
-        assert draft["interpret"] == "interpret_titel"
+        assert draft["feld1"] == "interpret"
+        assert draft["feld2"] == "titel"
         assert "dauer" not in draft
         assert draft["titel:01.flac"] == "Titel"
         assert draft["interpret:01.flac"] == "Interpret"
@@ -2300,13 +2306,17 @@ class TestEntwurfWiederherstellen:
             f"/ocr/parse/{session.session_id}",
             data={
                 "ocr_text": "The Earl of Oxfords March\nWilliam Byrd\nFive Pieces\nAnthony Holborn",
-                "interpret": "naechste_zeile",
+                "feld1": "titel",
+                "feld2": "interpret",
+                "zeilenweise": "true",
             },
         )
         assert response.status_code == 200
 
         draft = sessions.load_draft(session)
-        assert draft["interpret"] == "naechste_zeile"
+        assert draft["feld1"] == "titel"
+        assert draft["feld2"] == "interpret"
+        assert draft["zeilenweise"] == "true"
         assert draft["titel:01.flac"] == "The Earl of Oxfords March"
         assert draft["interpret:01.flac"] == "William Byrd"
         assert draft["titel:02.flac"] == "Five Pieces"
@@ -2328,7 +2338,12 @@ class TestEntwurfWiederherstellen:
 
         client.post(
             f"/ocr/parse/{session.session_id}",
-            data={"ocr_text": "01 Anthony Holborn - Titel", "tracknummer": "true", "interpret": "interpret_titel"},
+            data={
+                "ocr_text": "01 Anthony Holborn - Titel",
+                "tracknummer": "true",
+                "feld1": "interpret",
+                "feld2": "titel",
+            },
         )
 
         draft = sessions.load_draft(session)
@@ -2351,7 +2366,12 @@ class TestEntwurfWiederherstellen:
 
         client.post(
             f"/ocr/parse/{session.session_id}",
-            data={"ocr_text": "01 William Byrd - Titel", "tracknummer": "true", "interpret": "interpret_titel"},
+            data={
+                "ocr_text": "01 William Byrd - Titel",
+                "tracknummer": "true",
+                "feld1": "interpret",
+                "feld2": "titel",
+            },
         )
 
         draft = sessions.load_draft(session)

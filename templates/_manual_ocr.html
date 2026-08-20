@@ -31,26 +31,30 @@
                       placeholder="Hier erscheint der erkannte Text aus dem Backcover.">{{ ocr_text or "" }}</textarea>
         </label>
 
+        {% set feld1 = parse_flags.felder[0] if parse_flags.felder|length > 0 else "titel" %}
+        {% set feld2 = parse_flags.felder[1] if parse_flags.felder|length > 1 else "" %}
+        {% set feld3 = parse_flags.felder[2] if parse_flags.felder|length > 2 else "" %}
         <div class="fields compact">
             <label class="checkbox">
                 <input type="checkbox" name="tracknummer" value="true" {% if parse_flags.tracknummer %}checked{% endif %}>
                 Tracknummer vorne
             </label>
-            <label>Interpret
-                <select name="interpret">
-                    <option value="" {% if not parse_flags.interpret %}selected{% endif %}>
-                        nicht trennen
-                    </option>
-                    <option value="interpret_titel" {% if parse_flags.interpret == "interpret_titel" %}selected{% endif %}>
-                        gleiche Zeile („Interpret - Titel“)
-                    </option>
-                    <option value="titel_interpret" {% if parse_flags.interpret == "titel_interpret" %}selected{% endif %}>
-                        gleiche Zeile („Titel - Interpret“)
-                    </option>
-                    <option value="naechste_zeile" {% if parse_flags.interpret == "naechste_zeile" %}selected{% endif %}>
-                        nächste Zeile (Titel, dann Interpret)
-                    </option>
+            {% for name, wert in [("feld1", feld1), ("feld2", feld2), ("feld3", feld3)] %}
+            <label>{{ loop.index }}. Feld
+                <select name="{{ name }}">
+                    <option value="" {% if wert == "" %}selected{% endif %}>--</option>
+                    <option value="titel" {% if wert == "titel" %}selected{% endif %}>Titel</option>
+                    <option value="interpret" {% if wert == "interpret" %}selected{% endif %}>Interpret</option>
+                    <option value="komponist" {% if wert == "komponist" %}selected{% endif %}>Komponist</option>
                 </select>
+            </label>
+            {% endfor %}
+            <label>Trennzeichen
+                <input type="text" name="trenner" value="{{ parse_flags.trenner }}" placeholder=" - ">
+            </label>
+            <label class="checkbox">
+                <input type="checkbox" name="zeilenweise" value="true" {% if parse_flags.zeilenweise %}checked{% endif %}>
+                Jedes Feld in eigener Zeile statt nebeneinander
             </label>
             <label class="checkbox">
                 <input type="checkbox" name="dauer" value="true" {% if parse_flags.dauer %}checked{% endif %}>
@@ -58,12 +62,17 @@
             </label>
         </div>
         <p class="hint">
-            Frei kombinierbar, je nachdem wie das Backcover die Tracks
-            auflistet -- z. B. nur „Titel“, oder „01 Interpret - Titel - 3:45“.
-            Bei „nächste Zeile“ wird strikt abwechselnd gepaart (Titel,
-            Interpret, Titel, Interpret, …); Blöcke mit mehreren Titeln zu
-            einem Interpreten (z. B. ein Medley) geraten dabei durcheinander
-            und müssen danach von Hand korrigiert werden.
+            Frei kombinierbar und in beliebiger Reihenfolge, je nachdem wie
+            das Backcover die Tracks auflistet -- z. B. nur „Titel“, oder
+            „01 Interpret - Titel - 3:45“. Bei einer Klassik-Compilation ohne
+            Track-Interpret kann „2. Feld“ statt Interpret auch Komponist
+            sein (z. B. „William Byrd - The Earl of Oxfords March“). Das
+            Trennzeichen ist frei wählbar (Standard „ - “, aber auch „ / “
+            oder „; “ funktionieren). Bei „jedes Feld in eigener Zeile“ wird
+            strikt abwechselnd gepaart (Titel, Interpret, Titel, Interpret,
+            …); Blöcke mit mehreren Titeln zu einem Interpreten (z. B. ein
+            Medley) geraten dabei durcheinander und müssen danach von Hand
+            korrigiert werden.
         </p>
 
         <div class="actions">
@@ -171,8 +180,8 @@
             gezielt für diese Zeile; ohne bewusste Auswahl bekommt ein eindeutiger
             Namenstreffer die Artist-ID trotzdem still beim Schreiben -- mit der Lupe siehst
             und korrigierst du die Verknüpfung vorher. „Text erkennen" oben füllt Titel,
-            Track-Künstler und Nummer aus dem Backcover vor; der Komponist bleibt reine
-            Handarbeit und die ganze Tabelle danach vollständig bearbeitbar.
+            Nummer und je nach gewählten Feldern auch Track-Künstler und Komponist aus
+            dem Backcover vor; die ganze Tabelle bleibt danach vollständig bearbeitbar.
         </p>
     </div>
 </div>

@@ -440,6 +440,15 @@ class TestGegenMusicbrainz:
 class TestBeetCliVersion:
     """Die Versionsauslesung entscheidet, ob der Import freigegeben wird."""
 
+    @pytest.fixture(autouse=True)
+    def _leerer_cli_version_cache(self):
+        """beet_cli_version() cacht pro Prozess -- ohne das würden diese Tests
+        je nach Reihenfolge das Ergebnis eines vorherigen Tests sehen, statt
+        das ihres eigenen Mocks."""
+        from backend import beets_env
+
+        beets_env._cli_version_cache.clear()
+
     def test_hinweiszeile_vor_der_version(self, monkeypatch, tmp_path):
         """beets schreibt beim Migrieren des Schemas eine Meldung davor.
 

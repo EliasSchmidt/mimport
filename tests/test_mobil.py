@@ -254,6 +254,60 @@ def test_eigener_albumkuenstler_bleibt_stehen(browser, server):
         seite.close()
 
 
+def test_refresh_knopf_holt_entwurf_vom_anderen_geraet_ohne_schritt_4_aufzudecken(browser, server):
+    """Der Refresh-Knopf im Handtagging-Formular simuliert genau den Fall, für
+    den er gebaut wurde: auf einem anderen Gerät wurde weitergetippt (hier per
+    direktem POST an /entwurf, wie es der Autosave des anderen Geräts täte),
+    und der Knopf soll das im gerade offenen Formular sichtbar machen -- ohne
+    dabei fälschlich Schritt 4 "Importieren" aufzudecken, wie es der Klick auf
+    ein x-beliebiges Element in .manual-form sonst auslöst."""
+    import requests
+
+    seite = browser.new_page(viewport={"width": 900, "height": 800})
+    try:
+        seite.goto(server + "/musik", wait_until="networkidle")
+        seite.set_input_files(
+            "#upload-files",
+            [{"name": "01 Stück.flac", "mimeType": "audio/flac",
+              "buffer": b"fLaC\x00\x00\x00\x22" + b"\x00" * 34}],
+        )
+        seite.click("#upload-submit")
+        seite.wait_for_selector("#files-inner", timeout=20000)
+        session_id = seite.locator("#files-inner").get_attribute("data-session")
+
+        seite.click("button:has-text('Ohne MusicBrainz von Hand taggen')")
+        seite.wait_for_selector("details.manual > summary")
+        seite.click("details.manual > summary")
+
+        # Noch kein Entwurf gesichert: der Knopf darf das offene Formular
+        # weder leeren noch Schritt 4 aufdecken. Ohne Entwurf klappt die Karte
+        # danach wieder zu -- wie beim ganz normalen Einstieg auch.
+        seite.click("button:has-text('Entwurf vom Server laden')")
+        seite.wait_for_timeout(300)
+        assert seite.locator("#result-step").is_hidden()
+        assert seite.locator("details.manual").get_attribute("open") is None
+
+        # "Anderes Gerät" sichert per Autosave-Endpunkt einen Entwurf.
+        antwort = requests.post(
+            f"{server}/entwurf/{session_id}",
+            data={"albumartist": "Vom Handy getippt", "year": "1999"},
+            timeout=5,
+        )
+        assert antwort.status_code == 200
+
+        seite.click("details.manual > summary")
+        albumartist = seite.locator("[data-albumartist]")
+        assert albumartist.input_value() == ""
+        seite.click("button:has-text('Entwurf vom Server laden')")
+        seite.wait_for_timeout(300)
+        # Ein Entwurf ist jetzt da: die Karte bleibt offen, ohne erneuten Klick.
+        assert seite.locator("details.manual").get_attribute("open") is not None
+        assert seite.locator("[data-albumartist]").input_value() == "Vom Handy getippt"
+        assert seite.locator("#result-step").is_hidden()
+    finally:
+        seite.close()
+
+
 def test_artist_lookup_trifft_nur_das_angeklickte_feld(browser, server, monkeypatch):
     """``hx-trigger="click from:.lookup-button"`` (ohne ``find``) hörte auf
     JEDEN Klick auf JEDEN Lookup-Button der Seite, weil ``from:`` ohne

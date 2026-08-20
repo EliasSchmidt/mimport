@@ -1862,6 +1862,19 @@ class TestEntwurfWiederherstellen:
         assert 'name="compilation" value="true" data-sampler checked' in html
         assert 'name="titel:01.flac" value="Stille Nacht"' in html
 
+    def test_formular_bietet_refresh_button_fuer_geraetewechsel(self, client):
+        """Wer zwischen Handy und PC wechselt, soll den zuletzt gesicherten
+        Entwurf direkt aus dem Formular heraus nachladen können, statt über
+        das Sitzungen-Dropdown zu müssen."""
+        session = self._session_mit(["01.flac"])
+        formular = client.post(f"/manual-start/{session.session_id}").text
+        assert "Entwurf vom Server laden" in formular
+        refresh_start = formular.index("Entwurf vom Server laden")
+        knopf = formular[max(0, refresh_start - 700):refresh_start]
+        assert f'hx-post="/manual-start/{session.session_id}"' in knopf
+        assert 'hx-target="#candidates"' in knopf
+        assert "event.stopPropagation()" in knopf
+
     def test_ohne_entwurf_bleibt_das_formular_beim_fortsetzen_zu(self, client):
         """Ohne Entwurf gibt es nichts zum Wiederherstellen -- Schritt 3 bleibt
         beim Fortsetzen zu, statt ungefragt ein leeres Formular aufzuklappen."""

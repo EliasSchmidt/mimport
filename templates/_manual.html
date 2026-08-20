@@ -5,7 +5,11 @@
    Attributzugriff, und bricht deshalb nicht wie ein direktes draft.feld es
    bei einem undefinierten draft täte. #}
 {% set draft = draft or {} %}
-<details class="manual">
+{# Ein vorhandener Entwurf beweist, dass hier schon von Hand getaggt wurde --
+   dann soll die Karte offen dastehen, statt die gerade nachgeladenen Felder
+   (Fortsetzen, Refresh-Knopf) hinter einem erneuten Klick auf die Summary zu
+   verstecken. #}
+<details class="manual" {% if draft %}open{% endif %}>
     <summary>Tags selbst setzen (von Hand taggen)</summary>
     <div class="manual-form"
          data-manual-form
@@ -26,6 +30,34 @@
              hx-params="not bild"
              hx-swap="none"
              hx-on::after-request="event.stopPropagation()"></div>
+
+        {# Wer zwischen Handy und PC wechselt, tippt sonst gegen einen
+           veralteten Stand -- der Umweg über das eingeklappte
+           Sitzungen-Dropdown oben auf der Seite ist dafür zu umständlich.
+           Lädt einfach das Formular über denselben Weg wie beim Einstieg neu
+           (/manual-start füllt es aus dem zuletzt gesicherten Entwurf) --
+           anders als /session/{id} trifft das auch ohne vorhandenen Entwurf
+           zuverlässig #candidates, statt nur die unbeteiligte Dateiliste in
+           Schritt 2 zu aktualisieren. stopPropagation verhindert wie beim
+           Autosave oben, dass dieser Klick wie ein Formular-Absenden aussieht
+           und Schritt 4 aufdeckt. #}
+        <div class="manual-refresh">
+            <div class="actions">
+                <button type="button"
+                        class="button secondary"
+                        hx-post="/manual-start/{{ session_id }}"
+                        hx-target="#candidates"
+                        hx-swap="innerHTML"
+                        hx-indicator="#manual-refresh-spinner-{{ session_id }}"
+                        hx-on::after-request="event.stopPropagation()">
+                    <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 8a5.5 5.5 0 0 1 9.62-3.6M13.5 8a5.5 5.5 0 0 1-9.62 3.6M12 2v3h-3M4 14v-3h3"/></svg>
+                    Entwurf vom Server laden
+                </button>
+                <span id="manual-refresh-spinner-{{ session_id }}" class="htmx-indicator spinner">lädt …</span>
+            </div>
+            <p class="hint">Falls du auf einem anderen Gerät weitergetippt hast -- ersetzt die Felder unten mit dem zuletzt gesicherten Stand.</p>
+        </div>
+
         {% include "_manual_ocr.html" %}
 
         <div class="card">

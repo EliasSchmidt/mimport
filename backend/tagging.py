@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from backend import artist_ids, beets_env
+from backend import artist_ids, beets_env, tag_catalog
 
 log = logging.getLogger(__name__)
 
@@ -70,15 +70,24 @@ def apply_album_match(match: Any, *, from_scratch: bool = False) -> TagWriteResu
 #: Felder, die beets mehrwertig führt. Ein einzelner String landet dort sonst
 #: als flexibles Attribut und **wird nicht in die Datei geschrieben** -- genau
 #: das passierte mit "genre", das in beets 2.x "genres" heißt.
+#:
+#: Aus ``tag_catalog`` abgeleitet, nicht mehr hier von Hand gepflegt --
+#: dieselbe Liste, die auch ``albums.py`` fürs nachträgliche Bearbeiten
+#: benutzt. Das fügt gegenüber der früheren Handliste ein paar Felder hinzu
+#: (z. B. Texter, Arrangeur), die das Manuell-Formular heute noch gar nicht
+#: anbietet -- die Einträge liegen dann einfach ungenutzt bereit, bis sie
+#: gebraucht werden, statt beim nächsten neuen Feld erneut von Hand
+#: nachgetragen werden zu müssen.
+_ALLE_KATALOG_FELDER = tag_catalog.ALBUM_FELDER + tag_catalog.TRACK_FELDER
 _MEHRWERTIG = {
-    "genres": "genre",
-    "artists": "artist",
-    "albumartists": "albumartist",
-    "composers": "composer",
+    f.key: f.einzelform
+    for f in _ALLE_KATALOG_FELDER
+    if f.mehrwertig_art in ("kuenstler", "genre") and f.einzelform
 }
 _ID_MEHRWERTIG = {
-    "mb_artistids": "mb_artistid",
-    "mb_albumartistids": "mb_albumartistid",
+    f.key: f.einzelform
+    for f in _ALLE_KATALOG_FELDER
+    if f.mehrwertig_art == "liste" and f.einzelform
 }
 
 #: Womit mehrere Namen in einem Feld getrennt werden. Genau die Zeichenfolgen,

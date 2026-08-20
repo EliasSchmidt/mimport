@@ -71,6 +71,32 @@
         </p>
         {% endif %}
     </div>
+
+    {% if job.fruehere_releases %}
+    <p class="hint">
+        Eine vorherige Disc dieses Albums kannte MusicBrainz bereits -- reicht
+        das zum Taggen, kann diese eine kaputte Disc einfach draußen bleiben.
+    </p>
+    <div class="actions">
+        {% for release in job.fruehere_releases %}
+        <form hx-post="/match/{{ job.session_id }}"
+              hx-target="#candidates" hx-swap="innerHTML"
+              hx-indicator="#rip-match-spinner">
+            <input type="hidden" name="mbid" value="{{ release.mbid }}">
+            <button type="submit" class="button primary">{{ release.label }}</button>
+        </form>
+        {% endfor %}
+        <span id="rip-match-spinner" class="htmx-indicator spinner">
+            frage MusicBrainz …
+        </span>
+    </div>
+    {# Die schon gelesene(n) Disc(s) liegen bereit -- ohne diesen Ladeaufruf
+       bliebe Schritt 2 (Übernommene Dateien) leer und verborgen, obwohl
+       Schritt 3 gleich Ergebnisse zeigt. #}
+    <div hx-get="/rip/files" hx-trigger="load" hx-target="#files" hx-swap="innerHTML"
+         hx-on::after-request="document.getElementById('files-step').hidden = false"></div>
+    {% endif %}
+
     <div class="actions">
         {% if not job.neue_session %}
         <form hx-post="/rip" hx-target="#rip" hx-swap="innerHTML"
@@ -119,11 +145,15 @@
         {% endif %}
     </div>
 
-    {% if job.releases %}
+    {% if job.alle_releases %}
     <p class="hint">
         MusicBrainz kennt diese CD. Über die Release-ID trifft der Match genau,
         obwohl eine gerippte CD keine Tags hat – die Tracknummern stehen in den
         Dateien, danach richtet sich die Zuordnung.
+        {% if not job.releases %}
+        Der Treffer stammt von einer vorherigen Disc dieses Albums -- diese
+        hier kannte MusicBrainz für sich allein nicht.
+        {% endif %}
     </p>
     <p class="hint">
         <strong>Die Sicherheit wird trotzdem niedrig ausfallen</strong> (grob ein
@@ -132,7 +162,7 @@
         Spieldauern und die Tracknummern passen.
     </p>
     <div class="actions">
-        {% for release in job.releases %}
+        {% for release in job.alle_releases %}
         <form hx-post="/match/{{ job.session_id }}"
               hx-target="#candidates" hx-swap="innerHTML"
               hx-indicator="#rip-match-spinner">

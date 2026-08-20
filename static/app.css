@@ -916,19 +916,21 @@ pre.output { max-height: 22rem; overflow-y: auto; }
 .tag-block { margin-top: 1.5rem; }
 .tag-block h3 { margin: 0 0 0.6rem; font-size: 1rem; }
 
-.tag-table { width: 100%; border-collapse: collapse; }
-.tag-table th {
-    text-align: left;
-    color: var(--text-dim);
+/* Eine Gruppe direkt editierbarer Tag-Felder (Album- oder Track-Ebene) --
+   löst die frühere Kombination aus Nur-Lese-Tabelle und separat
+   eingeklapptem Bearbeiten-Formular ab. */
+.felder-gruppe { display: flex; flex-direction: column; gap: 0.6rem; margin: 0.6rem 0; }
+.feld-zeile { display: flex; flex-direction: column; gap: 0.2rem; }
+.feld-label {
+    font-size: 0.8rem;
     font-weight: 600;
-    font-size: 0.85rem;
-    width: 8rem;
-    vertical-align: top;
-    padding: 0.4rem 0.6rem 0.4rem 0;
+    color: var(--text-dim);
 }
-.tag-table td { padding: 0.4rem 0; vertical-align: top; }
-.tag-table tr + tr { border-top: 1px solid var(--border); }
-.tag-mb { width: 1%; white-space: nowrap; text-align: right; }
+.feld-eingabe-gruppe { display: flex; align-items: center; gap: 0.5rem; }
+.feld-eingabe-gruppe input[type="text"] { flex: 1; min-width: 0; }
+/* Der Zurücksetzen-Knopf steht schmal neben dem Feld, nicht in voller
+   Button-Breite -- er soll als kleiner Zusatz auffallen, nicht konkurrieren. */
+.feld-zuruecksetzen { flex: none; padding: 0.35rem 0.7rem; font-size: 0.82rem; }
 
 /* Kleiner Rundbadge statt des echten MusicBrainz-Logos -- das wäre eine
    fremde Marke, die mimport nicht mitliefern soll. */

@@ -139,6 +139,48 @@ class TestStart:
         # gelöscht, nur weil das Laufwerk nicht mitspielte.
         assert (session.directory / "01 Track 1.flac").is_file()
 
+    def test_weitere_disc_uebernimmt_releases_der_vorherigen(self, monkeypatch, toc):
+        """Erste Disc kannte MusicBrainz bereits -- der Treffer darf nicht
+        verschwinden, nur weil jetzt eine zweite Disc gelesen wird."""
+        monkeypatch.setattr(rip, "read_toc", lambda: toc)
+        monkeypatch.setattr(rip.threading, "Thread", _FakeThread)
+
+        session = sessions.create_session()
+        hinweis = discid.ReleaseHint(mbid="a" * 36, title="Album", date="", country="")
+        rip._job = rip.RipJob(
+            session_id=session.session_id, disc_id=VEKTOR_ID, releases=[hinweis],
+            zustand="fertig",
+        )
+
+        job = rip.start(allowance=10**12, session_id=session.session_id)
+
+        assert job.fruehere_releases == [hinweis]
+
+    def test_gescheiterte_weitere_disc_behaelt_release_der_ersten(self, monkeypatch):
+        """Der eigentliche Fall aus dem Bugreport: zweite Disc kaputt, aber
+        die erste hatte schon einen MusicBrainz-Treffer -- damit lässt sich
+        trotzdem taggen, ohne die kaputte Disc erst reparieren zu müssen."""
+
+        def kaputt():
+            raise rip.RipError("Im Laufwerk wurde keine Audio-CD erkannt.")
+
+        monkeypatch.setattr(rip, "read_toc", kaputt)
+
+        session = sessions.create_session()
+        hinweis = discid.ReleaseHint(mbid="a" * 36, title="Album", date="", country="")
+        rip._job = rip.RipJob(
+            session_id=session.session_id, disc_id=VEKTOR_ID, releases=[hinweis],
+            zustand="fertig",
+        )
+
+        with pytest.raises(rip.RipError):
+            rip.start(allowance=10**12, session_id=session.session_id)
+
+        job = rip.current()
+        assert job is not None
+        assert job.zustand == "fehler"
+        assert job.fruehere_releases == [hinweis]
+
     def test_weitere_disc_mit_unbekannter_session(self, monkeypatch, toc):
         monkeypatch.setattr(rip, "read_toc", lambda: toc)
         monkeypatch.setattr(rip.threading, "Thread", _FakeThread)
@@ -150,6 +192,22 @@ class TestStart:
         job = rip.current()
         assert job is not None
         assert job.zustand == "fehler"
+
+
+class TestAlleReleases:
+    A = discid.ReleaseHint(mbid="a" * 36, title="A", date="", country="")
+    B = discid.ReleaseHint(mbid="b" * 36, title="B", date="", country="")
+
+    def test_eigene_treffer_zuerst_dann_fruehere_ohne_duplikate(self):
+        job = rip.RipJob(releases=[self.A], fruehere_releases=[self.A, self.B])
+        assert job.alle_releases == [self.A, self.B]
+
+    def test_ohne_eigenen_treffer_nur_fruehere(self):
+        job = rip.RipJob(fruehere_releases=[self.B])
+        assert job.alle_releases == [self.B]
+
+    def test_ohne_beides_leer(self):
+        assert rip.RipJob().alle_releases == []
 
 
 class TestNaechsteDisc:

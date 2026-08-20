@@ -266,6 +266,7 @@ function bindUploadWidgets(root = document) {
 
 bindUploadWidgets();
 bindGenreInputs();
+initFeldZeilen();
 
 // Die Abschnitte 3 und 4 tauchen erst auf, wenn dort etwas landet.
 document.body.addEventListener("htmx:afterSwap", (event) => {
@@ -277,6 +278,7 @@ document.body.addEventListener("htmx:afterSwap", (event) => {
   bindUploadWidgets(event.detail.target);
   bindGenreInputs(event.detail.target);
   initSamplerZustand(event.detail.target);
+  initFeldZeilen(event.detail.target);
 
   const reveal = { candidates: "match-step", result: "result-step" };
   const stepId = reveal[event.detail.target.id];
@@ -558,6 +560,84 @@ function bindGenreInput(input) {
 
 function bindGenreInputs(root = document) {
   root.querySelectorAll?.("[data-genre-input]").forEach(bindGenreInput);
+}
+
+/* -------------------------------------------- Editierbare Tag-Felder -----
+ *
+ * Jedes Feld auf der Album-Detailseite (siehe _album_detail.html) speichert
+ * sofort bei "change" -- kein separates "Bearbeiten"-Formular mehr. Ein
+ * "Zurücksetzen"-Knopf taucht daneben auf, sobald der aktuelle Wert vom beim
+ * ersten Öffnen der Seite geladenen abweicht, und bleibt es auch nach einer
+ * Zwischenspeicherung: ein versehentlich übernommener falscher Wert soll
+ * sich noch rückgängig machen lassen, nicht nur bis zum nächsten Tastendruck.
+ *
+ * Der Ausgangswert steht deshalb nicht im DOM (das wird bei jedem Speichern
+ * mancher Felder komplett neu gerendert, siehe hx-target="#album-detail" bei
+ * den Künstler-Feldern), sondern in sessionStorage -- adressiert über die
+ * Speicher-URL des Feldes plus seinen Katalog-Schlüssel, die zusammen pro
+ * Album/Titel eindeutig sind. sessionStorage überlebt einen Reload,
+ * verschwindet aber mit dem Tab -- "Ausgangswert" heißt hier "beim Öffnen
+ * dieser Sitzung", nicht "für immer".
+ */
+function feldSpeicherSchluessel(zeile) {
+  const eingabe = zeile.querySelector("[data-feld-eingabe]");
+  if (!eingabe) return null;
+  return `mimport:feld-original:${eingabe.getAttribute("hx-post")}:${zeile.dataset.feld}`;
+}
+
+function feldWert(eingabe) {
+  return eingabe.type === "checkbox" ? (eingabe.checked ? "True" : "") : eingabe.value;
+}
+
+function feldWertSetzen(eingabe, wert) {
+  if (eingabe.type === "checkbox") {
+    eingabe.checked = wert === "True";
+  } else {
+    eingabe.value = wert;
+  }
+}
+
+function feldAktualisieren(zeile) {
+  const eingabe = zeile.querySelector("[data-feld-eingabe]");
+  const knopf = zeile.querySelector("[data-feld-reset]");
+  const schluessel = feldSpeicherSchluessel(zeile);
+  if (!eingabe || !knopf || !schluessel) return;
+
+  let original = sessionStorage.getItem(schluessel);
+  if (original === null) {
+    // Erstes Erscheinen dieses Feldes in dieser Browser-Sitzung -- das ist
+    // der Ausgangswert, den "Zurücksetzen" später wiederherstellt.
+    original = zeile.dataset.original;
+    sessionStorage.setItem(schluessel, original);
+  }
+
+  knopf.hidden = feldWert(eingabe) === original;
+}
+
+function initFeldZeile(zeile) {
+  const eingabe = zeile.querySelector("[data-feld-eingabe]");
+  const knopf = zeile.querySelector("[data-feld-reset]");
+  if (!eingabe || !knopf || zeile.dataset.feldGebunden === "ja") return;
+  zeile.dataset.feldGebunden = "ja";
+
+  feldAktualisieren(zeile);
+  eingabe.addEventListener("input", () => feldAktualisieren(zeile));
+  eingabe.addEventListener("change", () => feldAktualisieren(zeile));
+
+  knopf.addEventListener("click", () => {
+    const schluessel = feldSpeicherSchluessel(zeile);
+    const original = schluessel ? sessionStorage.getItem(schluessel) : null;
+    if (original === null) return;
+    feldWertSetzen(eingabe, original);
+    // htmx hört per hx-trigger="change" auf genau dieses Event -- das
+    // speichert die Rücksetzung serverseitig gleich mit.
+    eingabe.dispatchEvent(new Event("change", { bubbles: true }));
+    feldAktualisieren(zeile);
+  });
+}
+
+function initFeldZeilen(root = document) {
+  root.querySelectorAll?.("[data-feld-zeile]").forEach(initFeldZeile);
 }
 
 /* ------------------------------------------------------------- Tabs ------

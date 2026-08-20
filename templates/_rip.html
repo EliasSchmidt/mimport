@@ -35,9 +35,10 @@
     {% elif fremder_auftrag %}
     {# Es gibt ein Laufwerk und damit einen Auftrag. Läuft er für ein Hörbuch,
        gehört er nicht hierher -- aber ein Knopf, der nur scheitern kann, auch
-       nicht. #}
-    <div class="banner info" hx-get="/rip" hx-trigger="every 5s" hx-target="#rip"
-         hx-swap="innerHTML">
+       nicht. /rip/events pusht statt zu pollen und stößt per sse:fertig genau
+       einen Refresh an, sobald das Laufwerk wieder frei ist. #}
+    <div class="banner info" hx-ext="sse" sse-connect="/rip/events" sse-close="fertig"
+         hx-trigger="sse:fertig" hx-get="/rip" hx-target="#rip" hx-swap="innerHTML">
         <strong>Das Laufwerk liest gerade ein Hörbuch ein</strong>
         <p>
             Es gibt nur eines. Der Fortschritt steht unter
@@ -90,24 +91,14 @@
     </div>
 
     {% elif job.laeuft %}
-    {# Der einzige Zustand, der sich selbst nachlädt. #}
-    <div hx-get="/rip" hx-trigger="every 2s" hx-target="#rip" hx-swap="innerHTML">
-        <div class="banner info">
-            <strong>{{ job.meldung }}</strong>
-            {% if job.tracks_gesamt %}
-            <p>
-                {{ job.track }} von {{ job.tracks_gesamt }} Tracks fertig –
-                {{ job.prozent }} %
-                {%- if job.muehsam %} · <em>{{ job.muehsam }}</em>{% endif %}
-            </p>
-            <div class="progress" role="progressbar"
-                 aria-valuenow="{{ job.prozent }}" aria-valuemin="0" aria-valuemax="100">
-                <div class="progress-bar" style="width: {{ job.prozent }}%"></div>
-            </div>
-            {% endif %}
-            <p class="hint">
-                läuft seit {{ job.dauer_text }} · die Seite kann offen bleiben
-            </p>
+    {# Der einzige Zustand, der sich selbst nachlädt -- per SSE statt Polling.
+       Der Fortschrittsbalken kommt über "fortschritt"-Events, ein "fertig"-
+       Event schließt die Verbindung (sse-close) und stößt den einen vollen
+       Refresh an, der auf den Endzustand umschaltet. #}
+    <div hx-ext="sse" sse-connect="/rip/events" sse-close="fertig"
+         hx-trigger="sse:fertig" hx-get="/rip" hx-target="#rip" hx-swap="innerHTML">
+        <div sse-swap="fortschritt" hx-swap="innerHTML">
+            {% include "_rip_fortschritt.html" %}
         </div>
     </div>
 

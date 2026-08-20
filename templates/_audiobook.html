@@ -36,69 +36,30 @@
     </div></strong></p>
 
     {# ---------------------------------------------------------- läuft gerade #}
-    {% if job and job.laeuft %}
-    <div hx-get="/audiobook" hx-trigger="every 2s" hx-target="#audiobook"
-         hx-swap="innerHTML">
-        <div class="banner info">
-            <strong>{{ job.meldung }}</strong>
-            {# Welches Buch -- nach einem Klick auf "Nächste CD" ist das die
-               Bestätigung, dass die Disc am richtigen Platz landet. #}
-            {% if job.disc_ordner %}
-            <p class="hint mono">{{ job.buch_anzeige }} · {{ job.disc_anzeige }}</p>
-            {% endif %}
-            <p>
-                {{ job.track }} von {{ job.tracks_gesamt }} Tracks fertig –
-                {{ job.prozent }} % · läuft seit {{ job.dauer_text }}
-                {%- if job.muehsam %} · <em>{{ job.muehsam }}</em>{% endif %}
-            </p>
-            <div class="progress"><div class="progress-bar"
-                 style="width: {{ job.prozent }}%"></div></div>
-        </div>
-    </div>
+    {# Rip und Bündeln laufen absichtlich gleichzeitig, solange es zwei
+       verschiedene Bücher sind -- beide Balken müssen also gleichzeitig
+       sichtbar sein können. Eine einzige SSE-Verbindung pusht für beide;
+       "fortschritt-rip" und "fortschritt-m4b" laufen unabhängig, ein
+       "fertig"-Event (sobald keiner der beiden mehr läuft) schließt die
+       Verbindung und stößt den einen vollen Refresh an, der auf die
+       Endzustände umschaltet. #}
+    {% if (job and job.laeuft) or (m4b and m4b.laeuft) %}
+    <div hx-ext="sse" sse-connect="/audiobook/events" sse-close="fertig"
+         hx-trigger="sse:fertig" hx-get="/audiobook" hx-target="#audiobook" hx-swap="innerHTML">
 
-    {% endif %}
-
-    {# Kein elif: Rip und Bündeln laufen absichtlich gleichzeitig, solange es
-       zwei verschiedene Bücher sind. Beide Balken müssen also sichtbar sein. #}
-    {% if m4b and m4b.laeuft %}
-    <div {% if not (job and job.laeuft) %}hx-get="/audiobook" hx-trigger="every 2s"
-         hx-target="#audiobook" hx-swap="innerHTML"{% endif %}>
-        <div class="banner info">
-            <strong>{{ m4b.meldung }}</strong>
-            <p class="hint mono">{{ m4b.buch_anzeige }}</p>
-            <p>
-                {{ m4b.prozent }} % – läuft seit {{ m4b.dauer_text }}
-                {%- if m4b.rest_text %}, noch etwa {{ m4b.rest_text }}{% endif %}
-                {%- if m4b.faktor_text %} ({{ m4b.faktor_text }}){% endif %}
-            </p>
-            <div class="progress"><div class="progress-bar"
-                 style="width: {{ m4b.prozent }}%"></div></div>
-            {# Ohne diesen Knopf war ein hängender ffmpeg nur durch einen
-               Neustart des Containers loszuwerden -- der Auftrag blieb auf
-               „läuft" und sperrte das Buch. Gelöscht wird beim Abbruch
-               nichts: an die Quelldateien geht erst die Laufzeitprüfung,
-               und dorthin kommt ein abgebrochener Bau nicht. #}
-            <p class="hint">
-                Steht der Fortschritt? Nach
-                {{ (stillstand_minuten) }} Minuten ohne Regung bricht mimport
-                von selbst ab.
-            </p>
-        </div>
-        {# In der Prüfphase ist ffmpeg schon durch -- ein Abbruch verhindert
-           dann nichts mehr, und ein Knopf, der nur noch absagt, ist eine
-           Falle. #}
-        {% if m4b.zustand != "pruefen" %}
-        <div class="actions">
-            <button type="button" class="button secondary"
-                    hx-post="/audiobook/m4b/abbruch"
-                    hx-target="#audiobook" hx-swap="innerHTML"
-                    hx-confirm="Den m4b-Bau abbrechen? Die Quelldateien bleiben erhalten.">
-                Bau abbrechen
-            </button>
+        {% if job and job.laeuft %}
+        <div sse-swap="fortschritt-rip" hx-swap="innerHTML">
+            {% include "_audiobook_rip_fortschritt.html" %}
         </div>
         {% endif %}
-    </div>
 
+        {% if m4b and m4b.laeuft %}
+        <div sse-swap="fortschritt-m4b" hx-swap="innerHTML">
+            {% include "_audiobook_m4b_fortschritt.html" %}
+        </div>
+        {% endif %}
+
+    </div>
     {% endif %}
 
     {% if not (job and job.laeuft) and not (m4b and m4b.laeuft) %}

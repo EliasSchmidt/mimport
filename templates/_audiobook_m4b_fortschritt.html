@@ -1,0 +1,38 @@
+{# Nur der Fortschrittsbalken eines laufenden m4b-Baus, samt Abbrechen-Knopf.
+   Eigenes Template aus demselben Grund wie _rip_fortschritt.html: Erst-
+   Rendering und der SSE-Push aus /audiobook/events sollen garantiert
+   dasselbe Markup liefern. #}
+<div class="banner info">
+    <strong>{{ m4b.meldung }}</strong>
+    <p class="hint mono">{{ m4b.buch_anzeige }}</p>
+    <p>
+        {{ m4b.prozent }} % – läuft seit {{ m4b.dauer_text }}
+        {%- if m4b.rest_text %}, noch etwa {{ m4b.rest_text }}{% endif %}
+        {%- if m4b.faktor_text %} ({{ m4b.faktor_text }}){% endif %}
+    </p>
+    <div class="progress"><div class="progress-bar"
+         style="width: {{ m4b.prozent }}%"></div></div>
+    {# Ohne diesen Knopf war ein hängender ffmpeg nur durch einen
+       Neustart des Containers loszuwerden -- der Auftrag blieb auf
+       „läuft" und sperrte das Buch. Gelöscht wird beim Abbruch
+       nichts: an die Quelldateien geht erst die Laufzeitprüfung,
+       und dorthin kommt ein abgebrochener Bau nicht. #}
+    <p class="hint">
+        Steht der Fortschritt? Nach
+        {{ stillstand_minuten }} Minuten ohne Regung bricht mimport
+        von selbst ab.
+    </p>
+</div>
+{# In der Prüfphase ist ffmpeg schon durch -- ein Abbruch verhindert
+   dann nichts mehr, und ein Knopf, der nur noch absagt, ist eine
+   Falle. #}
+{% if m4b.zustand != "pruefen" %}
+<div class="actions">
+    <button type="button" class="button secondary"
+            hx-post="/audiobook/m4b/abbruch"
+            hx-target="#audiobook" hx-swap="innerHTML"
+            hx-confirm="Den m4b-Bau abbrechen? Die Quelldateien bleiben erhalten.">
+        Bau abbrechen
+    </button>
+</div>
+{% endif %}

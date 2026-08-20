@@ -588,8 +588,10 @@ class TestRip:
 
         response = client.post("/rip")
         assert "Tracks fertig" in response.text
-        # Solange gelesen wird, holt sich die Anzeige selbst nach.
-        assert "every 2s" in response.text
+        # Solange gelesen wird, pusht /rip/events den Fortschritt statt dass
+        # die Seite ihn abholt.
+        assert 'sse-connect="/rip/events"' in response.text
+        assert 'hx-trigger="sse:fertig"' in response.text
 
     def test_kein_laufwerk_meldet_klar(self, client, werkzeuge_da, monkeypatch):
         from backend import rip
@@ -713,6 +715,82 @@ class TestRip:
         assert "Audio-CD lesen" in response.text
         assert session.directory.exists()
         assert (session.directory / "CD 1" / "01 Track 1.flac").is_file()
+
+
+class TestRipEvents:
+    """/rip/events -- pusht statt zu pollen.
+
+    Ein tatsächlich laufender Auftrag lässt den Generator in einer
+    Sleep-Schleife hängen; über den TestClient wäre das ein Hang ohne
+    Timeout. Getestet werden deshalb nur die Zustände, in denen der Strom
+    sofort mit "fertig" endet -- das deckt die Fallunterscheidung ab, ohne
+    eine laufende Verbindung offen zu halten.
+    """
+
+    @pytest.fixture(autouse=True)
+    def kein_alter_auftrag(self):
+        from backend import rip
+
+        rip._job = None
+        yield
+        rip._job = None
+
+    def test_ohne_auftrag_endet_sofort(self, client):
+        response = client.get("/rip/events")
+        assert response.status_code == 200
+        assert "event: fertig" in response.text
+
+    def test_eigener_auftrag_fertig_endet_sofort(self, client, monkeypatch):
+        from backend import rip
+
+        job = rip.RipJob(modus="musik", zustand="fertig")
+        monkeypatch.setattr(rip, "_job", job)
+
+        response = client.get("/rip/events")
+        assert "event: fertig" in response.text
+
+    def test_fremder_auftrag_fertig_endet_sofort(self, client, monkeypatch):
+        """Das Hörbuch-Rip ist durch -- das Laufwerk ist wieder frei."""
+        from backend import rip
+
+        job = rip.RipJob(modus="hoerbuch", zustand="fertig")
+        monkeypatch.setattr(rip, "_job", job)
+
+        response = client.get("/rip/events")
+        assert "event: fertig" in response.text
+
+
+class TestFortschrittsPartials:
+    """Die kleinen Templates, die sowohl beim Erst-Rendern als auch bei jedem
+    SSE-Push verwendet werden -- ein Fehler hierträfe beide Wege."""
+
+    def test_rip_fortschritt(self):
+        from backend import rip
+        from backend.templates import templates
+
+        job = rip.RipJob(modus="musik", zustand="rippt", track=3, tracks_gesamt=9)
+        html = templates.get_template("_rip_fortschritt.html").render(job=job)
+        assert "3 von 9 Tracks fertig" in html
+        assert "läuft seit" in html
+
+    def test_audiobook_rip_fortschritt(self):
+        from backend import rip
+        from backend.templates import templates
+
+        job = rip.RipJob(modus="hoerbuch", zustand="rippt", track=2, tracks_gesamt=5)
+        html = templates.get_template("_audiobook_rip_fortschritt.html").render(job=job)
+        assert "2 von 5 Tracks fertig" in html
+
+    def test_audiobook_m4b_fortschritt(self):
+        from backend import audiobook
+        from backend.templates import templates
+
+        m4b = audiobook.M4bJob(buch="Frank Herbert/Dune", zustand="encodieren")
+        html = templates.get_template("_audiobook_m4b_fortschritt.html").render(
+            m4b=m4b, stillstand_minuten=10
+        )
+        assert "Frank Herbert" in html
+        assert "10 Minuten ohne Regung" in html
 
 
 class TestOffeneSitzungen:
@@ -896,6 +974,69 @@ class TestHoerbuecher:
     def test_m4b_fuer_unbekanntes_buch(self, client):
         response = client.post("/audiobook/m4b", data={"buch": "../etc"})
         assert "nicht zur Bibliothek" in response.text or "gibt es nicht" in response.text
+
+    def test_laufender_rip_verbindet_per_sse(self, client, bibliothek, monkeypatch):
+        from backend import rip
+
+        job = rip.RipJob(modus="hoerbuch", zustand="rippt", track=1, tracks_gesamt=3)
+        monkeypatch.setattr(rip, "_job", job)
+
+        response = client.get("/audiobook")
+        assert 'sse-connect="/audiobook/events"' in response.text
+        assert 'sse-swap="fortschritt-rip"' in response.text
+        assert "fortschritt-m4b" not in response.text
+
+    def test_ohne_laufenden_auftrag_keine_sse_verbindung(self, client, bibliothek):
+        response = client.get("/audiobook")
+        assert "sse-connect" not in response.text
+
+
+class TestAudiobookEvents:
+    """/audiobook/events -- bedient Rip und m4b-Bau über eine Verbindung.
+
+    Wie bei TestRipEvents: nur die sofort mit "fertig" endenden Zustände,
+    ein tatsächlich laufender Auftrag würde den TestClient hängen lassen.
+    """
+
+    @pytest.fixture(autouse=True)
+    def kein_alter_auftrag(self):
+        from backend import audiobook, rip
+
+        rip._job = None
+        audiobook._m4b_job = None
+        yield
+        rip._job = None
+        audiobook._m4b_job = None
+
+    def test_ohne_auftraege_endet_sofort(self, client):
+        response = client.get("/audiobook/events")
+        assert response.status_code == 200
+        assert "event: fertig" in response.text
+
+    def test_beide_auftraege_fertig_endet_sofort(self, client, monkeypatch):
+        from backend import audiobook, rip
+
+        monkeypatch.setattr(
+            rip, "_job", rip.RipJob(modus="hoerbuch", zustand="fertig")
+        )
+        monkeypatch.setattr(
+            audiobook, "_m4b_job", audiobook.M4bJob(buch="x", zustand="fertig")
+        )
+
+        response = client.get("/audiobook/events")
+        assert "event: fertig" in response.text
+
+    def test_musik_rip_zaehlt_hier_nicht_als_eigener_auftrag(self, client, monkeypatch):
+        """Ein Musik-Rip gehört nicht auf die Hörbuchseite -- auch nicht als
+        Grund, auf ihn zu warten."""
+        from backend import rip
+
+        monkeypatch.setattr(
+            rip, "_job", rip.RipJob(modus="musik", zustand="rippt", track=1)
+        )
+
+        response = client.get("/audiobook/events")
+        assert "event: fertig" in response.text
 
 
 class TestLaufwerkGehoertNurEinemModus:
@@ -2176,13 +2317,33 @@ class TestAlbenCover:
         monkeypatch.setattr(routes.albums, "list_tracks", lambda album_id: [])
         return eintrag
 
+    def test_seite_laedt_liste_erst_per_htmx_nach(self, client, monkeypatch):
+        """``/albums`` selbst darf nicht auf ``list_albums`` warten -- das geht
+        über den ``beet``-Subprozess und würde sonst jede Navigation auf diese
+        Seite blockieren. Die Liste hängt hinter einem hx-get."""
+
+        def nicht_aufrufen(q=""):
+            raise AssertionError("list_albums() darf beim ersten Laden nicht laufen")
+
+        monkeypatch.setattr(routes.albums, "list_albums", nicht_aufrufen)
+        response = client.get("/albums")
+        assert response.status_code == 200
+        assert 'hx-get="/albums/liste"' in response.text
+        assert 'hx-trigger="load"' in response.text
+        assert 'id="cover-dialog"' in response.text
+
+    def test_liste_haengt_suchbegriff_an_den_hx_get_an(self, client, monkeypatch):
+        monkeypatch.setattr(routes.albums, "list_albums", lambda q="": [])
+        response = client.get("/albums?q=Beatles")
+        assert response.status_code == 200
+        assert 'hx-get="/albums/liste?q=Beatles"' in response.text
+
     def test_seite_listet_alben(self, client, album, monkeypatch):
         monkeypatch.setattr(routes.albums, "list_albums", lambda q="": [album])
-        response = client.get("/albums")
+        response = client.get("/albums/liste")
         assert response.status_code == 200
         assert "Abbey Road" in response.text
         assert "The Beatles" in response.text
-        assert 'id="cover-dialog"' in response.text
 
     def test_fehler_beim_listen_wird_angezeigt(self, client, monkeypatch):
         from backend import albums
@@ -2191,7 +2352,7 @@ class TestAlbenCover:
             raise albums.AlbumError("beets antwortet nicht.")
 
         monkeypatch.setattr(routes.albums, "list_albums", kaputt)
-        response = client.get("/albums")
+        response = client.get("/albums/liste")
         assert response.status_code == 200
         assert "beets antwortet nicht." in response.text
 

@@ -12,13 +12,16 @@ FastAPI führt ``def``-Endpunkte dagegen in einem Threadpool aus.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import logging
 import shutil
+from collections.abc import AsyncIterator
 from pathlib import Path
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, File, Form, HTTPException, Query, Request, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 
 from backend import (
     albums,
@@ -187,6 +190,23 @@ def _session_or_404(session_id: str) -> sessions.StagingSession:
 
 def _fragment(request: Request, name: str, **context: object) -> HTMLResponse:
     return templates.TemplateResponse(request, name, context)
+
+
+#: Wie oft /rip/events und /audiobook/events den Auftragsstand nachsehen.
+#: Reines Lesen eines Moduls-Globals, kein Grund für ein längeres Intervall.
+_SSE_INTERVALL = 1.0
+
+
+def _sse_event(event: str, html: str = "") -> str:
+    """Formatiert ein Server-Sent-Event.
+
+    Jede Zeile des HTML-Fragments braucht ihre eigene "data:"-Zeile -- ein
+    rohes Newline im data-Feld würde SSE als Ende der Nachricht lesen und den
+    Rest verschlucken.
+    """
+    zeilen = html.splitlines() or [""]
+    daten = "\n".join(f"data: {zeile}" for zeile in zeilen)
+    return f"event: {event}\n{daten}\n\n"
 
 
 def _track_files(session: sessions.StagingSession) -> list[dict[str, str]]:
@@ -603,8 +623,43 @@ def _rip_fragment(request: Request) -> HTMLResponse:
 
 @router.get("/rip", response_class=HTMLResponse)
 def rip_status(request: Request) -> HTMLResponse:
-    """Fortschritt eines laufenden Rips -- Ziel der Abfrage im Sekundentakt."""
+    """Fortschritt eines laufenden Rips -- Ziel des einen vollen Refresh, den
+    /rip/events per "sse:fertig" anstößt, sowie des Erst-Ladens."""
     return _rip_fragment(request)
+
+
+async def _rip_events_strom(request: Request) -> AsyncIterator[str]:
+    """Pusht den Rip-Fortschritt, statt dass die Seite ihn abholt.
+
+    Deckt beide Fälle ab, die _rip.html bisher per Polling nachlud: den
+    eigenen laufenden Auftrag (Balken alle ~1s) und ein fremdes Laufwerk, das
+    gerade für ein Hörbuch belegt ist (nur warten, bis es frei wird). Sobald
+    keiner von beidem mehr zutrifft, kommt genau ein "fertig" und die
+    Verbindung endet -- den Rest erledigt der eine volle Refresh im Browser.
+    """
+    while True:
+        if await request.is_disconnected():
+            return
+        job = rip.current()
+        # Dieselbe Fallunterscheidung wie in _rip_fragment(): fremder_auftrag
+        # blockiert nur das Laufwerk, laeuft-mit-modus-musik ist unser eigener.
+        fremder_auftrag = job is not None and job.modus != "musik" and job.laeuft
+        eigener_lauf = job is not None and job.modus == "musik" and job.laeuft
+        if fremder_auftrag:
+            await asyncio.sleep(_SSE_INTERVALL)
+            continue
+        if eigener_lauf:
+            html = templates.get_template("_rip_fortschritt.html").render(job=job)
+            yield _sse_event("fortschritt", html)
+            await asyncio.sleep(_SSE_INTERVALL)
+            continue
+        yield _sse_event("fertig")
+        return
+
+
+@router.get("/rip/events")
+async def rip_events(request: Request) -> StreamingResponse:
+    return StreamingResponse(_rip_events_strom(request), media_type="text/event-stream")
 
 
 @router.post("/rip", response_class=HTMLResponse)
@@ -706,15 +761,24 @@ def _buch_belegt(buch: Path) -> str:
     return ""
 
 
+def _hoerbuch_job() -> rip.RipJob | None:
+    """Der laufende Rip-Auftrag, sofern er zu einem Hörbuch gehört.
+
+    Derselbe Auftragsspeicher wie auf der Musikseite (``rip.current()``) --
+    ein Laufwerk, ein Auftrag, nur der Modus entscheidet, wo er hingehört.
+    """
+    job = rip.current()
+    return job if job is not None and job.modus == "hoerbuch" else None
+
+
 def _audiobook_fragment(
     request: Request, *, meldung: str = "", fehler: str = ""
 ) -> HTMLResponse:
     """Der Hörbuch-Bereich: Formular, laufende Aufträge, angefangene Bücher."""
-    job = rip.current()
     return _fragment(
         request,
         "_audiobook.html",
-        job=job if job is not None and job.modus == "hoerbuch" else None,
+        job=_hoerbuch_job(),
         m4b=audiobook.current_m4b(),
         buecher=audiobook.list_books(),
         tools={**rip.tools_available(), **audiobook.tools_available()},
@@ -728,8 +792,49 @@ def _audiobook_fragment(
 
 @router.get("/audiobook", response_class=HTMLResponse)
 def audiobook_status(request: Request) -> HTMLResponse:
-    """Stand des Hörbuch-Bereichs -- auch Ziel der Abfrage im Sekundentakt."""
+    """Stand des Hörbuch-Bereichs -- Ziel des einen vollen Refresh, den
+    /audiobook/events per "sse:fertig" anstößt, sowie des Erst-Ladens."""
     return _audiobook_fragment(request)
+
+
+async def _audiobook_events_strom(request: Request) -> AsyncIterator[str]:
+    """Pusht Rip- und m4b-Fortschritt für die Hörbuchseite, statt dass sie
+    gepollt wird.
+
+    Rip und Bündeln laufen absichtlich nebeneinander (siehe _audiobook.html)
+    -- eine Verbindung bedient deshalb beide, mit eigenen Event-Namen, damit
+    jeder Balken für sich nachlädt. list_books() (Dateisystem-Scan) läuft
+    hier bewusst nicht mit: das gehört in den einen vollen Refresh nach dem
+    "fertig", nicht in jeden Tick.
+    """
+    while True:
+        if await request.is_disconnected():
+            return
+        job = _hoerbuch_job()
+        m4b = audiobook.current_m4b()
+        job_laeuft = job is not None and job.laeuft
+        m4b_laeuft = m4b is not None and m4b.laeuft
+        if not job_laeuft and not m4b_laeuft:
+            yield _sse_event("fertig")
+            return
+        if job_laeuft:
+            html = templates.get_template("_audiobook_rip_fortschritt.html").render(
+                job=job
+            )
+            yield _sse_event("fortschritt-rip", html)
+        if m4b_laeuft:
+            html = templates.get_template("_audiobook_m4b_fortschritt.html").render(
+                m4b=m4b, stillstand_minuten=settings.m4b_stillstand // 60
+            )
+            yield _sse_event("fortschritt-m4b", html)
+        await asyncio.sleep(_SSE_INTERVALL)
+
+
+@router.get("/audiobook/events")
+async def audiobook_events(request: Request) -> StreamingResponse:
+    return StreamingResponse(
+        _audiobook_events_strom(request), media_type="text/event-stream"
+    )
 
 
 @router.post("/audiobook/upload", response_class=HTMLResponse)
@@ -1648,9 +1753,25 @@ def _alben_oder_fehler(q: str = "") -> tuple[list[albums.Album], str]:
 
 @router.get("/albums", response_class=HTMLResponse)
 def album_list(request: Request, q: str = "") -> HTMLResponse:
-    """Bereits importierte Alben durchsuchen."""
+    """Bereits importierte Alben durchsuchen.
+
+    Die Liste selbst kommt erst per HTMX nach (``/albums/liste``) -- sie geht
+    über den ``beet``-Subprozess und damit über die gefüllte Library, das
+    dauert spürbar. Ungebremst hätte das jede Navigation auf diese Seite
+    blockiert, auch wenn man nur vorbeischaut. So steht das Gerüst sofort,
+    die Liste blendet mit Ladeanzeige nach.
+    """
+    liste_url = "/albums/liste"
+    if q:
+        liste_url += "?" + urlencode({"q": q})
+    return _seite(request, "albums.html", "alben", q=q, liste_url=liste_url)
+
+
+@router.get("/albums/liste", response_class=HTMLResponse)
+def album_list_fragment(request: Request, q: str = "") -> HTMLResponse:
+    """Nur die Albentabelle -- Ziel des lazy-load auf ``/albums``."""
     treffer, fehler = _alben_oder_fehler(q)
-    return _seite(request, "albums.html", "alben", alben=treffer, q=q, fehler=fehler)
+    return _fragment(request, "_albums_liste.html", alben=treffer, fehler=fehler)
 
 
 def _album_mit_tracks(album_id: int) -> tuple[albums.Album, list[albums.Track], str]:

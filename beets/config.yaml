@@ -105,7 +105,24 @@ lastgenre:
 # 'cautious' nimmt nur Bilder, deren Dateiname zu 'cover_names' passt, statt
 # irgendein Bild aus dem Ordner. Ohne 'maxwidth' skaliert embedart nicht und
 # braucht deshalb kein ImageMagick im Image.
+#
+# 'fetch_for_asis' ist hier der entscheidende Schalter: mimport importiert
+# IMMER mit 'beet import -A' (kein erneutes Tagging, siehe backend/tagging.py)
+# -- ohne dieses Flag sucht fetchart bei einem as-is-Import nur lokal (also
+# nur ein bereits fotografiertes 'cover.jpg') und nie im Netz, selbst wenn die
+# Dateien durch einen übernommenen MusicBrainz-Match längst eine
+# Release-ID tragen.
+#
+# 'sources' bewusst auf die beiden vertrauenswürdigen Quellen eingeschränkt:
+# 'filesystem' zuerst (das fotografierte Cover geht immer vor), danach
+# 'coverart' (Cover Art Archive, sucht gezielt über die Release-ID). Die
+# beets-Standardliste hängt dahinter noch itunes/amazon/albumart an, die ohne
+# Release-ID nur über Textsuche raten -- gerade bei Sampler- oder
+# Klassik-Compilations ohne MusicBrainz-Match ein Risiko für ein plausibles,
+# aber falsches Cover.
 fetchart:
   auto: yes
   cautious: true
   cover_names: cover
+  fetch_for_asis: yes
+  sources: filesystem coverart

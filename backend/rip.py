@@ -66,6 +66,14 @@ class RipJob:
     releases: list[discid.ReleaseHint] = field(default_factory=list)
     fehler: str | None = None
 
+    #: Release-Treffer bereits fertig gelesener Discs derselben Sitzung
+    #: (Mehrfach-CD-Album) -- ein neuer Auftrag pro Disc ersetzt sonst dieses
+    #: ganze Objekt und risse den Treffer der vorherigen Disc mit weg, obwohl
+    #: er zum selben Release gehört und weiter zum Taggen taugt. Genau das
+    #: braucht man, wenn eine spätere Disc zerkratzt ist: die erste war schon
+    #: erfolgreich gematcht, nur die Datei-Reste der kaputten sollen weg.
+    fruehere_releases: list[discid.ReleaseHint] = field(default_factory=list)
+
     #: "musik" geht über Staging, Match und beets. "hoerbuch" schreibt direkt
     #: in die Hörbuch-Bibliothek und endet dort.
     modus: str = "musik"
@@ -137,6 +145,23 @@ class RipJob:
     def disc_anzeige(self) -> str:
         """Welche Disc gerade gelesen wird, etwa ``CD 3``."""
         return Path(self.disc_ordner).name if self.disc_ordner else ""
+
+    @property
+    def alle_releases(self) -> list[discid.ReleaseHint]:
+        """Release-Treffer dieser Disc und aller vorherigen der Sitzung.
+
+        Bei einem Mehrfach-CD-Album identifiziert meist schon eine Disc den
+        Release eindeutig -- welche, ist Zufall (kaputte Disc, MusicBrainz
+        kennt nur eine TOC-Variante). Diese Disc geht zuerst rein, sie ist die
+        aktuellste Information.
+        """
+        eigene = list(self.releases)
+        bekannt = {r.mbid for r in eigene}
+        for r in self.fruehere_releases:
+            if r.mbid not in bekannt:
+                eigene.append(r)
+                bekannt.add(r.mbid)
+        return eigene
 
 
 #: Es gibt ein Laufwerk, also einen Auftrag. Kein Verzeichnis, keine IDs.
@@ -525,7 +550,14 @@ def _vorbereiten(
     with _job_lock:
         if _job is not None and _job.laeuft:
             raise RipError("Es läuft bereits ein Rip. Es gibt nur ein Laufwerk.")
+        vorheriger = _job
         job = RipJob()
+        # "Weitere Disc rippen" derselben Sitzung: der neue Auftrag ersetzt
+        # den alten komplett, sonst wäre ein schon erfolgreicher Release-
+        # Treffer der vorherigen Disc verloren, sobald diese hier fehlschlägt
+        # oder einfach nur eine andere TOC-Variante liefert.
+        if session_id and vorheriger is not None and vorheriger.session_id == session_id:
+            job.fruehere_releases = list(vorheriger.alle_releases)
         _job = job
 
     session: sessions.StagingSession | None = None

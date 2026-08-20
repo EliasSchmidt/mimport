@@ -1892,6 +1892,7 @@ def _album_detail_fragment(
         track_gruppen=tag_catalog.TRACK_GRUPPEN,
         track_feld_nummer=tag_catalog.TRACK_FELDER_NACH_KEY["track"],
         track_feld_titel=tag_catalog.TRACK_FELDER_NACH_KEY["title"],
+        track_feld_komponist=tag_catalog.TRACK_FELDER_NACH_KEY["composers"],
     )
 
 
@@ -1911,6 +1912,7 @@ def album_detail(request: Request, album_id: int) -> HTMLResponse:
         track_gruppen=tag_catalog.TRACK_GRUPPEN,
         track_feld_nummer=tag_catalog.TRACK_FELDER_NACH_KEY["track"],
         track_feld_titel=tag_catalog.TRACK_FELDER_NACH_KEY["title"],
+        track_feld_komponist=tag_catalog.TRACK_FELDER_NACH_KEY["composers"],
     )
 
 

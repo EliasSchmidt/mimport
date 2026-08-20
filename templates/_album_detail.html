@@ -12,20 +12,26 @@
 {% macro feld_zeile(pfad, feld, wert) %}
 <div class="feld-zeile" data-feld-zeile data-feld="{{ feld.key }}" data-original="{{ wert }}">
     <label class="feld-label">{{ feld.label }}</label>
+    {% if feld.typ == "bool" %}
+    {# Ein Häkchen ist zu klein, um einen Icon-Knopf hineinzulegen -- bleibt
+       bei der Nebeneinander-Variante. Einziges Bool-Feld im ganzen Katalog,
+       kein Grund für eine dritte Eingabe-Variante. #}
     <div class="feld-eingabe-gruppe">
-        {% if feld.typ == "bool" %}
         <input type="checkbox" name="wert" value="1" data-feld-eingabe
                hx-post="{{ pfad }}" hx-vals='{"feld": "{{ feld.key }}"}' hx-trigger="change"
                hx-swap="none"
                {% if wert == "True" %}checked{% endif %}>
-        {% else %}
+        {{ rewind_knopf() }}
+    </div>
+    {% else %}
+    <span class="feld-eingabe-icon">
         <input type="text" name="wert" value="{{ wert }}" data-feld-eingabe
                hx-post="{{ pfad }}" hx-vals='{"feld": "{{ feld.key }}"}' hx-trigger="change"
                hx-swap="none"
                {% if feld.key == "genres" %}list="genre-vorschlaege-album" autocomplete="off" data-genre-input{% endif %}>
-        {% endif %}
         {{ rewind_knopf() }}
-    </div>
+    </span>
+    {% endif %}
     {% if feld.hinweis %}<small class="hint">{{ feld.hinweis }}</small>{% endif %}
 </div>
 {% endmacro %}
@@ -33,7 +39,7 @@
 {# Bare Eingabe ohne Label/Hinweis -- für Tabellenzellen, deren Spaltenkopf
    die Beschriftung schon liefert (siehe Titelliste unten). #}
 {% macro feld_kompakt(pfad, feld, wert) %}
-<span class="feld-zeile feld-zeile-kompakt" data-feld-zeile data-feld="{{ feld.key }}" data-original="{{ wert }}">
+<span class="feld-eingabe-icon" data-feld-zeile data-feld="{{ feld.key }}" data-original="{{ wert }}">
     <input type="text" name="wert" value="{{ wert }}" data-feld-eingabe
            hx-post="{{ pfad }}" hx-vals='{"feld": "{{ feld.key }}"}' hx-trigger="change"
            hx-swap="none">
@@ -127,12 +133,12 @@
            eigene Zeile, siehe unten. #}
         <div class="feld-zeile" data-feld-zeile data-feld="albumartists" data-original="{{ album.albumartist }}">
             <label class="feld-label">{{ feld.label }}</label>
-            <div class="feld-eingabe-gruppe">
+            <span class="feld-eingabe-icon">
                 <input type="text" name="wert" value="{{ album.albumartist }}" data-feld-eingabe
                        hx-post="/albums/{{ album.id }}/field" hx-vals='{"feld": "albumartists"}'
                        hx-trigger="change" hx-target="#album-detail" hx-swap="innerHTML">
                 {{ rewind_knopf() }}
-            </div>
+            </span>
             {{ kuenstler_zeile(album.kuenstler_links, "/albums/" ~ album.id ~ "/artist-lookup", "artist-match-album") }}
         </div>
         {% elif not feld.kuenstler_link %}
@@ -155,9 +161,16 @@
     {% if not tracks %}
     <p class="hint">Keine Titel gefunden.</p>
     {% else %}
-    <table class="stapelbar files">
+    <table class="stapelbar files titelliste">
+        <colgroup>
+            <col class="sp-nr">
+            <col class="sp-titel">
+            <col class="sp-interpret">
+            <col class="sp-komponist">
+            <col class="sp-weitere">
+        </colgroup>
         <thead>
-            <tr><th>#</th><th>Titel</th><th>Interpret</th><th></th></tr>
+            <tr><th>#</th><th>Titel</th><th>Interpret</th><th>Komponist</th><th></th></tr>
         </thead>
         <tbody>
             {% for t in tracks %}
@@ -171,14 +184,17 @@
                 </td>
                 <td data-spalte="Interpret">
                     <div class="feld-zeile" data-feld-zeile data-feld="artists" data-original="{{ t.artist }}">
-                        <div class="feld-eingabe-gruppe">
+                        <span class="feld-eingabe-icon">
                             <input type="text" name="wert" value="{{ t.artist }}" data-feld-eingabe
                                    hx-post="{{ track_pfad }}" hx-vals='{"feld": "artists"}'
                                    hx-trigger="change" hx-target="#album-detail" hx-swap="innerHTML">
                             {{ rewind_knopf() }}
-                        </div>
+                        </span>
                         {{ kuenstler_zeile(t.kuenstler_links, track_pfad|replace("/field","/artist-lookup"), "track-match-" ~ t.id) }}
                     </div>
+                </td>
+                <td data-spalte="Komponist">
+                    {{ feld_kompakt(track_pfad, track_feld_komponist, t.alle_werte.get("composers", "")) }}
                 </td>
                 <td>
                     <button type="button" class="button secondary"
@@ -190,7 +206,7 @@
                         <div class="felder-gruppe">
                             {% for gruppen_name, felder in track_gruppen %}
                             {% for feld in felder %}
-                            {% if not feld.kuenstler_link and feld.key not in ("track", "title") %}
+                            {% if not feld.kuenstler_link and feld.key not in ("track", "title", "composers") %}
                             {{ feld_zeile(track_pfad, feld, t.alle_werte.get(feld.key, "")) }}
                             {% endif %}
                             {% endfor %}

@@ -465,7 +465,7 @@ document.addEventListener("DOMContentLoaded", () => {
     canvas.addEventListener(e, ziehenEnde)
   );
 
-  d.querySelector(".cover-uebernehmen").addEventListener("click", uebernehmen);
+  d.querySelector(".cover-uebernehmen").addEventListener("click", () => uebernehmen());
   d.querySelector(".cover-ganzes-bild").addEventListener("click", ganzesBildUebernehmen);
   d.querySelector(".cover-abbrechen").addEventListener("click", schliessen);
   d.querySelector(".cover-neu").addEventListener("click", () =>

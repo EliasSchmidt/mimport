@@ -413,13 +413,18 @@ class TestSetAlbumArtistMbid:
         monkeypatch.setattr(albums.subprocess, "run", fake_run)
         albums.set_album_artist_mbid(self._album(tmp_path), 0, self.MBID)
 
-        assert len(aufrufe) == 2
-        titel_aufruf, album_aufruf = aufrufe
+        assert len(aufrufe) == 3
+        titel_aufruf, write_aufruf, album_aufruf = aufrufe
 
         assert titel_aufruf[1:4] == ["modify", "-y", "album_id:9"]
         assert titel_aufruf[4] == f"mb_albumartistid={self.MBID}"
         assert f"mb_albumartistids={self.MBID}" in titel_aufruf
         assert "-a" not in titel_aufruf
+
+        # Nachgleich: die Titel-Zeile schreibt tatsächlich, ihr folgt deshalb
+        # ein "beet write" (siehe Moduldoc von _modify) -- die Album-Zeile
+        # unten läuft mit -W und bekommt keinen.
+        assert write_aufruf[1:3] == ["write", "album_id:9"]
 
         assert "-a" in album_aufruf
         assert "-W" in album_aufruf
@@ -442,7 +447,7 @@ class TestSetAlbumArtistMbid:
         )
         albums.set_album_artist_mbid(album, 1, self.MBID2)
 
-        titel_aufruf, _ = aufrufe
+        titel_aufruf, _write, _album = aufrufe
         assert f"mb_albumartistids={self.MBID}; {self.MBID2}" in titel_aufruf
         # A bleibt an Position 0 -- die Kompat-ID nimmt trotzdem den ersten
         # gesetzten Wert, nicht den zuletzt geänderten.
@@ -472,7 +477,7 @@ class TestSetAlbumArtistMbid:
             lambda cmd, **kw: (verlauf.append("beet"), _proc())[1],
         )
         albums.set_album_artist_mbid(self._album(tmp_path), 0, self.MBID)
-        assert verlauf == ["enter", "beet", "beet", "exit"]
+        assert verlauf == ["enter", "beet", "beet", "beet", "exit"]
 
     def test_fehlschlag_beim_ersten_aufruf_wird_gemeldet(self, tmp_path, monkeypatch):
         monkeypatch.setattr(
@@ -504,19 +509,21 @@ class TestSetTrackArtistMbid:
         return albums.Track(id=42, track="01", title="T", **kw)
 
     def test_baut_das_richtige_kommando(self, monkeypatch):
-        gesehen = {}
+        aufrufe = []
 
         def fake_run(cmd, **kw):
-            gesehen["cmd"] = cmd
+            aufrufe.append(cmd)
             return _proc()
 
         monkeypatch.setattr(albums.subprocess, "run", fake_run)
         albums.set_track_artist_mbid(self._track(), 0, self.MBID)
-        cmd = gesehen["cmd"]
-        assert cmd[1:4] == ["modify", "-y", "id:42"]
-        assert cmd[4] == f"mb_artistid={self.MBID}"
-        assert f"mb_artistids={self.MBID}" in cmd
-        assert "-a" not in cmd
+        modify_aufruf, write_aufruf = aufrufe
+        assert modify_aufruf[1:4] == ["modify", "-y", "id:42"]
+        assert modify_aufruf[4] == f"mb_artistid={self.MBID}"
+        assert f"mb_artistids={self.MBID}" in modify_aufruf
+        assert "-a" not in modify_aufruf
+
+        assert write_aufruf[1:3] == ["write", "id:42"]
 
     def test_setzt_nur_die_gewaehlte_position_bei_mehreren_interpreten(self, monkeypatch):
         aufrufe = []
@@ -552,7 +559,7 @@ class TestSetTrackArtistMbid:
             lambda cmd, **kw: (verlauf.append("beet"), _proc())[1],
         )
         albums.set_track_artist_mbid(self._track(), 0, self.MBID)
-        assert verlauf == ["enter", "beet", "exit"]
+        assert verlauf == ["enter", "beet", "beet", "exit"]
 
     def test_fehlschlag_wird_gemeldet(self, monkeypatch):
         monkeypatch.setattr(
@@ -594,12 +601,14 @@ class TestSetAlbumField:
         feld = tag_catalog.ALBUM_FELDER_NACH_KEY["album"]
         albums.set_album_field(self._album(tmp_path), feld, "Neuer Titel")
 
-        assert len(aufrufe) == 2
-        titel_aufruf, album_aufruf = aufrufe
+        assert len(aufrufe) == 3
+        titel_aufruf, write_aufruf, album_aufruf = aufrufe
 
         assert titel_aufruf[1:4] == ["modify", "-y", "album_id:9"]
         assert "album=Neuer Titel" in titel_aufruf
         assert "-a" not in titel_aufruf
+
+        assert write_aufruf[1:3] == ["write", "album_id:9"]
 
         assert "-a" in album_aufruf
         assert "-W" in album_aufruf
@@ -644,19 +653,20 @@ class TestSetAlbumField:
 
 class TestSetTrackField:
     def test_baut_das_richtige_kommando(self, monkeypatch):
-        gesehen = {}
+        aufrufe = []
 
         def fake_run(cmd, **kw):
-            gesehen["cmd"] = cmd
+            aufrufe.append(cmd)
             return _proc()
 
         monkeypatch.setattr(albums.subprocess, "run", fake_run)
         track = albums.Track(id=42, track="01", title="X", artist="Y")
         feld = tag_catalog.TRACK_FELDER_NACH_KEY["title"]
         albums.set_track_field(track, feld, "Neuer Titel")
-        cmd = gesehen["cmd"]
-        assert cmd[1:4] == ["modify", "-y", "id:42"]
-        assert "title=Neuer Titel" in cmd
+        modify_aufruf, write_aufruf = aufrufe
+        assert modify_aufruf[1:4] == ["modify", "-y", "id:42"]
+        assert "title=Neuer Titel" in modify_aufruf
+        assert write_aufruf[1:3] == ["write", "id:42"]
 
     def test_mehrwertiges_feld_setzt_einzelform_mit(self, monkeypatch):
         aufrufe = []

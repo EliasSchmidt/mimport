@@ -99,13 +99,19 @@ per_disc_numbering: no
 #
 # Zur Einordnung: das musicbrainz-Plugin liefert von sich aus KEINE Genres
 # (dort steht 'genres: False'), lastgenre tritt also nicht gegen MusicBrainz an,
-# sondern füllt eine Lücke. Was 'force' zusammen mit 'keep_existing: no' aber
-# sehr wohl überschreibt, ist ein Genre, das bereits in der hochgeladenen Datei
-# stand -- ein gepflegtes „Post-Rock" wird dann durch die Last.fm-Tags ersetzt.
-# So gewollt; wer das nicht will, setzt 'force: no'.
+# sondern füllt eine Lücke -- nur wenn eine Datei noch KEIN Genre hat.
+#
+# 'force: yes' überschrieb vorher jedes manuell gesetzte Genre durch
+# Last.fm-Tags, 'canonical: yes' filtert diese Tags zusätzlich gegen eine
+# kanonische Liste. Findet Last.fm für ein Album nichts Kanonisierbares (z. B.
+# eine Nischen-Compilation mit Tango/Jazz/World Music), blieb ohne
+# 'fallback'-Konfiguration eine LEERE Liste übrig -- das Genre-Feld wurde
+# komplett geleert statt unverändert zu bleiben. Mit 'force: no' bleiben
+# manuell gesetzte Genres immer erhalten; Last.fm ergänzt nur, wo noch keins
+# steht.
 lastgenre:
   auto: yes
-  force: yes
+  force: no
   keep_existing: no
   source: album
   count: 4

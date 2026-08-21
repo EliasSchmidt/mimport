@@ -385,13 +385,38 @@ def update_cover(album: Album, bild_pfad: Path) -> None:
 
 
 def _modify(vorwahl: list[str], query: str, felder: dict[str, str], *, timeout: int) -> None:
-    """``beet modify -y <vorwahl> <query> feld=wert …``, Fehler als ``AlbumError``."""
+    """``beet modify -y <vorwahl> <query> feld=wert …``, Fehler als ``AlbumError``.
+
+    ``beet modify`` schreibt die Datei nur, wenn es selbst einen Unterschied
+    zum bisherigen Datenbankwert sieht -- setzt man ein Feld auf genau den
+    Wert, der dort schon steht, meldet es nur ``"No changes to make."`` und
+    lässt die Datei unangetastet. Das reicht nicht: Datenbank und Datei können
+    schon vorher auseinandergelaufen sein (etwa weil ein früherer
+    Schreibversuch die Datei nicht erreicht hat), und dann bliebe die Datei
+    dauerhaft ohne den Tag, obwohl jeder erneute Speichern-Klick genau
+    denselben, schon "richtigen" Wert erneut übermittelt -- nachgemessen an
+    einem Genre, das laut ``beet ls`` korrekt gesetzt war, in der Datei aber
+    komplett fehlte. Ein zusätzliches ``beet write`` vergleicht deshalb
+    unabhängig von der eigenen Änderungserkennung von ``modify`` die Datei
+    gegen die Datenbank und schreibt genau dann, wenn beide voneinander
+    abweichen -- ist ohnehin schon alles synchron, tut es nichts.
+
+    Nur für Aufrufe relevant, die überhaupt schreiben sollen: der
+    Album-Zeilen-Aufruf mit ``-W`` (siehe ``set_album_field`` u.a.) lässt die
+    Datei bewusst unangetastet, dafür bleibt auch dieser Nachgleich aus.
+    """
     args = ["modify", "-y", *vorwahl, query, *(f"{k}={v}" for k, v in felder.items())]
     proc = _lauf(args, timeout=timeout)
     if proc.returncode != 0:
         raise AlbumError(
             proc.stderr.strip() or "Das Ändern der Tags ist fehlgeschlagen."
         )
+    if "-W" not in vorwahl:
+        write_proc = _lauf(["write", query], timeout=timeout)
+        if write_proc.returncode != 0:
+            raise AlbumError(
+                write_proc.stderr.strip() or "Das Schreiben der Datei ist fehlgeschlagen."
+            )
 
 
 def set_album_artist_mbid(album: Album, index: int, mbid: str) -> None:

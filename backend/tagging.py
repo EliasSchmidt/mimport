@@ -60,9 +60,17 @@ def apply_album_match(match: Any, *, from_scratch: bool = False) -> TagWriteResu
             result.failed.append((name, str(exc)))
 
     # Dateien, die zu keinem Track des Releases passen, bleiben unangetastet --
-    # sie behalten ihre vorhandenen Tags und werden as-is mit importiert.
+    # sie behalten ihre vorhandenen Tags und werden as-is mit importiert. Als
+    # Warnung protokolliert, nicht nur Info: genau das sieht später wie ein
+    # fehlendes Genre (oder sonstiges Feld) aus, das man sich nicht erklären
+    # kann, wenn man nicht mehr weiß, dass diese Datei nie angefasst wurde.
     for item in getattr(match, "extra_items", []) or []:
-        log.info("Ohne Zuordnung, bleibt unverändert: %s", _display(item))
+        log.warning(
+            "Ohne Zuordnung zum gewählten Release, bleibt unverändert -- bekommt "
+            "insbesondere KEIN Genre und keine sonstigen Metadaten aus diesem "
+            "Import: %s",
+            _display(item),
+        )
 
     return result
 
@@ -320,7 +328,8 @@ def apply_manual_tags(
             result.failed.append((path.name, f"nicht lesbar: {exc}"))
             continue
 
-        for key, value in {**usable, **eigene}.items():
+        alle_felder = {**usable, **eigene}
+        for key, value in alle_felder.items():
             _setzen(item, key, value)
 
         # Ohne Tracknummer benennt beets jede Datei zu "00 <Titel>" -- bei
@@ -337,11 +346,43 @@ def apply_manual_tags(
         try:
             if item.try_write():
                 result.written.append(path.name)
+                _bestaetige_geschrieben(path, alle_felder)
             else:
                 result.failed.append((path.name, "Tags konnten nicht geschrieben werden"))
         except Exception as exc:  # noqa: BLE001 -- ein Schreibfehler soll die übrigen Dateien nicht stoppen
             result.failed.append((path.name, str(exc)))
     return result
+
+
+def _bestaetige_geschrieben(path: Path, felder: Mapping[str, object]) -> None:
+    """Liest die gerade geschriebene Datei sofort noch einmal ein und
+    vergleicht die mehrwertigen Felder (Genre, Komponist, ...) gegen das, was
+    eigentlich gesetzt werden sollte.
+
+    Hintergrund: ``try_write()`` meldete in einem beobachteten Fall Erfolg,
+    obwohl das Genre in der Datei danach leer war (die Datenbank stimmte,
+    die Datei nicht) -- Ursache bislang ungeklärt. Diese Prüfung schlägt in
+    genau diesem Fall sofort mit einer klaren Logzeile an, statt dass die
+    Abweichung erst Tage später über Navidrome auffällt und mühsam von Hand
+    nachrecherchiert werden muss.
+    """
+    try:
+        nachgelesen = Item.from_path(str(path))
+    except Exception:  # noqa: BLE001 -- die Nachlese ist nur eine zusätzliche Warnung, kein Muss
+        return
+    for key, roh_wert in felder.items():
+        if key not in _MEHRWERTIG:
+            continue
+        erwartet = _genrewerte(roh_wert) if key == "genres" else _kuenstlerwerte(roh_wert)
+        if not erwartet:
+            continue
+        tatsaechlich = list(nachgelesen[key]) if nachgelesen[key] else []
+        if tatsaechlich != erwartet:
+            log.warning(
+                "Nach dem Schreiben weicht '%s' in %s von der Vorgabe ab: "
+                "Datei zeigt %r, erwartet war %r",
+                key, path.name, tatsaechlich, erwartet,
+            )
 
 
 def _display(item: Any) -> str:

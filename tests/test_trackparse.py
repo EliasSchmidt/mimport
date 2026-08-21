@@ -172,6 +172,17 @@ class TestParseText:
         assert track.composer == "Komponist"
         assert track.duration == "3:21"
 
+    def test_trenner_ignoriert_strich_variante(self):
+        """Discogs-Copy&Paste mischt Halbgeviertstrich und normalen
+        Bindestrich in derselben Liste -- ein Trenner mit " - " muss deshalb
+        auch " – " treffen, ohne dass man beides einzeln konfigurieren muss."""
+        flags = trackparse.ParseFlags(tracknummer=False, dauer=False, felder=("interpret", "titel"))
+        [t1, t2] = trackparse.parse_text("Interpret – Titel\nAnderer - Anderer Titel", flags)
+        assert t1.artist == "Interpret"
+        assert t1.title == "Titel"
+        assert t2.artist == "Anderer"
+        assert t2.title == "Anderer Titel"
+
     def test_zu_wenig_trenner_faellt_komplett_auf_titel_zurueck(self):
         flags = trackparse.ParseFlags(tracknummer=False, dauer=False, felder=("interpret", "titel"))
         [track] = trackparse.parse_text("Nur ein Stück ohne Trenner", flags)

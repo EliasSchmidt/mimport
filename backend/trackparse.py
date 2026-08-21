@@ -68,6 +68,20 @@ _DURATION_RE = re.compile(
 _DAUER_NORMALISIEREN = str.maketrans({"O": "0", "o": "0", "I": "1", "l": "1"})
 _TRACK_PREFIX_RE = re.compile(r"^\s*(?P<num>\d{1,2})\s*[.)\-:]?\s*(?P<rest>.*)$")
 
+#: Bindestrich, Halbgeviert- und Geviertstrich sehen für OCR wie für
+#: Copy&Paste (z. B. von Discogs) gleich aus und werden in derselben Liste
+#: oft munter gemischt -- ein Trenner wie " - " soll deshalb alle drei
+#: gleichermaßen treffen, statt nur die exakte Zeichenvariante.
+_STRICH_ZEICHEN = "-–—"
+
+
+def _trenner_muster(trenner: str) -> re.Pattern[str]:
+    teile = (
+        f"[{_STRICH_ZEICHEN}]" if zeichen in _STRICH_ZEICHEN else re.escape(zeichen)
+        for zeichen in trenner
+    )
+    return re.compile("".join(teile))
+
 
 def _split_lines(text: str) -> list[str]:
     return [line.strip() for line in text.splitlines() if line.strip()]
@@ -101,7 +115,8 @@ def _teile_werte(text: str, felder: tuple[Feld, ...], trenner: str) -> dict[str,
     """
     text = text.strip()
     if len(felder) > 1 and trenner:
-        teile = [teil.strip() for teil in text.split(trenner, len(felder) - 1)]
+        muster = _trenner_muster(trenner)
+        teile = [teil.strip() for teil in muster.split(text, maxsplit=len(felder) - 1)]
         if len(teile) == len(felder):
             return {_FELD_ATTR[feld]: teil for feld, teil in zip(felder, teile)}
     return {"title": text}

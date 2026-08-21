@@ -264,6 +264,15 @@ textarea { width: 100%; resize: vertical; }
    volle Zellbreite eines Grid-Feldes -- 5 Stellen reichen für jeden
    plausiblen Wert. */
 input[type="number"] { max-width: 6rem; }
+/* Die nativen Spinner-Pfeile bringen bei Jahr/Tracknummer/... nichts (niemand
+   klickt sich auf 1969 hoch) und überlagerten in der schmalen #-Spalte der
+   Titelliste die Ziffer selbst. */
+input[type="number"] { -moz-appearance: textfield; }
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
 
 input[type="text"]:focus-visible,
 input[type="number"]:focus-visible,

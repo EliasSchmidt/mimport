@@ -265,7 +265,12 @@ function bindUploadWidgets(root = document) {
 }
 
 bindUploadWidgets();
-bindGenreInputs();
+// bindGenreInputs() steht erst ganz unten in der Datei, nach der Definition von
+// GENRE_LIMIT -- ein Aufruf hier oben griffe per TDZ auf ein "const" zu, das
+// zu diesem Zeitpunkt der Skriptausführung noch nicht initialisiert ist, und
+// würde mit "Cannot access 'GENRE_LIMIT' before initialization" die gesamte
+// restliche Skriptausführung abbrechen (jeder danach im Quelltext stehende
+// Code, auch alle document.body-Listener weiter unten, würde nie registriert).
 
 // Die Abschnitte 3 und 4 tauchen erst auf, wenn dort etwas landet.
 document.body.addEventListener("htmx:afterSwap", (event) => {
@@ -697,3 +702,5 @@ document.body.addEventListener("click", (event) => {
     if (window.htmx) window.htmx.ajax("GET", url, { target: panel, swap: "innerHTML" });
   }
 });
+
+bindGenreInputs();

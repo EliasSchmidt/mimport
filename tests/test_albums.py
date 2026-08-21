@@ -349,6 +349,87 @@ class TestRetryMissingCover:
         assert albums.retry_missing_cover("mbid-123") is False
 
 
+class TestRefreshGenreAfterImport:
+    """lastgenre lief bislang als automatische Import-Stufe -- die schreibt
+    laut eigenem Quellcode nie in die Datei (``try_sync(write=False)``), und
+    beets' Import-Pipeline schreibt unter ``-A`` ohnehin nichts zurück. Das
+    von Last.fm gefundene Genre landete deshalb nur in der Datenbank, nie in
+    der Datei (siehe Moduldoc von ``refresh_genre_after_import``)."""
+
+    def test_mit_mbid_wird_ueber_mb_albumid_gesucht(self, monkeypatch):
+        aufrufe = []
+        monkeypatch.setattr(
+            albums.subprocess, "run", lambda cmd, **kw: (aufrufe.append(cmd), _proc())[1]
+        )
+        assert albums.refresh_genre_after_import(mb_albumid="mbid-123") is True
+        assert aufrufe[0][1:] == ["lastgenre", "--no-force", "mb_albumid:mbid-123"]
+
+    def test_ohne_mbid_wird_ueber_albumkuenstler_und_album_gesucht(self, monkeypatch):
+        aufrufe = []
+        monkeypatch.setattr(
+            albums.subprocess, "run", lambda cmd, **kw: (aufrufe.append(cmd), _proc())[1]
+        )
+        ergebnis = albums.refresh_genre_after_import(
+            albumartist="Quadro Nuevo", album="Luna rossa"
+        )
+        assert ergebnis is True
+        assert aufrufe[0][1:] == [
+            "lastgenre", "--no-force", "albumartist:Quadro Nuevo", "album:Luna rossa",
+        ]
+
+    def test_ohne_jegliche_kennung_laeuft_beet_gar_nicht_erst(self, monkeypatch):
+        def darf_nicht_laufen(cmd, **kw):
+            pytest.fail("beet sollte ohne Ankerpunkt nicht aufgerufen werden")
+
+        monkeypatch.setattr(albums.subprocess, "run", darf_nicht_laufen)
+        assert albums.refresh_genre_after_import() is False
+
+    def test_mbid_hat_vorrang_vor_albumkuenstler_und_album(self, monkeypatch):
+        aufrufe = []
+        monkeypatch.setattr(
+            albums.subprocess, "run", lambda cmd, **kw: (aufrufe.append(cmd), _proc())[1]
+        )
+        albums.refresh_genre_after_import(
+            mb_albumid="mbid-123", albumartist="Quadro Nuevo", album="Luna rossa"
+        )
+        assert aufrufe[0][-1] == "mb_albumid:mbid-123"
+
+    def test_haelt_den_library_lock(self, monkeypatch):
+        verlauf = []
+
+        @contextlib.contextmanager
+        def fake_lock():
+            verlauf.append("enter")
+            yield
+            verlauf.append("exit")
+
+        monkeypatch.setattr(albums, "library_lock", fake_lock)
+        monkeypatch.setattr(
+            albums.subprocess,
+            "run",
+            lambda cmd, **kw: (verlauf.append("beet"), _proc())[1],
+        )
+        albums.refresh_genre_after_import(mb_albumid="mbid-123")
+        assert verlauf == ["enter", "beet", "exit"]
+
+    def test_fehlschlag_wird_nicht_nach_aussen_gemeldet(self, monkeypatch):
+        monkeypatch.setattr(
+            albums.subprocess,
+            "run",
+            lambda cmd, **kw: _proc(returncode=1, stderr="autsch"),
+        )
+        # Kein AlbumError nach außen -- ein Bestcase-Versuch soll den Import
+        # nicht nachträglich als fehlgeschlagen erscheinen lassen.
+        assert albums.refresh_genre_after_import(mb_albumid="mbid-123") is False
+
+    def test_haengender_beet_wird_abgefangen(self, monkeypatch):
+        def fake_run(cmd, **kw):
+            raise subprocess.TimeoutExpired(cmd=cmd, timeout=60)
+
+        monkeypatch.setattr(albums.subprocess, "run", fake_run)
+        assert albums.refresh_genre_after_import(mb_albumid="mbid-123") is False
+
+
 class TestAlbumProperties:
     def test_cover_path_ist_cover_jpg_im_ordner(self, tmp_path):
         album = albums.Album(id=1, albumartist="X", album="Y", year="2020", path=tmp_path)

@@ -299,6 +299,31 @@ def _mb_albumid_der_session(session: sessions.StagingSession) -> str | None:
     return None
 
 
+def _album_kernfelder_der_session(
+    session: sessions.StagingSession,
+) -> tuple[str, str] | None:
+    """Liest Albumkünstler und Albumtitel aus den Dateien der Session.
+
+    Fallback-Ankerpunkt für ``albums.refresh_genre_after_import``, wenn keine
+    MusicBrainz-Release-ID vorliegt -- beim reinen Handtag-Import (``/musik``)
+    gibt es die nie (siehe ``backend.tagging``-Moduldoc: eine Release-ID wird
+    dort bewusst nicht gesetzt). Weniger eindeutig als eine MBID, aber die
+    einzige verfügbare Information, um das gerade importierte Album danach in
+    der Library wiederzufinden. Vor dem Import gelesen, aus demselben Grund
+    wie bei ``_mb_albumid_der_session``.
+    """
+    import mediafile
+
+    for path in session.audio_paths:
+        try:
+            media = mediafile.MediaFile(path)
+        except Exception:  # noqa: BLE001 -- eine unlesbare Datei soll die Suche nicht abbrechen
+            continue
+        if media.albumartist and media.album:
+            return (media.albumartist, media.album)
+    return None
+
+
 def _ocr_overlay(result: ocr.OcrResult, image_url: str) -> dict[str, object]:
     detections: list[dict[str, object]] = []
     for detection in result.detections:
@@ -1830,6 +1855,9 @@ def run_import(
     # Vor dem Import lesen: hinterher liegt an diesem Ort nichts mehr
     # (verschoben oder kopiert), siehe _mb_albumid_der_session().
     mb_albumid = None if dry_run else _mb_albumid_der_session(session)
+    album_kernfelder = (
+        None if dry_run or mb_albumid else _album_kernfelder_der_session(session)
+    )
 
     result = importer.run_import(session.directory, pretend=dry_run)
     if result.ok and not dry_run:
@@ -1840,6 +1868,10 @@ def run_import(
         # kostet nichts außer einer einzelnen beet-list-Abfrage.
         if mb_albumid:
             albums.retry_missing_cover(mb_albumid)
+            albums.refresh_genre_after_import(mb_albumid=mb_albumid)
+        elif album_kernfelder:
+            albumartist, album = album_kernfelder
+            albums.refresh_genre_after_import(albumartist=albumartist, album=album)
 
         # Nach einem Verschiebe-Import ist der Ordner leer; dann kann er weg.
         sessions.cleanup_if_empty(session)

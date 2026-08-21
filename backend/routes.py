@@ -2008,31 +2008,73 @@ def album_artist_apply(
     return _album_detail_fragment(request, album_id)
 
 
-@router.post("/albums/{album_id}/field", response_class=HTMLResponse)
-def album_field(
-    request: Request, album_id: int, feld: str = Form(...), wert: str = Form(default="")
-) -> HTMLResponse:
-    """Setzt ein einzelnes Katalogfeld auf Album-Ebene (siehe ``tag_catalog``).
+@router.post("/albums/{album_id}/save", response_class=HTMLResponse)
+async def album_save(request: Request, album_id: int) -> HTMLResponse:
+    """Schreibt alle geänderten Katalogfelder auf einmal -- Album- und
+    Titel-Ebene zusammen, ausgelöst durch den "Speichern"-Knopf am Ende der
+    Detailseite. Anders als früher speichert kein Feld mehr für sich bei
+    jeder Änderung; static/index.js filtert unveränderte Felder schon vor
+    dem Absenden heraus (htmx:configRequest), hier kommen also nur
+    tatsächlich geänderte Werte an.
 
-    Ein Feld je Aufruf -- passend zum inline editierbaren Formular, das bei
-    jeder Änderung sofort speichert, statt auf ein gesammeltes "Absenden" zu
-    warten. Anders als früher überschreibt ein geleertes Eingabefeld den Tag
-    jetzt auch wirklich mit leer, statt ihn unangetastet zu lassen.
+    Formularschlüssel: ``album:<feld>`` für Album-Felder, ``track:<id>:<feld>``
+    für Titel-Felder -- ein Präfix reicht, weil ein Speichern-Klick über
+    mehrere Titel hinweg schreiben können muss. Unbekannte oder unlesbare
+    Schlüssel werden übersprungen statt den ganzen Aufruf abzubrechen --
+    kommen bei einem regulär bedienten Formular ohnehin nie vor.
     """
     alb = albums.get_album(album_id)
     if alb is None:
         raise HTTPException(status_code=404, detail="Album nicht gefunden.")
-    katalog_feld = tag_catalog.ALBUM_FELDER_NACH_KEY.get(feld)
-    if katalog_feld is None:
-        raise HTTPException(status_code=400, detail="Unbekanntes Feld.")
-    try:
-        if katalog_feld.kuenstler_link:
-            albums.set_album_interpret(alb, wert)
-        else:
-            albums.set_album_field(alb, katalog_feld, wert)
-    except albums.AlbumError as exc:
-        return _album_detail_fragment(request, album_id, fehler=str(exc))
-    return _album_detail_fragment(request, album_id)
+
+    formular = await request.form()
+    fehler: list[str] = []
+    tracks: dict[int, albums.Track | None] = {}
+
+    for schluessel, roh_wert in formular.items():
+        if not isinstance(roh_wert, str):
+            continue
+        wert = roh_wert
+
+        if schluessel.startswith("album:"):
+            katalog_feld = tag_catalog.ALBUM_FELDER_NACH_KEY.get(schluessel[len("album:") :])
+            if katalog_feld is None:
+                continue
+            try:
+                if katalog_feld.kuenstler_link:
+                    albums.set_album_interpret(alb, wert)
+                else:
+                    albums.set_album_field(alb, katalog_feld, wert)
+            except albums.AlbumError as exc:
+                fehler.append(str(exc))
+            continue
+
+        if schluessel.startswith("track:"):
+            teile = schluessel.split(":", 2)
+            if len(teile) != 3:
+                continue
+            _, track_id_roh, feld_key = teile
+            try:
+                track_id = int(track_id_roh)
+            except ValueError:
+                continue
+            katalog_feld = tag_catalog.TRACK_FELDER_NACH_KEY.get(feld_key)
+            if katalog_feld is None:
+                continue
+            if track_id not in tracks:
+                tracks[track_id] = albums.get_track(track_id)
+            track = tracks[track_id]
+            if track is None:
+                continue
+            try:
+                if katalog_feld.kuenstler_link:
+                    albums.set_track_interpret(track, wert)
+                else:
+                    albums.set_track_field(track, katalog_feld, wert)
+            except albums.AlbumError as exc:
+                fehler.append(str(exc))
+
+    return _album_detail_fragment(request, album_id, fehler="; ".join(fehler))
 
 
 @router.post(
@@ -2067,25 +2109,3 @@ def track_artist_apply(
     return _album_detail_fragment(request, album_id)
 
 
-@router.post(
-    "/albums/{album_id}/tracks/{track_id}/field", response_class=HTMLResponse
-)
-def track_field(
-    request: Request, album_id: int, track_id: int,
-    feld: str = Form(...), wert: str = Form(default=""),
-) -> HTMLResponse:
-    """Wie ``album_field``, für ein Katalogfeld auf Track-Ebene."""
-    track = albums.get_track(track_id)
-    if track is None:
-        raise HTTPException(status_code=404, detail="Titel nicht gefunden.")
-    katalog_feld = tag_catalog.TRACK_FELDER_NACH_KEY.get(feld)
-    if katalog_feld is None:
-        raise HTTPException(status_code=400, detail="Unbekanntes Feld.")
-    try:
-        if katalog_feld.kuenstler_link:
-            albums.set_track_interpret(track, wert)
-        else:
-            albums.set_track_field(track, katalog_feld, wert)
-    except albums.AlbumError as exc:
-        return _album_detail_fragment(request, album_id, fehler=str(exc))
-    return _album_detail_fragment(request, album_id)

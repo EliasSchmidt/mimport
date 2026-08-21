@@ -2721,10 +2721,13 @@ class TestAlbenArtistMbid:
 
 class TestAlbenBearbeiten:
     """Metadaten eines bereits importierten Albums nachträglich korrigieren --
-    jedes Katalogfeld (``tag_catalog``) einzeln, direkt auf der Detailseite
-    /albums/<id>. Die eigentlichen ``beet modify``-Aufrufe prüft
+    gesammelt über die Detailseite /albums/<id> und erst beim "Speichern"
+    tatsächlich geschrieben (``POST /albums/<id>/save``), nicht mehr Feld für
+    Feld bei jeder Änderung. Die eigentlichen ``beet modify``-Aufrufe prüft
     ``test_albums.py``, hier zählt nur die HTTP-Seite: Dispatch aufs richtige
-    Feld, Künstler-Felder laufen separat, Fehler werden gemeldet.
+    Feld/Titel, Künstler-Felder laufen separat, Fehler werden gemeldet -- und
+    vor allem: ein Feld, das gar nicht im POST-Body steht, löst keinen
+    einzigen Schreibaufruf aus.
     """
 
     @pytest.fixture
@@ -2746,9 +2749,11 @@ class TestAlbenBearbeiten:
 
     def test_detailseite_zeigt_felder_vorbefuellt(self, client, album):
         response = client.get("/albums/1")
-        assert 'data-feld="album" data-original="Abbey Road"' in response.text
-        assert 'data-feld="genres" data-original="Rock"' in response.text
-        assert 'data-feld="label" data-original="Apple Records"' in response.text
+        assert 'name="album:album" value="Abbey Road" data-feld-eingabe' in response.text
+        assert 'data-original="Abbey Road"' in response.text
+        assert 'name="album:genres"' in response.text and 'data-original="Rock"' in response.text
+        assert 'name="album:label"' in response.text
+        assert 'data-original="Apple Records"' in response.text
 
     def test_leeres_jahr_wird_nicht_mit_sentinel_vorbefuellt(self, tmp_path, client, monkeypatch):
         """Die eigentliche Logik prüft TestYearEditierbar in test_albums.py --
@@ -2765,9 +2770,10 @@ class TestAlbenBearbeiten:
         )
         monkeypatch.setattr(routes.albums, "list_tracks", lambda album_id: [])
         response = client.get("/albums/2")
-        assert 'data-feld="year" data-original=""' in response.text
+        assert 'name="album:year" value="" data-feld-eingabe' in response.text
+        assert 'data-original=""' in response.text
 
-    def test_aenderung_wird_uebernommen(self, client, album, monkeypatch):
+    def test_geaendertes_album_feld_wird_geschrieben(self, client, album, monkeypatch):
         aufrufe = []
         monkeypatch.setattr(
             routes.albums,
@@ -2775,21 +2781,74 @@ class TestAlbenBearbeiten:
             lambda a, feld, wert: aufrufe.append((a.id, feld.key, wert)),
         )
         response = client.post(
-            "/albums/1/field", data={"feld": "album", "wert": "Abbey Road (Remaster)"}
+            "/albums/1/save", data={"album:album": "Abbey Road (Remaster)"}
         )
         assert response.status_code == 200
         assert aufrufe == [(1, "album", "Abbey Road (Remaster)")]
 
+    def test_nicht_gesendetes_feld_wird_nicht_geschrieben(self, client, album, monkeypatch):
+        """Die eigentliche neue Garantie: ein Feld, das gar nicht erst im
+        POST-Body steht (weil static/index.js es beim Speichern-Klick als
+        unverändert herausgefiltert hat), löst keinen Schreibaufruf aus --
+        weder auf Album- noch auf Titel-Ebene."""
+        album_aufrufe = []
+        track_aufrufe = []
+        monkeypatch.setattr(
+            routes.albums,
+            "set_album_field",
+            lambda a, feld, wert: album_aufrufe.append((a.id, feld.key, wert)),
+        )
+        monkeypatch.setattr(
+            routes.albums,
+            "set_track_field",
+            lambda t, feld, wert: track_aufrufe.append((t.id, feld.key, wert)),
+        )
+        response = client.post("/albums/1/save", data={})
+        assert response.status_code == 200
+        assert album_aufrufe == []
+        assert track_aufrufe == []
+
+    def test_mehrere_felder_ueber_album_und_titel_in_einem_speichern(
+        self, client, album, monkeypatch
+    ):
+        """Ein Speichern-Klick deckt Album- und mehrere Titel-Felder in einem
+        Aufruf ab -- genau das Szenario, für das die Präfix-Konvention
+        (``album:``/``track:<id>:``) gebraucht wird."""
+        from backend import albums
+
+        titel = albums.Track(id=5, track="01", title="Come Together", artist="The Beatles")
+        monkeypatch.setattr(routes.albums, "get_track", lambda track_id: titel if track_id == 5 else None)
+        album_aufrufe = []
+        track_aufrufe = []
+        monkeypatch.setattr(
+            routes.albums,
+            "set_album_field",
+            lambda a, feld, wert: album_aufrufe.append((a.id, feld.key, wert)),
+        )
+        monkeypatch.setattr(
+            routes.albums,
+            "set_track_field",
+            lambda t, feld, wert: track_aufrufe.append((t.id, feld.key, wert)),
+        )
+        response = client.post(
+            "/albums/1/save",
+            data={"album:label": "X", "track:5:title": "Y"},
+        )
+        assert response.status_code == 200
+        assert album_aufrufe == [(1, "label", "X")]
+        assert track_aufrufe == [(5, "title", "Y")]
+
     def test_leerer_wert_wird_durchgereicht(self, client, album, monkeypatch):
         """Anders als früher: ein geleertes Feld löscht den Tag, wird also
-        nicht stillschweigend übersprungen."""
+        nicht stillschweigend übersprungen -- solange es überhaupt gesendet
+        wird (siehe test_nicht_gesendetes_feld_wird_nicht_geschrieben)."""
         aufrufe = []
         monkeypatch.setattr(
             routes.albums,
             "set_album_field",
             lambda a, feld, wert: aufrufe.append((a.id, feld.key, wert)),
         )
-        response = client.post("/albums/1/field", data={"feld": "label", "wert": ""})
+        response = client.post("/albums/1/save", data={"album:label": ""})
         assert response.status_code == 200
         assert aufrufe == [(1, "label", "")]
 
@@ -2804,17 +2863,30 @@ class TestAlbenBearbeiten:
             lambda a, wert: aufrufe.append((a.id, wert)),
         )
         response = client.post(
-            "/albums/1/field", data={"feld": "albumartists", "wert": "Neue Band"}
+            "/albums/1/save", data={"album:albumartists": "Neue Band"}
         )
         assert response.status_code == 200
         assert aufrufe == [(1, "Neue Band")]
 
-    def test_unbekanntes_feld_gibt_400(self, client, album):
-        response = client.post("/albums/1/field", data={"feld": "nichtimkatalog", "wert": "x"})
-        assert response.status_code == 400
+    def test_unbekanntes_feld_wird_uebersprungen(self, client, album, monkeypatch):
+        """Anders als bei der alten Einzelfeld-Route kein 400 mehr -- ein
+        Speichern-Klick trägt viele Felder auf einmal, ein einzelner
+        unbekannter Schlüssel soll die übrigen nicht mitreißen."""
+        aufrufe = []
+        monkeypatch.setattr(
+            routes.albums,
+            "set_album_field",
+            lambda a, feld, wert: aufrufe.append((a.id, feld.key, wert)),
+        )
+        response = client.post(
+            "/albums/1/save",
+            data={"album:nichtimkatalog": "x", "album:label": "Y"},
+        )
+        assert response.status_code == 200
+        assert aufrufe == [(1, "label", "Y")]
 
     def test_unbekanntes_album_gibt_404(self, client, album):
-        response = client.post("/albums/999/field", data={"feld": "album", "wert": "X"})
+        response = client.post("/albums/999/save", data={"album:album": "X"})
         assert response.status_code == 404
 
     def test_fehlschlag_wird_gemeldet(self, client, album, monkeypatch):
@@ -2824,7 +2896,7 @@ class TestAlbenBearbeiten:
             raise albums.AlbumError("Das Ändern der Tags ist fehlgeschlagen.")
 
         monkeypatch.setattr(routes.albums, "set_album_field", kaputt)
-        response = client.post("/albums/1/field", data={"feld": "album", "wert": "X"})
+        response = client.post("/albums/1/save", data={"album:album": "X"})
         assert "Das Ändern der Tags ist fehlgeschlagen." in response.text
 
     def test_track_felder_sind_vorbefuellt(self, client, album, monkeypatch):
@@ -2833,10 +2905,9 @@ class TestAlbenBearbeiten:
         titel = albums.Track(id=10, track="01", title="Come Together", artist="The Beatles")
         monkeypatch.setattr(routes.albums, "list_tracks", lambda album_id: [titel])
         response = client.get("/albums/1")
-        assert 'data-feld="title" data-original="Come Together"' in response.text
-        assert 'hx-post="/albums/1/tracks/10/field"' in response.text
+        assert 'name="track:10:title" value="Come Together"' in response.text
 
-    def test_track_aenderung_wird_uebernommen(self, client, album, monkeypatch):
+    def test_track_geaendertes_feld_wird_geschrieben(self, client, album, monkeypatch):
         from backend import albums
 
         titel = albums.Track(id=10, track="01", title="Come Together", artist="The Beatles")
@@ -2848,7 +2919,7 @@ class TestAlbenBearbeiten:
             lambda t, feld, wert: aufrufe.append((t.id, feld.key, wert)),
         )
         response = client.post(
-            "/albums/1/tracks/10/field", data={"feld": "title", "wert": "Neuer Titel"}
+            "/albums/1/save", data={"track:10:title": "Neuer Titel"}
         )
         assert response.status_code == 200
         assert aufrufe == [(10, "title", "Neuer Titel")]
@@ -2866,17 +2937,28 @@ class TestAlbenBearbeiten:
             lambda t, wert: aufrufe.append((t.id, wert)),
         )
         response = client.post(
-            "/albums/1/tracks/10/field", data={"feld": "artists", "wert": "Jemand anders"}
+            "/albums/1/save", data={"track:10:artists": "Jemand anders"}
         )
         assert response.status_code == 200
         assert aufrufe == [(10, "Jemand anders")]
 
-    def test_track_unbekannter_titel_gibt_404(self, client, album, monkeypatch):
+    def test_track_unbekannter_titel_wird_uebersprungen(self, client, album, monkeypatch):
+        """Anders als bei der alten Einzelfeld-Route kein 404 -- ein Titel,
+        der zwischen Laden und Speichern verschwunden ist, soll die übrigen
+        gesendeten Felder nicht blockieren."""
         monkeypatch.setattr(routes.albums, "get_track", lambda track_id: None)
-        response = client.post(
-            "/albums/1/tracks/999/field", data={"feld": "title", "wert": "X"}
+        aufrufe = []
+        monkeypatch.setattr(
+            routes.albums,
+            "set_album_field",
+            lambda a, feld, wert: aufrufe.append((a.id, feld.key, wert)),
         )
-        assert response.status_code == 404
+        response = client.post(
+            "/albums/1/save",
+            data={"track:999:title": "X", "album:label": "Y"},
+        )
+        assert response.status_code == 200
+        assert aufrufe == [(1, "label", "Y")]
 
     def test_track_fehlschlag_wird_gemeldet(self, client, album, monkeypatch):
         from backend import albums
@@ -2889,6 +2971,6 @@ class TestAlbenBearbeiten:
 
         monkeypatch.setattr(routes.albums, "set_track_field", kaputt)
         response = client.post(
-            "/albums/1/tracks/10/field", data={"feld": "title", "wert": "X"}
+            "/albums/1/save", data={"track:10:title": "X"}
         )
         assert "Das Ändern der Tags ist fehlgeschlagen." in response.text

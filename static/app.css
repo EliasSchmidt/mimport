@@ -926,44 +926,11 @@ pre.output { max-height: 22rem; overflow-y: auto; }
     font-weight: 600;
     color: var(--text-dim);
 }
-/* Nur noch die Checkbox (Sampler-Häkchen) braucht die Nebeneinander-Variante
-   -- ein Icon-Knopf über einem Häkchen sähe komisch aus, und es gibt im
-   ganzen Katalog nur dieses eine Bool-Feld. */
-.feld-eingabe-gruppe { display: flex; align-items: center; gap: 0.35rem; }
-.feld-eingabe-gruppe input[type="text"] { flex: 1; min-width: 0; }
-.feld-zuruecksetzen {
-    flex: none;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 1.9rem;
-    height: 1.9rem;
-    padding: 0;
-    border-radius: 50%;
-}
-.feld-zuruecksetzen .icon { width: 0.95rem; height: 0.95rem; }
-
-/* Alle Text-Eingaben: der Rewind-Pfeil sitzt im Feld selbst (rechter Rand,
-   wie ein "Feld leeren"-Knopf), statt als eigenes Element daneben oder --
-   der ursprüngliche Fehler -- sogar in einer eigenen Zeile darunter (dort
-   fehlte an .feld-zeile-kompakt ein Reset von flex-direction, das Icon
-   erbte die "column"-Richtung der Basis-.feld-zeile-Regel). Ohne eigenes
-   Element daneben braucht schmale Spalten wie Tracknummer keinen
-   zusätzlichen Platz für den Knopf. */
-.feld-eingabe-icon { position: relative; display: block; width: 100%; }
-.feld-eingabe-icon input[type="text"] { width: 100%; padding-right: 1.7rem; }
-.feld-eingabe-icon .feld-zuruecksetzen {
-    position: absolute;
-    right: 0.15rem;
-    top: 50%;
-    transform: translateY(-50%);
-    width: 1.4rem;
-    height: 1.4rem;
-    background: transparent;
-    border-color: transparent;
-}
-.feld-eingabe-icon .feld-zuruecksetzen:hover { background: var(--surface-alt); border-color: var(--border); }
-.feld-eingabe-icon .feld-zuruecksetzen .icon { width: 0.8rem; height: 0.8rem; }
+/* Album-Tags und Titelliste sammeln Änderungen nur im Browser -- erst der
+   Speichern-Knopf ganz unten schreibt (siehe .album-form-actions). Deshalb
+   braucht kein Feld mehr einen eigenen Reset-Knopf; ein einziges Abbrechen
+   am Ende erledigt das fürs ganze Formular. */
+.album-form-actions { margin-top: 1.25rem; }
 
 /* Spaltenbreiten der Titelliste -- ohne table-layout:fixed verteilt der
    Browser den Platz nach Inhalt, und die Tracknummer (2 Ziffern) bekam

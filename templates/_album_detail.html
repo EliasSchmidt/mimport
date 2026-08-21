@@ -1,36 +1,24 @@
 {# Alles zu einem Album an einem Ort: Cover, gesetzte Tags, Titelliste.
-   Jede Aktion hier (Cover, Feld-Änderung, Album-Link, Track-Link) rendert
-   dieses Fragment komplett neu -- einfacher als mehrere Teilansichten
-   synchron zu halten, und bei einem einzelnen Album kostet das nichts.
-
-   Jedes Feld ist direkt editierbar (kein separates "Bearbeiten"-Formular
-   mehr): Ändern speichert sofort beim Verlassen des Feldes, ein
-   "Zurücksetzen"-Knopf taucht daneben auf, sobald der Wert vom beim
-   Öffnen der Seite geladenen abweicht (siehe static/index.js,
-   initFeldZeilen -- der Ausgangswert bleibt über mehrere Speicherungen
-   hinweg erhalten, nicht nur bis zum nächsten Swap). #}
-{% macro feld_zeile(pfad, feld, wert) %}
-<div class="feld-zeile" data-feld-zeile data-feld="{{ feld.key }}" data-original="{{ wert }}">
+   Anders als beim Cover (das sofort schreibt) sammelt der Rest hier
+   Änderungen erst im Browser -- geschrieben wird nur, wenn unten "Speichern"
+   gedrückt wird ("Abbrechen" lädt die Seite einfach neu und verwirft alles,
+   es wurde ja nie etwas geschrieben). Jedes Eingabefeld trägt seinen
+   Katalog-Schlüssel im ``name`` (``album:<feld>`` bzw. ``track:<id>:<feld>``)
+   und den beim Laden gesehenen Wert in ``data-original`` -- static/index.js
+   filtert beim Speichern-Klick unveränderte Felder aus dem Request heraus
+   (htmx:configRequest), damit ein Klick nicht für jedes Feld jedes Titels
+   einen eigenen ``beet modify``-Aufruf verbrät. #}
+{% macro feld_zeile(praefix, feld, wert) %}
+<div class="feld-zeile">
     <label class="feld-label">{{ feld.label }}</label>
     {% if feld.typ == "bool" %}
-    {# Ein Häkchen ist zu klein, um einen Icon-Knopf hineinzulegen -- bleibt
-       bei der Nebeneinander-Variante. Einziges Bool-Feld im ganzen Katalog,
-       kein Grund für eine dritte Eingabe-Variante. #}
-    <div class="feld-eingabe-gruppe">
-        <input type="checkbox" name="wert" value="1" data-feld-eingabe
-               hx-post="{{ pfad }}" hx-vals='{"feld": "{{ feld.key }}"}' hx-trigger="change"
-               hx-swap="none"
-               {% if wert == "True" %}checked{% endif %}>
-        {{ rewind_knopf() }}
-    </div>
+    <input type="checkbox" name="{{ praefix }}{{ feld.key }}" value="True" data-feld-eingabe
+           data-original="{{ wert }}"
+           {% if wert == "True" %}checked{% endif %}>
     {% else %}
-    <span class="feld-eingabe-icon">
-        <input type="text" name="wert" value="{{ wert }}" data-feld-eingabe
-               hx-post="{{ pfad }}" hx-vals='{"feld": "{{ feld.key }}"}' hx-trigger="change"
-               hx-swap="none"
-               {% if feld.key == "genres" %}list="genre-vorschlaege-album" autocomplete="off" data-genre-input{% endif %}>
-        {{ rewind_knopf() }}
-    </span>
+    <input type="text" name="{{ praefix }}{{ feld.key }}" value="{{ wert }}" data-feld-eingabe
+           data-original="{{ wert }}"
+           {% if feld.key == "genres" %}list="genre-vorschlaege-album" autocomplete="off" data-genre-input{% endif %}>
     {% endif %}
     {% if feld.hinweis %}<small class="hint">{{ feld.hinweis }}</small>{% endif %}
 </div>
@@ -38,26 +26,9 @@
 
 {# Bare Eingabe ohne Label/Hinweis -- für Tabellenzellen, deren Spaltenkopf
    die Beschriftung schon liefert (siehe Titelliste unten). #}
-{% macro feld_kompakt(pfad, feld, wert) %}
-<span class="feld-eingabe-icon" data-feld-zeile data-feld="{{ feld.key }}" data-original="{{ wert }}">
-    <input type="text" name="wert" value="{{ wert }}" data-feld-eingabe
-           hx-post="{{ pfad }}" hx-vals='{"feld": "{{ feld.key }}"}' hx-trigger="change"
-           hx-swap="none">
-    {{ rewind_knopf() }}
-</span>
-{% endmacro %}
-
-{# Kleiner Rundknopf mit Rewind-Pfeil statt ausgeschriebenem "Zurücksetzen" --
-   sitzt direkt neben dem Feld, taucht per data-feld-reset erst auf, wenn
-   static/index.js einen vom Ausgangswert abweichenden Inhalt erkennt. #}
-{% macro rewind_knopf() %}
-<button type="button" class="button secondary feld-zuruecksetzen" data-feld-reset hidden
-        aria-label="Zurücksetzen" title="Zurücksetzen">
-    <svg class="icon" viewBox="0 0 16 16" aria-hidden="true">
-        <path d="M4.6 3.6V7h3.4"/>
-        <path d="M4.9 6.9A5.5 5.5 0 1 1 4.2 10.7"/>
-    </svg>
-</button>
+{% macro feld_kompakt(praefix, feld, wert) %}
+<input type="text" name="{{ praefix }}{{ feld.key }}" value="{{ wert }}" data-feld-eingabe
+       data-original="{{ wert }}">
 {% endmacro %}
 
 {% macro kuenstler_zeile(links, lookup_pfad, match_id_praefix) %}
@@ -103,124 +74,132 @@
     </div>
 </div>
 
-<section class="tag-block" data-feld-abschnitt>
-    <h3>Album-Tags</h3>
+{# Kein <form>: die "Übernehmen"-Formulare der MB-Suche (kuenstler_zeile)
+   sitzen mit im DOM-Baum hier drunter -- ein natives <form> um alles herum
+   würde sie zu ungültig verschachtelten Formularen machen, und der Browser
+   würde ihre Felder dem äußeren Formular zuschlagen statt dem inneren.
+   hx-include am Speichern-Knopf sammelt stattdessen alle
+   [data-feld-eingabe]-Werte innerhalb dieses divs ein, ganz ohne <form>. #}
+<div id="album-form">
+    <section class="tag-block" data-feld-abschnitt>
+        <h3>Album-Tags</h3>
 
-    {% for gruppen_name, felder in album_gruppen %}
-    {% if gruppen_name == "erweitert" %}
-    <button type="button" class="button secondary"
-            onclick="document.getElementById('weitere-album-{{ album.id }}').showModal()">
-        Weitere Felder
-    </button>
-    <dialog id="weitere-album-{{ album.id }}" class="felder-dialog" data-felder-dialog>
-        <h3>Weitere Felder -- Album</h3>
+        {% for gruppen_name, felder in album_gruppen %}
+        {% if gruppen_name == "erweitert" %}
+        <button type="button" class="button secondary"
+                onclick="document.getElementById('weitere-album-{{ album.id }}').showModal()">
+            Weitere Felder
+        </button>
+        <dialog id="weitere-album-{{ album.id }}" class="felder-dialog">
+            <h3>Weitere Felder -- Album</h3>
+            <div class="felder-gruppe">
+                {% for feld in felder %}
+                {{ feld_zeile("album:", feld, album.alle_werte.get(feld.key, "")) }}
+                {% endfor %}
+            </div>
+            <div class="actions">
+                <button type="button" class="button" onclick="this.closest('dialog').close()">Schließen</button>
+            </div>
+        </dialog>
+        {% else %}
         <div class="felder-gruppe">
             {% for feld in felder %}
-            {{ feld_zeile("/albums/" ~ album.id ~ "/field", feld, album.alle_werte.get(feld.key, "")) }}
+            {% if feld.key == "albumartists" %}
+            {# Der Name -- die MBID-Zeile ("mb_albumartistids", auch
+               kuenstler_link) ist hier schon mit erledigt und bekommt keine
+               eigene Zeile, siehe unten. #}
+            <div class="feld-zeile">
+                <label class="feld-label">{{ feld.label }}</label>
+                <input type="text" name="album:albumartists" value="{{ album.albumartist }}" data-feld-eingabe
+                       data-original="{{ album.albumartist }}">
+                {{ kuenstler_zeile(album.kuenstler_links, "/albums/" ~ album.id ~ "/artist-lookup", "artist-match-album") }}
+            </div>
+            {% elif not feld.kuenstler_link %}
+            {{ feld_zeile("album:", feld, album.alle_werte.get(feld.key, "")) }}
+            {% endif %}
             {% endfor %}
         </div>
-        <div class="actions">
-            <button type="button" class="button" data-dialog-speichern>Speichern</button>
-            <button type="button" class="button secondary" data-dialog-zuruecksetzen>Zurücksetzen</button>
-        </div>
-    </dialog>
-    {% else %}
-    <div class="felder-gruppe">
-        {% for feld in felder %}
-        {% if feld.key == "albumartists" %}
-        {# Der Name -- die MBID-Zeile ("mb_albumartistids", auch
-           kuenstler_link) ist hier schon mit erledigt und bekommt keine
-           eigene Zeile, siehe unten. #}
-        <div class="feld-zeile" data-feld-zeile data-feld="albumartists" data-original="{{ album.albumartist }}">
-            <label class="feld-label">{{ feld.label }}</label>
-            <span class="feld-eingabe-icon">
-                <input type="text" name="wert" value="{{ album.albumartist }}" data-feld-eingabe
-                       hx-post="/albums/{{ album.id }}/field" hx-vals='{"feld": "albumartists"}'
-                       hx-trigger="change" hx-target="#album-detail" hx-swap="innerHTML">
-                {{ rewind_knopf() }}
-            </span>
-            {{ kuenstler_zeile(album.kuenstler_links, "/albums/" ~ album.id ~ "/artist-lookup", "artist-match-album") }}
-        </div>
-        {% elif not feld.kuenstler_link %}
-        {{ feld_zeile("/albums/" ~ album.id ~ "/field", feld, album.alle_werte.get(feld.key, "")) }}
         {% endif %}
         {% endfor %}
-    </div>
-    {% endif %}
-    {% endfor %}
 
-    <datalist id="genre-vorschlaege-album" data-genre-vorschlaege>
-        {% for genre in genre_vorschlaege %}
-        <option value="{{ genre }}"></option>
-        {% endfor %}
-    </datalist>
-</section>
-
-<section class="tag-block">
-    <h3>Titel</h3>
-    {% if not tracks %}
-    <p class="hint">Keine Titel gefunden.</p>
-    {% else %}
-    <table class="stapelbar files titelliste">
-        <colgroup>
-            <col class="sp-nr">
-            <col class="sp-titel">
-            <col class="sp-interpret">
-            <col class="sp-komponist">
-            <col class="sp-weitere">
-        </colgroup>
-        <thead>
-            <tr><th>#</th><th>Titel</th><th>Interpret</th><th>Komponist</th><th></th></tr>
-        </thead>
-        <tbody>
-            {% for t in tracks %}
-            {% set track_pfad = "/albums/" ~ album.id ~ "/tracks/" ~ t.id ~ "/field" %}
-            <tr>
-                <td class="mono small" data-spalte="#">
-                    {{ feld_kompakt(track_pfad, track_feld_nummer, t.alle_werte.get("track", t.track)) }}
-                </td>
-                <td data-spalte="Titel">
-                    {{ feld_kompakt(track_pfad, track_feld_titel, t.alle_werte.get("title", "")) }}
-                </td>
-                <td data-spalte="Interpret">
-                    <div class="feld-zeile" data-feld-zeile data-feld="artists" data-original="{{ t.artist }}">
-                        <span class="feld-eingabe-icon">
-                            <input type="text" name="wert" value="{{ t.artist }}" data-feld-eingabe
-                                   hx-post="{{ track_pfad }}" hx-vals='{"feld": "artists"}'
-                                   hx-trigger="change" hx-target="#album-detail" hx-swap="innerHTML">
-                            {{ rewind_knopf() }}
-                        </span>
-                        {{ kuenstler_zeile(t.kuenstler_links, track_pfad|replace("/field","/artist-lookup"), "track-match-" ~ t.id) }}
-                    </div>
-                </td>
-                <td data-spalte="Komponist">
-                    {{ feld_kompakt(track_pfad, track_feld_komponist, t.alle_werte.get("composers", "")) }}
-                </td>
-                <td>
-                    <button type="button" class="button secondary"
-                            onclick="document.getElementById('weitere-track-{{ t.id }}').showModal()">
-                        Weitere Felder
-                    </button>
-                    <dialog id="weitere-track-{{ t.id }}" class="felder-dialog" data-felder-dialog>
-                        <h3>Weitere Felder -- {{ t.alle_werte.get("title", "") }}</h3>
-                        <div class="felder-gruppe">
-                            {% for gruppen_name, felder in track_gruppen %}
-                            {% for feld in felder %}
-                            {% if not feld.kuenstler_link and feld.key not in ("track", "title", "composers") %}
-                            {{ feld_zeile(track_pfad, feld, t.alle_werte.get(feld.key, "")) }}
-                            {% endif %}
-                            {% endfor %}
-                            {% endfor %}
-                        </div>
-                        <div class="actions">
-                            <button type="button" class="button" data-dialog-speichern>Speichern</button>
-                            <button type="button" class="button secondary" data-dialog-zuruecksetzen>Zurücksetzen</button>
-                        </div>
-                    </dialog>
-                </td>
-            </tr>
+        <datalist id="genre-vorschlaege-album" data-genre-vorschlaege>
+            {% for genre in genre_vorschlaege %}
+            <option value="{{ genre }}"></option>
             {% endfor %}
-        </tbody>
-    </table>
-    {% endif %}
-</section>
+        </datalist>
+    </section>
+
+    <section class="tag-block">
+        <h3>Titel</h3>
+        {% if not tracks %}
+        <p class="hint">Keine Titel gefunden.</p>
+        {% else %}
+        <table class="stapelbar files titelliste">
+            <colgroup>
+                <col class="sp-nr">
+                <col class="sp-titel">
+                <col class="sp-interpret">
+                <col class="sp-komponist">
+                <col class="sp-weitere">
+            </colgroup>
+            <thead>
+                <tr><th>#</th><th>Titel</th><th>Interpret</th><th>Komponist</th><th></th></tr>
+            </thead>
+            <tbody>
+                {% for t in tracks %}
+                {% set track_praefix = "track:" ~ t.id ~ ":" %}
+                <tr>
+                    <td class="mono small" data-spalte="#">
+                        {{ feld_kompakt(track_praefix, track_feld_nummer, t.alle_werte.get("track", t.track)) }}
+                    </td>
+                    <td data-spalte="Titel">
+                        {{ feld_kompakt(track_praefix, track_feld_titel, t.alle_werte.get("title", "")) }}
+                    </td>
+                    <td data-spalte="Interpret">
+                        <div class="feld-zeile">
+                            <input type="text" name="{{ track_praefix }}artists" value="{{ t.artist }}" data-feld-eingabe
+                                   data-original="{{ t.artist }}">
+                            {{ kuenstler_zeile(t.kuenstler_links, "/albums/" ~ album.id ~ "/tracks/" ~ t.id ~ "/artist-lookup", "track-match-" ~ t.id) }}
+                        </div>
+                    </td>
+                    <td data-spalte="Komponist">
+                        {{ feld_kompakt(track_praefix, track_feld_komponist, t.alle_werte.get("composers", "")) }}
+                    </td>
+                    <td>
+                        <button type="button" class="button secondary"
+                                onclick="document.getElementById('weitere-track-{{ t.id }}').showModal()">
+                            Weitere Felder
+                        </button>
+                        <dialog id="weitere-track-{{ t.id }}" class="felder-dialog">
+                            <h3>Weitere Felder -- {{ t.alle_werte.get("title", "") }}</h3>
+                            <div class="felder-gruppe">
+                                {% for gruppen_name, felder in track_gruppen %}
+                                {% for feld in felder %}
+                                {% if not feld.kuenstler_link and feld.key not in ("track", "title", "composers") %}
+                                {{ feld_zeile(track_praefix, feld, t.alle_werte.get(feld.key, "")) }}
+                                {% endif %}
+                                {% endfor %}
+                                {% endfor %}
+                            </div>
+                            <div class="actions">
+                                <button type="button" class="button" onclick="this.closest('dialog').close()">Schließen</button>
+                            </div>
+                        </dialog>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% endif %}
+    </section>
+</div>
+
+<div class="actions album-form-actions">
+    <button type="button" class="button primary" data-album-speichern
+            hx-post="/albums/{{ album.id }}/save"
+            hx-include="#album-form [data-feld-eingabe]"
+            hx-target="#album-detail" hx-swap="innerHTML">
+        Speichern
+    </button>
+    <button type="button" class="button secondary" onclick="location.reload()">Abbrechen</button>
+</div>

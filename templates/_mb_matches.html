@@ -21,7 +21,7 @@
             {% endif %}
             <div class="mono small">{{ m.mbid }}</div>
         </div>
-        <form hx-post="{{ apply_url }}" hx-target="{{ target }}" hx-swap="innerHTML">
+        <form hx-post="{{ apply_url }}" hx-target="{{ target }}" hx-swap="innerHTML" data-mb-uebernehmen>
             <input type="hidden" name="mbid" value="{{ m.mbid }}">
             <button type="submit" class="button secondary">Übernehmen</button>
         </form>

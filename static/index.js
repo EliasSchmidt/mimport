@@ -266,7 +266,6 @@ function bindUploadWidgets(root = document) {
 
 bindUploadWidgets();
 bindGenreInputs();
-initFeldZeilen();
 
 // Die Abschnitte 3 und 4 tauchen erst auf, wenn dort etwas landet.
 document.body.addEventListener("htmx:afterSwap", (event) => {
@@ -278,8 +277,6 @@ document.body.addEventListener("htmx:afterSwap", (event) => {
   bindUploadWidgets(event.detail.target);
   bindGenreInputs(event.detail.target);
   initSamplerZustand(event.detail.target);
-  initFeldZeilen(event.detail.target);
-  initFelderDialoge(event.detail.target);
 
   const reveal = { candidates: "match-step", result: "result-step" };
   const stepId = reveal[event.detail.target.id];
@@ -565,117 +562,58 @@ function bindGenreInputs(root = document) {
 
 /* -------------------------------------------- Editierbare Tag-Felder -----
  *
- * Jedes Feld auf der Album-Detailseite (siehe _album_detail.html) speichert
- * sofort bei "change" -- kein separates "Bearbeiten"-Formular mehr. Ein
- * "Zurücksetzen"-Knopf taucht daneben auf, sobald der aktuelle Wert vom beim
- * ersten Öffnen der Seite geladenen abweicht, und bleibt es auch nach einer
- * Zwischenspeicherung: ein versehentlich übernommener falscher Wert soll
- * sich noch rückgängig machen lassen, nicht nur bis zum nächsten Tastendruck.
+ * Album-Tags und Titelliste (siehe _album_detail.html) sammeln Änderungen
+ * nur im Browser -- geschrieben wird erst beim Klick auf "Speichern" ganz
+ * unten im Formular, nicht mehr bei jeder einzelnen Feldänderung.
+ * "Abbrechen" lädt die Seite neu: es wurde ja nie etwas geschrieben, ein
+ * Reload zeigt einfach wieder den unveränderten Stand.
  *
- * Der Ausgangswert steht deshalb nicht im DOM (das wird bei jedem Speichern
- * mancher Felder komplett neu gerendert, siehe hx-target="#album-detail" bei
- * den Künstler-Feldern), sondern in sessionStorage -- adressiert über die
- * Speicher-URL des Feldes plus seinen Katalog-Schlüssel, die zusammen pro
- * Album/Titel eindeutig sind. sessionStorage überlebt einen Reload,
- * verschwindet aber mit dem Tab -- "Ausgangswert" heißt hier "beim Öffnen
- * dieser Sitzung", nicht "für immer".
+ * Jedes Eingabefeld trägt seinen Ausgangswert in data-original. Beim
+ * Speichern-Klick filtert htmx:configRequest alle unveränderten Felder aus
+ * dem Request heraus -- sonst würde ein Speichern-Klick für jedes Feld
+ * jedes Titels einen eigenen beet-modify-Aufruf verbraten, egal ob sich
+ * dort überhaupt etwas geändert hat.
  */
-function feldSpeicherSchluessel(zeile) {
-  const eingabe = zeile.querySelector("[data-feld-eingabe]");
-  if (!eingabe) return null;
-  // hx-post trägt normalerweise schon Album-/Track-ID und ist damit
-  // eindeutig genug. Felder ohne eigenen Speicher-Request (z. B. im
-  // manuellen Tagging vor dem Import) tragen stattdessen data-feld-scope
-  // am umschließenden Container.
-  const bereich = eingabe.getAttribute("hx-post") || zeile.closest("[data-feld-scope]")?.dataset.feldScope;
-  if (!bereich) return null;
-  return `mimport:feld-original:${bereich}:${zeile.dataset.feld}`;
+function istFeldGeaendert(eingabe) {
+  const original = eingabe.dataset.original ?? "";
+  const aktuell = eingabe.type === "checkbox" ? (eingabe.checked ? "True" : "") : eingabe.value;
+  return aktuell !== original;
 }
 
-function feldWert(eingabe) {
-  return eingabe.type === "checkbox" ? (eingabe.checked ? "True" : "") : eingabe.value;
-}
+document.body.addEventListener("htmx:configRequest", (event) => {
+  if (!event.detail.elt.hasAttribute("data-album-speichern")) return;
+  const formular = document.getElementById("album-form");
+  if (!formular) return;
 
-function feldWertSetzen(eingabe, wert) {
-  if (eingabe.type === "checkbox") {
-    eingabe.checked = wert === "True";
-  } else {
-    eingabe.value = wert;
-  }
-}
-
-function feldAktualisieren(zeile) {
-  const eingabe = zeile.querySelector("[data-feld-eingabe]");
-  const knopf = zeile.querySelector("[data-feld-reset]");
-  const schluessel = feldSpeicherSchluessel(zeile);
-  if (!eingabe || !knopf || !schluessel) return;
-
-  let original = sessionStorage.getItem(schluessel);
-  if (original === null) {
-    // Erstes Erscheinen dieses Feldes in dieser Browser-Sitzung -- das ist
-    // der Ausgangswert, den "Zurücksetzen" später wiederherstellt.
-    original = zeile.dataset.original;
-    sessionStorage.setItem(schluessel, original);
-  }
-
-  knopf.hidden = feldWert(eingabe) === original;
-}
-
-function initFeldZeile(zeile) {
-  const eingabe = zeile.querySelector("[data-feld-eingabe]");
-  const knopf = zeile.querySelector("[data-feld-reset]");
-  if (!eingabe || !knopf || zeile.dataset.feldGebunden === "ja") return;
-  zeile.dataset.feldGebunden = "ja";
-
-  feldAktualisieren(zeile);
-  eingabe.addEventListener("input", () => feldAktualisieren(zeile));
-  eingabe.addEventListener("change", () => feldAktualisieren(zeile));
-
-  knopf.addEventListener("click", () => {
-    const schluessel = feldSpeicherSchluessel(zeile);
-    const original = schluessel ? sessionStorage.getItem(schluessel) : null;
-    if (original === null) return;
-    feldWertSetzen(eingabe, original);
-    // htmx hört per hx-trigger="change" auf genau dieses Event -- das
-    // speichert die Rücksetzung serverseitig gleich mit.
-    eingabe.dispatchEvent(new Event("change", { bubbles: true }));
-    feldAktualisieren(zeile);
+  formular.querySelectorAll("[data-feld-eingabe]").forEach((eingabe) => {
+    // Das Sampler-Häkchen (einziges Bool-Feld) schickt immer seinen
+    // aktuellen Zustand mit -- ein abgewähltes Häkchen taucht in den
+    // Formulardaten ohnehin nie auf, das herauszufiltern lohnt sich nicht.
+    if (eingabe.type === "checkbox" || !eingabe.name) return;
+    if (!istFeldGeaendert(eingabe)) delete event.detail.parameters[eingabe.name];
   });
-}
+});
 
-function initFeldZeilen(root = document) {
-  root.querySelectorAll?.("[data-feld-zeile]").forEach(initFeldZeile);
-}
+/* Ein "Übernehmen" bei der MusicBrainz-Suche rendert #album-detail komplett
+ * neu (siehe target in _mb_matches.html) -- alle noch nicht gespeicherten
+ * Feldänderungen wären damit weg, ohne dass der Nutzer das erwartet. Warnen,
+ * statt es einfach zu verwerfen. */
+document.body.addEventListener("htmx:confirm", (event) => {
+  if (!event.detail.elt.closest("[data-mb-uebernehmen]")) return;
+  const formular = document.getElementById("album-form");
+  if (!formular) return;
 
-/* --------------------------------------------------- "Weitere Felder" ----
- *
- * Der Dialog trägt unten zusätzlich Speichern/Zurücksetzen -- die einzelnen
- * Felder darin speichern aber weiterhin sofort bei Änderung, genau wie
- * außerhalb des Dialogs. "Speichern" schließt daher nur das Fenster, und
- * "Zurücksetzen" klickt für jedes veränderte Feld einfach dessen eigenen
- * Rewind-Knopf -- der kennt Ausgangswert und Speicher-Request schon.
- */
-function initFelderDialog(dialog) {
-  if (dialog.dataset.dialogGebunden === "ja") return;
-  dialog.dataset.dialogGebunden = "ja";
+  const geaendert = [...formular.querySelectorAll("[data-feld-eingabe]")].some(istFeldGeaendert);
+  if (!geaendert) return;
 
-  const speichern = dialog.querySelector("[data-dialog-speichern]");
-  speichern?.addEventListener("click", () => dialog.close());
-
-  const zuruecksetzen = dialog.querySelector("[data-dialog-zuruecksetzen]");
-  zuruecksetzen?.addEventListener("click", () => {
-    dialog.querySelectorAll("[data-feld-zeile]").forEach((zeile) => {
-      const knopf = zeile.querySelector("[data-feld-reset]");
-      if (knopf && !knopf.hidden) knopf.click();
-    });
-  });
-}
-
-function initFelderDialoge(root = document) {
-  root.querySelectorAll?.("[data-felder-dialog]").forEach(initFelderDialog);
-}
-
-initFelderDialoge();
+  event.preventDefault();
+  if (window.confirm(
+    "Es gibt noch nicht gespeicherte Änderungen an den Feldern -- die gehen beim " +
+    "Verknüpfen mit MusicBrainz verloren. Trotzdem fortfahren?"
+  )) {
+    event.detail.issueRequest(true);
+  }
+});
 
 /* ------------------------------------------------------------- Tabs ------
  *

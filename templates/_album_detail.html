@@ -219,8 +219,10 @@
     <button type="button" class="button primary" data-album-speichern
             hx-post="/albums/{{ album.id }}/save"
             hx-include="#album-form [data-feld-eingabe]"
-            hx-target="#album-detail" hx-swap="innerHTML">
+            hx-target="#album-detail" hx-swap="innerHTML"
+            hx-disabled-elt="this" hx-indicator="#album-speichern-spinner">
         Speichern
     </button>
+    <span id="album-speichern-spinner" class="htmx-indicator spinner">speichere …</span>
     <button type="button" class="button secondary" onclick="location.reload()">Abbrechen</button>
 </div>

@@ -2117,6 +2117,12 @@ async def album_save(request: Request, album_id: int) -> HTMLResponse:
             except albums.AlbumError as exc:
                 fehler.append(str(exc))
 
+    if not fehler:
+        # Erfolgreich gespeichert: zurück zur Übersicht statt derselben
+        # Detailseite -- HX-Redirect löst bei htmx eine echte Navigation aus,
+        # kein bloßes Fragment-Swap.
+        return HTMLResponse("", headers={"HX-Redirect": "/albums"})
+
     return _album_detail_fragment(request, album_id, fehler="; ".join(fehler))
 
 

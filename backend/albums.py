@@ -432,12 +432,28 @@ def retry_missing_cover(
     for versuch in range(attempts):
         if versuch:
             time.sleep(pause)
-        with library_lock():
-            # 'id:', nicht 'album_id:' -- Letzteres ist ein Item-Feld (siehe
-            # get_album()) und beim 'fetchart'-Kommando eine Substring-Suche:
-            # 'album_id:1' träfe auch die Alben 10, 11, 21, .... Empirisch
-            # geprüft an einer Library mit elf Alben.
-            proc = _lauf(["fetchart", f"id:{album.id}"], timeout=60)
+        try:
+            with library_lock():
+                # 'id:', nicht 'album_id:' -- Letzteres ist ein Item-Feld
+                # (siehe get_album()) und beim 'fetchart'-Kommando eine
+                # Substring-Suche: 'album_id:1' träfe auch die Alben 10, 11,
+                # 21, .... Empirisch geprüft an einer Library mit elf Alben.
+                proc = _lauf(["fetchart", f"id:{album.id}"], timeout=60)
+        except AlbumError as exc:
+            # _lauf() wirft z. B. bei einem hängenden Subprozess (60s-Timeout)
+            # oder einem plötzlich verschwundenen beet-Binary. Ein Bestcase-
+            # Versuch darf den sonst erfolgreichen Import nicht als
+            # fehlgeschlagen erscheinen lassen -- also weiter zum nächsten
+            # Versuch statt die Ausnahme aus dieser Funktion rausfallen zu
+            # lassen.
+            log.warning(
+                "fetchart-Wiederholung %d/%d für Album %d fehlgeschlagen: %s",
+                versuch + 1,
+                attempts,
+                album.id,
+                exc,
+            )
+            continue
         if proc.returncode != 0:
             log.warning(
                 "fetchart-Wiederholung %d/%d für Album %d fehlgeschlagen: %s",

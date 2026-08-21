@@ -280,6 +280,30 @@ class TestRetryMissingCover:
         # Vor dem ersten Versuch wird nicht gewartet, nur zwischen den weiteren.
         assert geschlafen == [1.5, 1.5]
 
+    def test_haengender_fetchart_bricht_den_import_nicht_ab(self, tmp_path, monkeypatch):
+        """Ein einzelner Versuch, der ins 60s-Timeout von _lauf() läuft, wirft
+        AlbumError -- das darf nicht aus retry_missing_cover() rausfallen,
+        sonst würde ein sonst erfolgreicher Import als fehlgeschlagen
+        erscheinen (siehe Docstring). Auf den zweiten, erfolgreichen Versuch
+        geht es stattdessen ganz normal weiter."""
+        stdout = self._stdout_fuer(7, tmp_path)
+        aufrufe = []
+
+        def fake_run(cmd, **kw):
+            if cmd[1] == "list":
+                return _proc(stdout=stdout)
+            aufrufe.append(cmd)
+            if len(aufrufe) == 1:
+                raise subprocess.TimeoutExpired(cmd=cmd, timeout=60)
+            (tmp_path / "cover.jpg").write_bytes(b"geladen")
+            return _proc()
+
+        monkeypatch.setattr(albums.subprocess, "run", fake_run)
+        monkeypatch.setattr(albums.time, "sleep", lambda *_: None)
+
+        assert albums.retry_missing_cover("mbid-123") is True
+        assert len(aufrufe) == 2
+
     def test_haelt_den_library_lock_je_versuch(self, tmp_path, monkeypatch):
         stdout = self._stdout_fuer(7, tmp_path)
         verlauf = []

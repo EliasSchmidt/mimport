@@ -947,6 +947,23 @@ Anbindung. Ein bereits abfotografiertes Cover geht immer vor und wird nicht
 Release), bleibt es beim manuellen Fotografieren — siehe `backend/cover.py`,
 `von_url_holen()`.
 
+### Warum ein Discogs-Treffer keine `mb_*`-Tags bekommt
+
+beets benennt Release-, Release-Group- und Künstler-IDs quellenunabhängig
+unter MusicBrainz-Namen (`mb_albumid`, `mb_releasegroupid`, `mb_artistid`, …
+— `AlbumInfo.MEDIA_FIELD_MAP` in beets selbst). Ein Discogs-Treffer trägt dort
+also Discogs' eigene numerische Release-ID ein statt einer MusicBrainz-UUID —
+keine mimport-Eigenheit, sondern ein bekannter Kompromiss von beets: ohne
+diese Zweckentfremdung hätte ein Discogs-Album gar keine Release-ID in der
+Datei, weil `mediafile` keine generischen, quellenneutralen Tags dafür kennt.
+
+Für mimport ist das aber unerwünscht: Jeder Abspieler oder Scanner, der
+`MUSICBRAINZ_ALBUMID` & Co. liest, hält den Wert für eine echte
+MusicBrainz-ID. Deshalb leert `tagging.apply_album_match()` diese Felder für
+jeden Treffer, dessen `data_source` nicht `"MusicBrainz"` ist, bevor die Tags
+geschrieben werden — die Datei bekommt dann schlicht keine `mb_*`-IDs statt
+falsch beschrifteter.
+
 ### Wenn bei MusicBrainz mal kein Cover ankommt
 
 Das ist kein Rate-Limit und kein Hinweis auf zu viele Anfragen: Die Cover Art

@@ -926,11 +926,11 @@ pre.output { max-height: 22rem; overflow-y: auto; }
     font-weight: 600;
     color: var(--text-dim);
 }
+/* Nur noch die Checkbox (Sampler-Häkchen) braucht die Nebeneinander-Variante
+   -- ein Icon-Knopf über einem Häkchen sähe komisch aus, und es gibt im
+   ganzen Katalog nur dieses eine Bool-Feld. */
 .feld-eingabe-gruppe { display: flex; align-items: center; gap: 0.35rem; }
 .feld-eingabe-gruppe input[type="text"] { flex: 1; min-width: 0; }
-/* Runder Icon-Knopf statt ausgeschriebenem "Zurücksetzen" -- auf einem
-   16:9-Monitor mit vielen Zeilen (Titelliste) frisst ein Textknopf pro
-   Feld zu viel Breite. Der Rewind-Pfeil sitzt direkt am Feld. */
 .feld-zuruecksetzen {
     flex: none;
     display: inline-flex;
@@ -943,10 +943,37 @@ pre.output { max-height: 22rem; overflow-y: auto; }
 }
 .feld-zuruecksetzen .icon { width: 0.95rem; height: 0.95rem; }
 
-/* Bare Variante für Tabellenzellen (Tracknummer, Titel) -- kein Label, kein
-   Hinweistext, der Spaltenkopf der Tabelle übernimmt die Beschriftung. */
-.feld-zeile-kompakt { display: inline-flex; align-items: center; gap: 0.35rem; width: 100%; }
-.feld-zeile-kompakt input[type="text"] { flex: 1; min-width: 0; }
+/* Alle Text-Eingaben: der Rewind-Pfeil sitzt im Feld selbst (rechter Rand,
+   wie ein "Feld leeren"-Knopf), statt als eigenes Element daneben oder --
+   der ursprüngliche Fehler -- sogar in einer eigenen Zeile darunter (dort
+   fehlte an .feld-zeile-kompakt ein Reset von flex-direction, das Icon
+   erbte die "column"-Richtung der Basis-.feld-zeile-Regel). Ohne eigenes
+   Element daneben braucht schmale Spalten wie Tracknummer keinen
+   zusätzlichen Platz für den Knopf. */
+.feld-eingabe-icon { position: relative; display: block; width: 100%; }
+.feld-eingabe-icon input[type="text"] { width: 100%; padding-right: 1.7rem; }
+.feld-eingabe-icon .feld-zuruecksetzen {
+    position: absolute;
+    right: 0.15rem;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 1.4rem;
+    height: 1.4rem;
+    background: transparent;
+    border-color: transparent;
+}
+.feld-eingabe-icon .feld-zuruecksetzen:hover { background: var(--surface-alt); border-color: var(--border); }
+.feld-eingabe-icon .feld-zuruecksetzen .icon { width: 0.8rem; height: 0.8rem; }
+
+/* Spaltenbreiten der Titelliste -- ohne table-layout:fixed verteilt der
+   Browser den Platz nach Inhalt, und die Tracknummer (2 Ziffern) bekam
+   dabei genauso viel wie der Titel, der dafür zu früh abschnitt. Titel
+   bleibt die einzige Spalte ohne feste Breite und holt sich den Rest. */
+.titelliste { table-layout: fixed; width: 100%; }
+.titelliste .sp-nr { width: 3.6rem; }
+.titelliste .sp-interpret { width: 11rem; }
+.titelliste .sp-komponist { width: 10rem; }
+.titelliste .sp-weitere { width: 7.5rem; }
 
 /* "Weitere Felder" liegt als Dialog über der Seite statt eine lange Liste
    inline aufzuklappen -- auf einem 16:9-Monitor sprengte das eingeklappte

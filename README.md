@@ -178,6 +178,10 @@ aus **keine** Genres (`genres: False`). `lastgenre` tritt also nicht gegen
 MusicBrainz an. Mit `force: yes` und `keep_existing: no` überschreibt es aber ein
 Genre, das bereits **in der hochgeladenen Datei** stand.
 
+`discogs` steht bewusst *nicht* in dieser Liste — siehe
+[Discogs als zweite Metadatenquelle](#discogs-als-zweite-metadatenquelle-optional)
+weiter unten.
+
 ## Cover abfotografieren
 
 Auf dem Handy: Cover fotografieren, Ecken zurechtziehen, fertig. Der Ablauf ist
@@ -776,6 +780,7 @@ den Server direkt darauf (`http://127.0.0.1:8000/albums`). Rührt nicht an
 | `MIMPORT_SESSION_TTL_HOURS` | `24` | Frist, nach der verwaiste Uploads verschwinden |
 | `MIMPORT_IMPORT_TIMEOUT` | `1800` | Zeitlimit des Importlaufs in Sekunden |
 | `MIMPORT_FINGERPRINT` | `0` | AcoustID-Fingerprinting (siehe unten) |
+| `MIMPORT_DISCOGS_TOKEN` | leer | Discogs als zweite Metadatenquelle (siehe unten) |
 
 ### Platz auf dem Server
 
@@ -879,6 +884,48 @@ Einschalten:
 
 mimport prüft zur Laufzeit, ob `fpcalc` wirklich vorhanden ist — ein gesetzter
 Schalter ohne Binary bleibt wirkungslos statt zu scheitern.
+
+## Discogs als zweite Metadatenquelle (optional)
+
+Hilft bei Releases, die MusicBrainz nicht kennt — etwa manche Vinyl-Pressungen,
+Bootlegs oder Nischen-Compilations, die auf Discogs eher zu finden sind als in
+MusicBrainz.
+
+**Ohne eigenen Zugriffstoken bleibt Discogs komplett aus**, und das ist kein
+Bug, sondern Absicht: Das `discogs`-Plugin authentifiziert sich beim Laden
+synchron und würde ohne Token interaktiv nach einem OAuth-Code fragen
+(`beets.ui.input_`) — mimport läuft aber ohne Terminal, das wäre also ein
+Absturz oder ein für immer hängender Request, und zwar bei *jedem* Request,
+nicht nur bei Discogs-Suchen, weil dieselbe Plugin-Ladung auch fürs
+MusicBrainz-Matching läuft. Deshalb trägt `backend/beets_env.py` das Plugin
+nur dann in die Konfiguration ein, wenn `MIMPORT_DISCOGS_TOKEN` gesetzt ist —
+das Vorhandensein des Tokens *ist* der Schalter, kein separates Flag.
+
+Einschalten:
+
+1. Auf discogs.com unter *Einstellungen → Entwickler* einen persönlichen
+   Zugriffstoken erzeugen.
+2. `MIMPORT_DISCOGS_TOKEN` auf diesen Token setzen — im Container am besten
+   über eine lokale, **nicht versionierte** `.env`-Datei neben
+   `docker-compose.yml` (dort schon als `${MIMPORT_DISCOGS_TOKEN:-}`
+   vorbereitet). **Nicht** in `beets/config.yaml` eintragen: die Datei liegt
+   im Git-Repo und wird ins Image gebacken.
+3. Neu starten.
+
+Discogs ist bewusst als **sekundäre** Quelle eingestuft: In
+`beets/config.yaml` steht dafür
+`discogs.data_source_mismatch_penalty: 1.0` — das Maximum, das beets zulässt.
+Ein Discogs-Kandidat schneidet damit gegenüber einem sonst gleichwertigen
+MusicBrainz-Kandidaten immer schlechter ab und taucht in der Praxis nur dann
+oben in der Liste auf, wenn MusicBrainz nichts Brauchbares liefert.
+
+Ein Nebeneffekt, den man kennen sollte: Sobald zwei Metadatenquellen aktiv
+sind, bezieht beets die Datenquelle grundsätzlich in die Distanzrechnung mit
+ein — das verschiebt auch die angezeigte Sicherheit reiner
+MusicBrainz-Treffer minimal (typischerweise leicht nach unten, da
+MusicBrainz bewusst auf dem eingebauten Standardwert bleibt statt auf einen
+eigens auf 0 gesetzten Wert, der Treffer hätte künstlich aufwerten können).
+Das ist eine Eigenheit von beets selbst, keine mimport-Besonderheit.
 
 ## Wie der Import abläuft
 

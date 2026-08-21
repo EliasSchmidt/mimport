@@ -19,7 +19,7 @@ from __future__ import annotations
 import logging
 import subprocess
 import threading
-from typing import TypedDict
+from typing import Any, TypedDict
 
 log = logging.getLogger(__name__)
 
@@ -51,6 +51,7 @@ def ensure_loaded() -> None:
         from beets import config, metadata_plugins, plugins
 
         config.read()
+        _activate_discogs_if_configured(config)
         plugins.load_plugins()
         _loaded = True
 
@@ -64,6 +65,33 @@ def ensure_loaded() -> None:
                 "geben. In der beets-Konfiguration muss unter 'plugins' "
                 "mindestens 'musicbrainz' stehen."
             )
+
+
+def _activate_discogs_if_configured(config: Any) -> None:
+    """Schaltet Discogs als zweite Metadatenquelle scharf -- oder auch nicht.
+
+    Muss vor ``plugins.load_plugins()`` laufen: das Discogs-Plugin
+    authentifiziert sich synchron in seinem ``__init__`` und würde ohne
+    ``user_token`` interaktiv nach einem OAuth-Code fragen (``input()``) --
+    in mimports Prozess ohne Terminal ein Absturz oder ein für immer
+    hängender Request, und zwar für *jeden* Request, nicht nur Discogs-Suchen,
+    weil dieselbe Ladung auch fürs MusicBrainz-Matching läuft.
+
+    Deshalb kein Eintrag für ``discogs`` in ``beets/config.yaml``: das
+    Vorhandensein von ``MIMPORT_DISCOGS_TOKEN`` *ist* der Schalter, siehe
+    ``Settings.discogs_user_token``. Der Penalty-Wert selbst ist kein Geheimnis
+    und steht deshalb dort, nicht hier.
+    """
+    from backend.config import settings
+
+    token = settings.discogs_user_token
+    if not token:
+        return
+
+    config["discogs"]["user_token"].set(token)
+    aktive_plugins = config["plugins"].as_str_seq()
+    if "discogs" not in aktive_plugins:
+        config["plugins"].set([*aktive_plugins, "discogs"])
 
 
 def metadata_sources() -> list[str]:

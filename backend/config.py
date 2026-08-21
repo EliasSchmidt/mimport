@@ -94,6 +94,21 @@ class Settings:
         default_factory=lambda: _env_bool("MIMPORT_FINGERPRINT", False)
     )
 
+    #: Discogs als zweite Metadatenquelle, sekundär zu MusicBrainz. Kein
+    #: Schalter dafür: ob dieser Token gesetzt ist, *ist* der Schalter --
+    #: dieselbe Idee wie bei ``disc_root`` oben. Das Discogs-Plugin
+    #: authentifiziert sich beim Laden synchron (``beets_env.ensure_loaded``)
+    #: und würde ohne Token interaktiv nach einem OAuth-Code fragen -- in
+    #: einem Prozess ohne Terminal ein Absturz oder ein für immer hängender
+    #: Request. Deshalb wird das Plugin nur aktiviert, wenn hier ein
+    #: persönlicher Zugriffstoken steht (discogs.com -> Einstellungen ->
+    #: Entwickler -> "Generate new token"). Bewusst nicht in
+    #: ``beets/config.yaml``: die Datei wird ins Image gebacken und landet im
+    #: Git-Repo, ein Token dort wäre ein Secret-Leak.
+    discogs_user_token: str = field(
+        default_factory=lambda: os.environ.get("MIMPORT_DISCOGS_TOKEN", "")
+    )
+
     #: Obergrenze pro Upload, in Bytes. Ein verlustfreies Album liegt grob bei
     #: 300-500 MB, deshalb ist der Standard großzügig.
     max_upload_bytes: int = field(

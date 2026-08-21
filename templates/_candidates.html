@@ -206,7 +206,7 @@
             </form>
             {% if candidate.url %}
             <a class="button link" href="{{ candidate.url }}" target="_blank"
-               rel="noopener noreferrer">bei MusicBrainz ansehen</a>
+               rel="noopener noreferrer">bei {{ "Discogs" if candidate.data_source == "Discogs" else "MusicBrainz" }} ansehen</a>
             {% endif %}
         </div>
     </li>

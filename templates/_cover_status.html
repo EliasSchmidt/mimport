@@ -10,7 +10,7 @@
     <strong>Cover vorhanden.</strong> Es liegt als <span class="mono">cover.jpg</span>
     in dieser Sitzung und wird beim Import von beets übernommen.
 </p>
-{% elif candidate is defined and candidate and candidate.album_id and candidate.data_source == "musicbrainz" %}
+{% elif candidate is defined and candidate and candidate.album_id and candidate.data_source == "MusicBrainz" %}
 <p class="hint">
     <strong>Kein eigenes Cover vorhanden.</strong> Ein MusicBrainz-Release ist
     zugeordnet -- beets versucht beim Import automatisch, dessen Cover von der
@@ -19,8 +19,14 @@
 </p>
 {% else %}
 <p class="hint">
-    <strong>Kein Cover vorhanden.</strong> Ohne übernommenes MusicBrainz-Release
-    lädt beets keins automatisch nach.
+    <strong>Kein Cover vorhanden.</strong> Automatisch nachladen kann beets
+    nur das Cover eines MusicBrainz-Releases (über die Cover Art Archive) --
+    {% if candidate is defined and candidate and candidate.data_source %}
+    bei diesem {{ candidate.data_source }}-Release bleibt es beim
+    fotografierten Cover, falls keins vorliegt.
+    {% else %}
+    ohne übernommenes Release lädt es gar keins automatisch nach.
+    {% endif %}
 </p>
 {% endif %}
 <button type="button" class="button{{ '' if cover_present else ' primary' }}"

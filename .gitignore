@@ -20,3 +20,6 @@ data/
 
 # Erfundene Mock-Bibliothek für scripts/mock.py -- lokal, nicht fürs Repo.
 .mock/
+
+# Secrets für docker-compose (z. B. MIMPORT_DISCOGS_TOKEN), lokal je Host.
+.env

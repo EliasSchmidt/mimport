@@ -17,16 +17,18 @@
     Cover Art Archive zu laden. Findet sich dort keins, bleibt das Album ohne
     Cover; nachtragen lässt sich eins dann auf der Album-Seite.
 </p>
+{% elif candidate is defined and candidate and candidate.album_id %}
+<p class="hint">
+    <strong>Kein Cover vorhanden.</strong> Für dieses {{ candidate.data_source }}-Release
+    gab es keins zum automatischen Laden -- entweder war dort keins hinterlegt,
+    oder der Download ist gerade fehlgeschlagen (kurzer Netzausfall reicht).
+    Fotografieren bleibt möglich.
+</p>
 {% else %}
 <p class="hint">
     <strong>Kein Cover vorhanden.</strong> Automatisch nachladen kann beets
-    nur das Cover eines MusicBrainz-Releases (über die Cover Art Archive) --
-    {% if candidate is defined and candidate and candidate.data_source %}
-    bei diesem {{ candidate.data_source }}-Release bleibt es beim
-    fotografierten Cover, falls keins vorliegt.
-    {% else %}
-    ohne übernommenes Release lädt es gar keins automatisch nach.
-    {% endif %}
+    nur das Cover eines übernommenen Releases -- ohne gewählten Kandidaten
+    gibt es noch keins zu laden.
 </p>
 {% endif %}
 <button type="button" class="button{{ '' if cover_present else ' primary' }}"

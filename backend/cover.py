@@ -20,6 +20,10 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
+import requests
+
+from backend.artist_ids import USER_AGENT
+
 log = logging.getLogger(__name__)
 
 #: Der Name, unter dem beets und Audiobookshelf ein Cover erwarten.
@@ -88,3 +92,36 @@ def speichern(ordner: Path, daten: bytes) -> Path:
 
 def vorhanden(ordner: Path) -> bool:
     return (ordner / COVER_DATEI).is_file()
+
+
+def von_url_holen(ordner: Path, url: str, *, timeout: float = 10.0) -> Path | None:
+    """Lädt ein Cover von einer URL herunter und legt es als ``cover.jpg`` ab.
+
+    Für Discogs-Kandidaten gedacht: ``AlbumInfo.cover_art_url`` zeigt auf ein
+    Bild von der Release-Seite, aber beets' ``fetchart``-Quelle dafür
+    (``cover_art_url``) braucht ein Feld, das erst beim *selben* Importlauf
+    gesetzt wird -- mimport trennt Tag-Schreiben und ``beet import -A`` aber in
+    zwei Prozesse, dazwischen geht das Feld verloren (es ist kein einbettbarer
+    Tag). Landet das Bild stattdessen hier als ``cover.jpg`` in der Session,
+    greift beim Import ganz normal die ``filesystem``-Quelle -- dieselbe, die
+    auch ein abfotografiertes Cover übernimmt.
+
+    Best-effort mit Absicht: Ein Netzfehler oder ein unbrauchbares Bild soll
+    die Auswahl des Kandidaten nicht zu Fall bringen. ``None`` bei jedem
+    Fehlschlag, der Rückgabewert der zugrunde liegenden Speicherung sonst --
+    fotografieren bleibt in jedem Fall weiterhin möglich.
+    """
+    try:
+        antwort = requests.get(
+            url, headers={"User-Agent": USER_AGENT}, timeout=timeout
+        )
+        antwort.raise_for_status()
+    except requests.RequestException as exc:
+        log.info("Cover-Download von %s fehlgeschlagen: %s", url, exc)
+        return None
+
+    try:
+        return speichern(ordner, antwort.content)
+    except CoverError as exc:
+        log.info("Heruntergeladenes Cover von %s unbrauchbar: %s", url, exc)
+        return None

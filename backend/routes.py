@@ -1383,6 +1383,17 @@ def choose(
     write_result = tagging.apply_album_match(
         match_obj, from_scratch=bool(from_scratch.strip())
     )
+
+    # MusicBrainz-Kandidaten bekommen ihr Cover automatisch beim Import (die
+    # 'coverart'-Quelle von fetchart, über die geschriebene Release-ID). Für
+    # andere Quellen wie Discogs gibt es diesen Weg nicht -- siehe
+    # cover.von_url_holen(). Ein vorhandenes, abfotografiertes Cover geht
+    # immer vor.
+    if not cover.vorhanden(session.directory):
+        cover_url = match_obj.info.get("cover_art_url")
+        if cover_url:
+            cover.von_url_holen(session.directory, cover_url)
+
     return _fragment(
         request,
         "_applied.html",

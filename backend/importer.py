@@ -138,8 +138,12 @@ def library_lock() -> Iterator[None]:
 def run_import(directory: Path, *, pretend: bool = False) -> ImportResult:
     """Führt den Import aus und sammelt die Ausgabe ein.
 
-    Ohne Autotagging gibt es keine Netzabfragen, der Lauf ist deshalb kurz --
-    Streaming der Ausgabe ist hier nicht nötig.
+    Kein erneutes Autotagging (kein Abgleich mit MusicBrainz/Discogs mehr,
+    die Tags stehen ja schon in den Dateien) -- aber nicht netzfrei: fetchart
+    lädt bei ``fetch_for_asis: yes`` trotzdem das Cover eines übernommenen
+    MusicBrainz-Releases nach, siehe ``beets/config.yaml``. Der Lauf bleibt
+    trotzdem kurz genug für ein einzelnes Album, Streaming der Ausgabe ist
+    hier nicht nötig.
     """
     command = build_command(directory, pretend=pretend)
     result = ImportResult(command=command, pretend=pretend)

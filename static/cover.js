@@ -394,15 +394,16 @@ async function fotoLaden(datei) {
   dialog().querySelector(".cover-schritt-2").hidden = false;
 }
 
-async function uebernehmen() {
-  const ziel = entzerren(zustand.foto, zustand.ecken);
-  const blob = await new Promise((f) => ziel.toBlob(f, "image/jpeg", 0.9));
+async function uebernehmen(
+  bild = entzerren(zustand.foto, zustand.ecken),
+  knopf = dialog().querySelector(".cover-uebernehmen")
+) {
+  const blob = await new Promise((f) => bild.toBlob(f, "image/jpeg", 0.9));
 
   const form = dialog().querySelector("form");
   const daten = new FormData(form);
   daten.set("bild", blob, "cover.jpg");
 
-  const knopf = dialog().querySelector(".cover-uebernehmen");
   knopf.disabled = true;
   knopf.textContent = "lädt …";
   try {
@@ -417,6 +418,13 @@ async function uebernehmen() {
   }
 }
 
+/** Foto unbeschnitten und unverzerrt übernehmen -- für Cover, bei denen
+ * kein Zuschnitt nötig ist. Anders als beim normalen Weg bleibt das
+ * Seitenverhältnis dabei erhalten statt ins Quadrat gezerrt zu werden. */
+function ganzesBildUebernehmen() {
+  uebernehmen(zustand.foto, dialog().querySelector(".cover-ganzes-bild"));
+}
+
 function oeffnen(action, zielId, titel) {
   const d = dialog();
   const form = d.querySelector("form");
@@ -426,6 +434,8 @@ function oeffnen(action, zielId, titel) {
   d.querySelector(".cover-schritt-2").hidden = true;
   d.querySelector(".cover-uebernehmen").disabled = false;
   d.querySelector(".cover-uebernehmen").textContent = "Als Cover übernehmen";
+  d.querySelector(".cover-ganzes-bild").disabled = false;
+  d.querySelector(".cover-ganzes-bild").textContent = "Ganzes Bild verwenden";
   d.querySelector("input[type=file]").value = "";
   zustand = null;
   d.showModal();
@@ -456,6 +466,7 @@ document.addEventListener("DOMContentLoaded", () => {
   );
 
   d.querySelector(".cover-uebernehmen").addEventListener("click", uebernehmen);
+  d.querySelector(".cover-ganzes-bild").addEventListener("click", ganzesBildUebernehmen);
   d.querySelector(".cover-abbrechen").addEventListener("click", schliessen);
   d.querySelector(".cover-neu").addEventListener("click", () =>
     d.querySelector("input[type=file]").click()

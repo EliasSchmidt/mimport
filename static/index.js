@@ -559,62 +559,190 @@ document.body.addEventListener("input", (event) => {
   );
 });
 
-/* ------------------------------------------------ Genre-Vorschläge -------
+/* ------------------------------------------------------ Genre-Feld -------
  *
- * Das Feld erlaubt mehrere Genres per Semikolon. Ein normales <datalist>
- * würde aber immer nur den gesamten Feldwert vorschlagen; nach dem ersten
- * Eintrag wäre das unhandlich. Deshalb bauen wir die Vorschläge beim Tippen
- * aus dem letzten Teilstück neu zusammen.
+ * Gemeinsame Komponente für /albums und /musik (siehe _genre_feld.html):
+ * ein Suchfeld filtert den mitgelieferten Katalog beim Tippen, Klick oder
+ * Enter auf einen Treffer übernimmt ihn als Chip, Freitext bleibt über
+ * Enter ohne Treffer weiter möglich. Der tatsächliche Formularwert steckt
+ * in einem versteckten Feld, Semikolon-getrennt wie beets es erwartet --
+ * dieses Skript hält es beim Ändern der Chips synchron und feuert ein
+ * "input"-Event darauf, damit Autosave (_manual.html) und die
+ * unverändert-Filterung beim Speichern (_album_detail.html) das mitkriegen.
+ *
+ * Der Zustand je Feld (Katalog, aktuelle Chips, per Pfeiltasten
+ * hervorgehobener Vorschlag) hängt direkt am Feld-Element -- dadurch kommt
+ * die Komponente ohne IDs aus und funktioniert unverändert, egal ob sie
+ * einmal oder mehrfach auf derselben Seite steht.
  */
 const GENRE_LIMIT = 12;
+const GENRE_TRENNER = /;\s*/;
 
-function genreVorschlaegeAktualisieren(input, datalist) {
-  const katalog = datalist._genreKatalog || [];
-  const teile = String(input.value || "").split(";");
-  const letzterRohwert = teile.pop() || "";
-  const prefix = teile.map((teil) => teil.trim()).filter(Boolean).join("; ");
-  const basis = prefix ? `${prefix}; ` : "";
-  const suchwort = letzterRohwert.trim().toLocaleLowerCase();
+function genreState(feld) {
+  if (!feld._genreState) {
+    const wert = feld.querySelector("[data-genre-wert]");
+    feld._genreState = {
+      wert,
+      katalog: Array.from(feld.querySelector("[data-genre-katalog]")?.options || [])
+        .map((option) => option.value.trim())
+        .filter(Boolean),
+      chips: String(wert.value || "").split(GENRE_TRENNER).map((g) => g.trim()).filter(Boolean),
+      aktiv: -1,
+    };
+  }
+  return feld._genreState;
+}
 
-  let treffer = katalog;
+function genreWertSchreiben(feld) {
+  const state = genreState(feld);
+  state.wert.value = state.chips.join("; ");
+  state.wert.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+function genreChipsRendern(feld) {
+  const state = genreState(feld);
+  feld.querySelector("[data-genre-chips]").replaceChildren(
+    ...state.chips.map((genre, index) => {
+      const chip = document.createElement("span");
+      chip.className = "genre-chip";
+      chip.append(genre);
+      const entfernen = document.createElement("button");
+      entfernen.type = "button";
+      entfernen.className = "genre-chip-entfernen";
+      entfernen.setAttribute("aria-label", `${genre} entfernen`);
+      entfernen.textContent = "×";
+      entfernen.addEventListener("click", () => genreChipEntfernen(feld, index));
+      chip.appendChild(entfernen);
+      return chip;
+    }),
+  );
+}
+
+function genreChipHinzufuegen(feld, roh) {
+  const state = genreState(feld);
+  const genre = roh.trim();
+  if (!genre) return;
+  const schonDa = state.chips.some((g) => g.toLocaleLowerCase() === genre.toLocaleLowerCase());
+  if (!schonDa) state.chips.push(genre);
+  genreChipsRendern(feld);
+  genreWertSchreiben(feld);
+}
+
+function genreChipEntfernen(feld, index) {
+  const state = genreState(feld);
+  state.chips.splice(index, 1);
+  genreChipsRendern(feld);
+  genreWertSchreiben(feld);
+  feld.querySelector("[data-genre-suche]").focus();
+}
+
+function genreVorschlaegeSchliessen(feld) {
+  const state = genreState(feld);
+  const liste = feld.querySelector("[data-genre-vorschlaege-liste]");
+  liste.hidden = true;
+  liste.replaceChildren();
+  state.aktiv = -1;
+  feld.querySelector("[data-genre-suche]").setAttribute("aria-expanded", "false");
+}
+
+function genreVorschlaegeAktualisieren(feld) {
+  const state = genreState(feld);
+  const suche = feld.querySelector("[data-genre-suche]");
+  const liste = feld.querySelector("[data-genre-vorschlaege-liste]");
+  const suchwort = suche.value.trim().toLocaleLowerCase();
+  const gewaehlt = new Set(state.chips.map((g) => g.toLocaleLowerCase()));
+  const verfuegbar = state.katalog.filter((genre) => !gewaehlt.has(genre.toLocaleLowerCase()));
+
+  let treffer = verfuegbar;
   if (suchwort) {
-    const beginntMit = katalog.filter((genre) => genre.toLocaleLowerCase().startsWith(suchwort));
-    const enthaelt = katalog.filter(
+    const beginntMit = verfuegbar.filter((genre) => genre.toLocaleLowerCase().startsWith(suchwort));
+    const enthaelt = verfuegbar.filter(
       (genre) => !genre.toLocaleLowerCase().startsWith(suchwort)
         && genre.toLocaleLowerCase().includes(suchwort),
     );
     treffer = [...beginntMit, ...enthaelt];
   }
+  treffer = treffer.slice(0, GENRE_LIMIT);
 
-  datalist.replaceChildren(
-    ...treffer.slice(0, GENRE_LIMIT).map((genre) => {
-      const option = document.createElement("option");
-      option.value = `${basis}${genre}`;
-      return option;
+  state.aktiv = -1;
+  liste.replaceChildren(
+    ...treffer.map((genre) => {
+      const eintrag = document.createElement("li");
+      eintrag.textContent = genre;
+      eintrag.setAttribute("role", "option");
+      // mousedown+preventDefault statt click: verhindert, dass das Suchfeld
+      // den Fokus (und damit über den blur-Handler unten die Liste selbst)
+      // schon verliert, bevor der Klick überhaupt ausgewertet wird.
+      eintrag.addEventListener("mousedown", (event) => {
+        event.preventDefault();
+        genreChipHinzufuegen(feld, genre);
+        suche.value = "";
+        genreVorschlaegeSchliessen(feld);
+        suche.focus();
+      });
+      return eintrag;
     }),
   );
+  liste.hidden = treffer.length === 0;
+  suche.setAttribute("aria-expanded", liste.hidden ? "false" : "true");
 }
 
-function bindGenreInput(input) {
-  if (input.dataset.genreBound === "ja") return;
-  const listId = input.getAttribute("list");
-  if (!listId) return;
-  const datalist = document.getElementById(listId);
-  if (!datalist) return;
+function genreAktivenSetzen(feld, delta) {
+  const state = genreState(feld);
+  const eintraege = Array.from(feld.querySelector("[data-genre-vorschlaege-liste]").children);
+  if (!eintraege.length) return;
+  state.aktiv = (state.aktiv + delta + eintraege.length) % eintraege.length;
+  eintraege.forEach((eintrag, index) => eintrag.classList.toggle("aktiv", index === state.aktiv));
+}
 
-  datalist._genreKatalog = Array.from(datalist.options)
-    .map((option) => option.value.trim())
-    .filter(Boolean);
+function genreSucheKeydown(feld, event) {
+  const state = genreState(feld);
+  const suche = feld.querySelector("[data-genre-suche]");
+  const liste = feld.querySelector("[data-genre-vorschlaege-liste]");
 
-  const aktualisieren = () => genreVorschlaegeAktualisieren(input, datalist);
-  input.addEventListener("focus", aktualisieren);
-  input.addEventListener("input", aktualisieren);
-  input.dataset.genreBound = "ja";
-  aktualisieren();
+  if (event.key === "ArrowDown") {
+    event.preventDefault();
+    if (liste.hidden) genreVorschlaegeAktualisieren(feld);
+    else genreAktivenSetzen(feld, 1);
+    return;
+  }
+  if (event.key === "ArrowUp") {
+    event.preventDefault();
+    genreAktivenSetzen(feld, -1);
+    return;
+  }
+  if (event.key === "Escape") {
+    genreVorschlaegeSchliessen(feld);
+    return;
+  }
+  if (event.key === "Backspace" && !suche.value && state.chips.length) {
+    genreChipEntfernen(feld, state.chips.length - 1);
+    return;
+  }
+  if (event.key === "Enter" || event.key === ";" || event.key === ",") {
+    event.preventDefault();
+    const hervorgehoben = !liste.hidden && state.aktiv >= 0 ? liste.children[state.aktiv] : null;
+    genreChipHinzufuegen(feld, hervorgehoben ? hervorgehoben.textContent : suche.value);
+    suche.value = "";
+    genreVorschlaegeSchliessen(feld);
+  }
+}
+
+function bindGenreInput(feld) {
+  if (feld.dataset.genreBound === "ja") return;
+  feld.dataset.genreBound = "ja";
+
+  genreChipsRendern(feld);
+
+  const suche = feld.querySelector("[data-genre-suche]");
+  suche.addEventListener("focus", () => genreVorschlaegeAktualisieren(feld));
+  suche.addEventListener("input", () => genreVorschlaegeAktualisieren(feld));
+  suche.addEventListener("keydown", (event) => genreSucheKeydown(feld, event));
+  suche.addEventListener("blur", () => genreVorschlaegeSchliessen(feld));
 }
 
 function bindGenreInputs(root = document) {
-  root.querySelectorAll?.("[data-genre-input]").forEach(bindGenreInput);
+  root.querySelectorAll?.("[data-genre-feld]").forEach(bindGenreInput);
 }
 
 /* -------------------------------------------- Editierbare Tag-Felder -----

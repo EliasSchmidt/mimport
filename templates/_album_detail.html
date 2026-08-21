@@ -8,6 +8,7 @@
    filtert beim Speichern-Klick unveränderte Felder aus dem Request heraus
    (htmx:configRequest), damit ein Klick nicht für jedes Feld jedes Titels
    einen eigenen ``beet modify``-Aufruf verbrät. #}
+{% import "_genre_feld.html" as genre_komponente %}
 {% macro feld_zeile(praefix, feld, wert) %}
 <div class="feld-zeile{% if feld.breit %} feld-breit{% endif %}">
     <label class="feld-label">{{ feld.label }}</label>
@@ -18,10 +19,11 @@
     {% elif feld.typ == "zahl" %}
     <input type="number" inputmode="numeric" name="{{ praefix }}{{ feld.key }}" value="{{ wert }}"
            data-feld-eingabe data-original="{{ wert }}">
+    {% elif feld.key == "genres" %}
+    {{ genre_komponente.genre_feld(praefix ~ feld.key, wert, genre_vorschlaege) }}
     {% else %}
     <input type="text" name="{{ praefix }}{{ feld.key }}" value="{{ wert }}" data-feld-eingabe
-           data-original="{{ wert }}"
-           {% if feld.key == "genres" %}list="genre-vorschlaege-album" autocomplete="off" data-genre-input{% endif %}>
+           data-original="{{ wert }}">
     {% endif %}
     {% if feld.hinweis %}<small class="hint">{{ feld.hinweis }}</small>{% endif %}
 </div>
@@ -131,12 +133,6 @@
         </div>
         {% endif %}
         {% endfor %}
-
-        <datalist id="genre-vorschlaege-album" data-genre-vorschlaege>
-            {% for genre in genre_vorschlaege %}
-            <option value="{{ genre }}"></option>
-            {% endfor %}
-        </datalist>
     </section>
 
     <section class="tag-block">

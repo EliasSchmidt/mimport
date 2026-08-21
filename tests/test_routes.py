@@ -1795,8 +1795,8 @@ class TestManuellTaggen:
         assert 'name="titel:01.flac"' in html
         assert 'name="interpret:02.flac"' in html
         assert 'name="compilation"' in html
-        assert 'list="genre-vorschlaege-' in html
-        assert 'mehrere mit <span class="mono">;</span>' in html
+        assert "data-genre-feld" in html
+        assert "Beim Tippen erscheinen Vorschläge aus dem Projektkatalog" in html
         assert 'Artist-ID in die Datei' in html
         assert 'Track-Künstler' in html
         assert 'hx-post="/artist-match/' in html

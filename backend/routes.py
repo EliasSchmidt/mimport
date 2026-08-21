@@ -279,6 +279,26 @@ def _session_cover_version(session: sessions.StagingSession) -> str:
         return ""
 
 
+def _mb_albumid_der_session(session: sessions.StagingSession) -> str | None:
+    """Liest die MusicBrainz-Release-ID aus den Dateien der Session.
+
+    Genau die ID, die ``choose()`` über ``apply_metadata()`` in die Dateien
+    geschrieben hat -- vor dem Import gelesen, weil danach nichts mehr an
+    diesem Ort liegt (verschoben oder kopiert). Dient ``albums.retry_missing_cover``
+    als eindeutiger Ankerpunkt, statt über Album-/Künstlername zu suchen.
+    """
+    import mediafile
+
+    for path in session.audio_paths:
+        try:
+            media = mediafile.MediaFile(path)
+        except Exception:  # noqa: BLE001 -- eine unlesbare Datei soll die Suche nicht abbrechen
+            continue
+        if media.mb_albumid:
+            return media.mb_albumid
+    return None
+
+
 def _ocr_overlay(result: ocr.OcrResult, image_url: str) -> dict[str, object]:
     detections: list[dict[str, object]] = []
     for detection in result.detections:
@@ -1807,8 +1827,20 @@ def run_import(
             message="Import ist gesperrt: " + " ".join(str(p) for p in health["problems"]),
         )
 
+    # Vor dem Import lesen: hinterher liegt an diesem Ort nichts mehr
+    # (verschoben oder kopiert), siehe _mb_albumid_der_session().
+    mb_albumid = None if dry_run else _mb_albumid_der_session(session)
+
     result = importer.run_import(session.directory, pretend=dry_run)
     if result.ok and not dry_run:
+        # Bestcase-Versuch: die Cover Art Archive antwortet gelegentlich mit
+        # einem transienten Fehler, den fetchart nicht selbst wiederholt --
+        # siehe albums.retry_missing_cover(). Verzögert die Rückmeldung nur,
+        # wenn tatsächlich ein Cover fehlt; der Normalfall (Cover schon da)
+        # kostet nichts außer einer einzelnen beet-list-Abfrage.
+        if mb_albumid:
+            albums.retry_missing_cover(mb_albumid)
+
         # Nach einem Verschiebe-Import ist der Ordner leer; dann kann er weg.
         sessions.cleanup_if_empty(session)
 

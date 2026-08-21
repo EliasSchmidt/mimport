@@ -219,6 +219,112 @@ class TestUpdateCover:
             albums.update_cover(self._album(tmp_path), tmp_path / "cover.jpg")
 
 
+class TestRetryMissingCover:
+    """Cover Art Archive antwortet gelegentlich mit einem transienten 5xx,
+    fetchart wiederholt diese eine Anfrage nicht selbst -- siehe das
+    Docstring von ``retry_missing_cover``."""
+
+    def _stdout_fuer(self, album_id: int, pfad: Path) -> str:
+        return _stdout(_zeile(album_id, "X", "Y", 2020, str(pfad)))
+
+    def test_vorhandenes_cover_ruft_fetchart_gar_nicht_erst(self, tmp_path, monkeypatch):
+        (tmp_path / "cover.jpg").write_bytes(b"x")
+        stdout = self._stdout_fuer(7, tmp_path)
+
+        def fake_run(cmd, **kw):
+            assert cmd[1] == "list", "fetchart darf bei vorhandenem Cover nicht laufen"
+            return _proc(stdout=stdout)
+
+        monkeypatch.setattr(albums.subprocess, "run", fake_run)
+        assert albums.retry_missing_cover("mbid-123") is True
+
+    def test_fetchart_erfolgreich_im_ersten_versuch(self, tmp_path, monkeypatch):
+        stdout = self._stdout_fuer(7, tmp_path)
+        aufrufe = []
+
+        def fake_run(cmd, **kw):
+            if cmd[1] == "list":
+                return _proc(stdout=stdout)
+            aufrufe.append(cmd)
+            # Simuliert einen erfolgreichen fetchart-Lauf: das Cover landet
+            # im Album-Ordner, genau wie es beets selbst täte.
+            (tmp_path / "cover.jpg").write_bytes(b"geladen")
+            return _proc()
+
+        monkeypatch.setattr(albums.subprocess, "run", fake_run)
+        monkeypatch.setattr(albums.time, "sleep", lambda *_: None)
+
+        assert albums.retry_missing_cover("mbid-123") is True
+        assert len(aufrufe) == 1
+        assert aufrufe[0][1] == "fetchart"
+        # 'id:', nicht 'album_id:' -- Letzteres wäre bei mehreren Alben eine
+        # Substring-Suche und träfe auch fremde Alben (z. B. 17, 27, ...).
+        assert aufrufe[0][-1] == "id:7"
+
+    def test_alle_versuche_scheitern(self, tmp_path, monkeypatch):
+        stdout = self._stdout_fuer(7, tmp_path)
+        aufrufe = []
+        geschlafen = []
+
+        def fake_run(cmd, **kw):
+            if cmd[1] == "list":
+                return _proc(stdout=stdout)
+            aufrufe.append(cmd)
+            return _proc()  # kein Cover landet im Ordner -- weiterhin leer
+
+        monkeypatch.setattr(albums.subprocess, "run", fake_run)
+        monkeypatch.setattr(albums.time, "sleep", lambda s: geschlafen.append(s))
+
+        assert albums.retry_missing_cover("mbid-123", attempts=3, pause=1.5) is False
+        assert len(aufrufe) == 3
+        # Vor dem ersten Versuch wird nicht gewartet, nur zwischen den weiteren.
+        assert geschlafen == [1.5, 1.5]
+
+    def test_haelt_den_library_lock_je_versuch(self, tmp_path, monkeypatch):
+        stdout = self._stdout_fuer(7, tmp_path)
+        verlauf = []
+
+        @contextlib.contextmanager
+        def fake_lock():
+            verlauf.append("enter")
+            yield
+            verlauf.append("exit")
+
+        def fake_run(cmd, **kw):
+            if cmd[1] == "list":
+                return _proc(stdout=stdout)
+            verlauf.append("beet")
+            return _proc()
+
+        monkeypatch.setattr(albums, "library_lock", fake_lock)
+        monkeypatch.setattr(albums.subprocess, "run", fake_run)
+        monkeypatch.setattr(albums.time, "sleep", lambda *_: None)
+
+        albums.retry_missing_cover("mbid-123", attempts=2)
+        assert verlauf == ["enter", "beet", "exit", "enter", "beet", "exit"]
+
+    def test_kein_album_gefunden(self, tmp_path, monkeypatch):
+        aufrufe = []
+
+        def fake_run(cmd, **kw):
+            aufrufe.append(cmd)
+            return _proc(stdout="")  # 'beet list' fand nichts
+
+        monkeypatch.setattr(albums.subprocess, "run", fake_run)
+        assert albums.retry_missing_cover("mbid-unbekannt") is False
+        assert len(aufrufe) == 1, "ohne Album darf fetchart gar nicht erst laufen"
+
+    def test_beet_list_fehlschlag_wird_abgefangen(self, monkeypatch):
+        monkeypatch.setattr(
+            albums.subprocess,
+            "run",
+            lambda cmd, **kw: _proc(returncode=1, stderr="autsch"),
+        )
+        # Kein AlbumError nach außen -- ein Bestcase-Versuch soll den Import
+        # nicht nachträglich als fehlgeschlagen erscheinen lassen.
+        assert albums.retry_missing_cover("mbid-123") is False
+
+
 class TestAlbumProperties:
     def test_cover_path_ist_cover_jpg_im_ordner(self, tmp_path):
         album = albums.Album(id=1, albumartist="X", album="Y", year="2020", path=tmp_path)

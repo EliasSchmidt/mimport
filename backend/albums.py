@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import logging
 import subprocess
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -382,6 +383,85 @@ def update_cover(album: Album, bild_pfad: Path) -> None:
         raise AlbumError(
             proc.stderr.strip() or "Das Cover ließ sich nicht einbetten."
         )
+
+
+def retry_missing_cover(
+    mb_albumid: str, *, attempts: int = 3, pause: float = 5.0
+) -> bool:
+    """Versucht bis zu ``attempts``-mal, das Cover eines frisch importierten
+    MusicBrainz-Albums nachzuladen.
+
+    Hintergrund: Die Cover Art Archive (``coverartarchive.org``) antwortet
+    gelegentlich mit einem transienten 5xx, und beets' ``fetchart``-Plugin
+    wiederholt diese eine Anfrage nicht selbst -- anders als das
+    ``musicbrainz``-Plugin für seine eigenen Anfragen. Ein einzelner
+    Ausrutscher beim automatischen Fetch während ``beet import -A`` bedeutet
+    sonst dauerhaft kein Cover, obwohl MusicBrainz eins hat. Nachgewiesen bei
+    der Entwicklung: mehrere ``beet fetchart``-Läufe hintereinander gegen
+    dieselbe Release-ID, abwechselnd HTTP 500, HTTP 502 und "no art found",
+    bis einer schließlich durchging -- ``pause`` ist bewusst nicht knapp
+    bemessen, weil ein einzelner Zwei-Sekunden-Abstand bei der Prüfung nicht
+    gereicht hätte.
+
+    Nur für MusicBrainz gedacht -- fetchart kennt für Discogs keine
+    automatische Quelle, dafür lädt ``backend.cover.von_url_holen`` das Bild
+    schon beim Übernehmen des Kandidaten selbst herunter.
+
+    Bewusst *nach* dem Import aufgerufen, nicht als Teil davon: Der eigentliche
+    Import-Erfolg (Tags stehen, Dateien liegen richtig) hängt nicht am Cover,
+    und ein paar Sekunden Wartezeit sollen die Rückmeldung "Import
+    abgeschlossen" nicht verzögern, wenn der erste Versuch schon reicht --
+    genau der Normalfall.
+
+    Gibt zurück, ob das Album danach ein Cover hat (auch wenn schon vorher
+    eins da war). Kein Fehler, wenn nicht -- nur ein Bestcase-Versuch, und
+    fotografieren bleibt über die Album-Seite immer noch möglich.
+    """
+    try:
+        treffer = list_albums(f"mb_albumid:{mb_albumid}")
+    except AlbumError as exc:
+        log.warning("Cover-Nachschlag für %s übersprungen: %s", mb_albumid, exc)
+        return False
+    if not treffer:
+        return False
+
+    album = treffer[0]
+    if album.has_cover:
+        return True
+
+    for versuch in range(attempts):
+        if versuch:
+            time.sleep(pause)
+        with library_lock():
+            # 'id:', nicht 'album_id:' -- Letzteres ist ein Item-Feld (siehe
+            # get_album()) und beim 'fetchart'-Kommando eine Substring-Suche:
+            # 'album_id:1' träfe auch die Alben 10, 11, 21, .... Empirisch
+            # geprüft an einer Library mit elf Alben.
+            proc = _lauf(["fetchart", f"id:{album.id}"], timeout=60)
+        if proc.returncode != 0:
+            log.warning(
+                "fetchart-Wiederholung %d/%d für Album %d fehlgeschlagen: %s",
+                versuch + 1,
+                attempts,
+                album.id,
+                proc.stderr.strip(),
+            )
+        if cover.vorhanden(album.path):
+            log.info(
+                "Cover für Album %d nach %d Wiederholung(en) doch noch geladen",
+                album.id,
+                versuch + 1,
+            )
+            return True
+
+    log.info(
+        "Cover für Album %d blieb nach %d Wiederholungen aus -- Cover Art "
+        "Archive hat vermutlich keins für dieses Release, oder war die ganze "
+        "Zeit über nicht erreichbar.",
+        album.id,
+        attempts,
+    )
+    return False
 
 
 def _modify(vorwahl: list[str], query: str, felder: dict[str, str], *, timeout: int) -> None:

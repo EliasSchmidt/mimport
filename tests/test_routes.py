@@ -363,6 +363,102 @@ class TestImportSperre:
         assert rip.current() is None
 
 
+class TestCoverRetryNachImport:
+    """``albums.retry_missing_cover`` soll nach einem echten Import genau dann
+    laufen, wenn die Dateien eine MusicBrainz-Release-ID tragen -- siehe
+    ``routes._mb_albumid_der_session``. Der Subprozess selbst ist hier
+    gemockt, wie im Rest von ``TestImportSperre``."""
+
+    def _health_ok(self):
+        return {
+            "beets_version": "2.13.1",
+            "beet_cli_version": "2.13.1",
+            "metadata_sources": ["musicbrainz"],
+            "fingerprint": False,
+            "problems": [],
+            "import_ready": True,
+        }
+
+    def _erfolgreicher_import(self, directory, pretend=False):
+        from backend import importer
+
+        return importer.ImportResult(
+            command=["beet", "import", "-A", str(directory)],
+            returncode=0,
+            stdout="importiert",
+        )
+
+    def test_wird_mit_der_release_id_aus_den_dateien_aufgerufen(
+        self, client, monkeypatch
+    ):
+        import mediafile
+
+        from backend import albums, beets_env, importer
+        from tests.flacfixture import write_flac
+
+        monkeypatch.setattr(beets_env, "health", self._health_ok)
+        monkeypatch.setattr(importer, "run_import", self._erfolgreicher_import)
+
+        gesehen = {}
+        monkeypatch.setattr(
+            albums,
+            "retry_missing_cover",
+            lambda mbid, **kw: gesehen.setdefault("mbid", mbid) or True,
+        )
+
+        session = sessions.create_session()
+        path = write_flac(session.directory / "a.flac")
+        media = mediafile.MediaFile(path)
+        media.mb_albumid = "964e8152-d86d-4b88-9b79-2f561db6c124"
+        media.save()
+
+        client.post(f"/import/{session.session_id}", data={})
+        assert gesehen.get("mbid") == "964e8152-d86d-4b88-9b79-2f561db6c124"
+
+    def test_ohne_release_id_wird_nichts_versucht(self, client, monkeypatch):
+        """Manuell getaggt oder Discogs (eigener Weg über cover.von_url_holen)
+        -- kein Grund, fetchart hinterherzuschicken."""
+        from backend import albums, beets_env, importer
+        from tests.flacfixture import write_flac
+
+        monkeypatch.setattr(beets_env, "health", self._health_ok)
+        monkeypatch.setattr(importer, "run_import", self._erfolgreicher_import)
+
+        aufgerufen = []
+        monkeypatch.setattr(
+            albums, "retry_missing_cover", lambda *a, **kw: aufgerufen.append(a)
+        )
+
+        session = sessions.create_session()
+        write_flac(session.directory / "a.flac")  # ohne mb_albumid-Tag
+
+        client.post(f"/import/{session.session_id}", data={})
+        assert aufgerufen == []
+
+    def test_im_probelauf_wird_nichts_versucht(self, client, monkeypatch):
+        import mediafile
+
+        from backend import albums, beets_env, importer
+        from tests.flacfixture import write_flac
+
+        monkeypatch.setattr(beets_env, "health", self._health_ok)
+        monkeypatch.setattr(importer.settings, "beet_bin", "true")
+
+        aufgerufen = []
+        monkeypatch.setattr(
+            albums, "retry_missing_cover", lambda *a, **kw: aufgerufen.append(a)
+        )
+
+        session = sessions.create_session()
+        path = write_flac(session.directory / "a.flac")
+        media = mediafile.MediaFile(path)
+        media.mb_albumid = "964e8152-d86d-4b88-9b79-2f561db6c124"
+        media.save()
+
+        client.post(f"/import/{session.session_id}", data={"pretend": "1"})
+        assert aufgerufen == []
+
+
 class TestUploadGrenzen:
     """Die App darf das Dateisystem des Servers nicht vollschreiben können."""
 

@@ -951,13 +951,22 @@ Release), bleibt es beim manuellen Fotografieren — siehe `backend/cover.py`,
 
 Das ist kein Rate-Limit und kein Hinweis auf zu viele Anfragen: Die Cover Art
 Archive (`coverartarchive.org`, gehostet über archive.org) antwortet
-gelegentlich mit einem transienten `500`, und beets' `fetchart`-Plugin hat für
+gelegentlich mit einem transienten `5xx`, und beets' `fetchart`-Plugin hat für
 genau diese Quelle **keine** eingebaute Wiederholung — anders als das
 `musicbrainz`-Plugin, das für seine eigenen Anfragen automatisch erneut
 versucht. Ein einzelner Fehlschlag bedeutet also dauerhaft kein Cover für
-dieses Album, obwohl MusicBrainz eins hat. Nachtragen geht über die
-Album-Seite (siehe „Cover abfotografieren" oben) — ein erneuter, kompletter
-Import ist dafür nicht nötig.
+dieses Album, obwohl MusicBrainz eins hat.
+
+Deshalb ruft `/import/{session_id}` nach einem erfolgreichen Import mit
+MusicBrainz-Release-ID zusätzlich `albums.retry_missing_cover()` auf: fehlt
+das Cover, versucht es bis zu dreimal erneut mit ein paar Sekunden Abstand
+(`beet fetchart id:<Album>`), bevor es aufgibt. Das kostet nur im
+Fehlerfall Zeit — hat das Cover schon beim ersten Versuch geklappt (der
+Normalfall), passiert nichts weiter außer einer einzelnen `beet
+list`-Abfrage, um das nachzuprüfen. Reichen auch die Wiederholungen nicht,
+bleibt am Ende immer noch: von Hand nachtragen über die Album-Seite (siehe
+„Cover abfotografieren" oben) — ein erneuter, kompletter Import ist dafür
+nicht nötig.
 
 ## Wie der Import abläuft
 

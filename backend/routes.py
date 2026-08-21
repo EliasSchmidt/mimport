@@ -1808,12 +1808,18 @@ async def manual(
 def _import_fragment(request: Request, job: importer.ImportJob) -> HTMLResponse:
     """Aktueller Stand eines Hintergrund-Imports -- läuft er noch oder ist er fertig."""
     if job.fertig:
-        assert job.result is not None
+        # job.result sollte nie None sein, wenn fertig gesetzt ist (siehe
+        # importer.start_job) -- aber ein 500 wäre hier die schlechteste
+        # aller Reaktionen, deshalb lieber ein sichtbarer Fehler als ein
+        # AssertionError.
+        result = job.result or importer.ImportResult(
+            error="Import-Auftrag ohne Ergebnis abgeschlossen -- bitte erneut versuchen."
+        )
         return _fragment(
             request,
             "_import.html",
             session_id=job.session_id,
-            result=job.result,
+            result=result,
         )
     return _fragment(request, "_import_laeuft.html", job=job)
 

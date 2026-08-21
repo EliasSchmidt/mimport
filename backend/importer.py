@@ -246,8 +246,8 @@ def start_job(
 
     Wirft nichts: Ein Absturz im Hintergrundthread bliebe sonst unbemerkt und
     der Auftrag stünde für immer auf "läuft" -- genau die Falle, die einst
-    beim m4b-Bau schon mal zuschlug (siehe README, "Wenn ffmpeg hängen
-    bleibt"). Der Fehler landet stattdessen sichtbar im Ergebnis.
+    beim m4b-Bau schon mal zuschlug (siehe CLAUDE.md, Abschnitt
+    "Hörbuch-m4b-Bau"). Der Fehler landet stattdessen sichtbar im Ergebnis.
     """
     job = ImportJob(session_id=session_id)
     with _jobs_lock:

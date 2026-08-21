@@ -68,3 +68,80 @@ class TestSpeichern:
         assert cover.vorhanden(tmp_path) is False
         cover.speichern(tmp_path, JPEG)
         assert cover.vorhanden(tmp_path) is True
+
+
+class TestVonUrlHolen:
+    """Für Discogs-Kandidaten: kein automatischer fetchart-Weg wie bei
+    MusicBrainz, siehe das Docstring von ``von_url_holen``."""
+
+    def test_landet_als_cover_jpg(self, tmp_path, monkeypatch):
+        class FakeResponse:
+            content = JPEG
+
+            def raise_for_status(self) -> None:
+                pass
+
+        monkeypatch.setattr(
+            cover.requests, "get", lambda url, **kw: FakeResponse()
+        )
+        ziel = cover.von_url_holen(tmp_path, "https://example.invalid/cover.jpg")
+        assert ziel is not None
+        assert ziel.name == "cover.jpg"
+        assert ziel.read_bytes() == JPEG
+
+    def test_netzfehler_liefert_none_statt_zu_werfen(self, tmp_path, monkeypatch):
+        def wirft(url, **kw):
+            raise cover.requests.RequestException("kein Netz")
+
+        monkeypatch.setattr(cover.requests, "get", wirft)
+        assert cover.von_url_holen(tmp_path, "https://example.invalid/cover.jpg") is None
+        assert not cover.vorhanden(tmp_path)
+
+    def test_http_fehlerstatus_liefert_none(self, tmp_path, monkeypatch):
+        class FakeResponse:
+            content = JPEG
+
+            def raise_for_status(self) -> None:
+                raise cover.requests.HTTPError("500")
+
+        monkeypatch.setattr(
+            cover.requests, "get", lambda url, **kw: FakeResponse()
+        )
+        assert cover.von_url_holen(tmp_path, "https://example.invalid/cover.jpg") is None
+        assert not cover.vorhanden(tmp_path)
+
+    def test_unbrauchbarer_inhalt_liefert_none(self, tmp_path, monkeypatch):
+        """Ein Discogs-Link kann auch mal auf ein PDF oder eine HTML-Fehlerseite
+        zeigen -- dieselbe Formaterkennung wie beim fotografierten Cover."""
+        class FakeResponse:
+            content = b"<html>nicht gefunden</html>"
+
+            def raise_for_status(self) -> None:
+                pass
+
+        monkeypatch.setattr(
+            cover.requests, "get", lambda url, **kw: FakeResponse()
+        )
+        assert cover.von_url_holen(tmp_path, "https://example.invalid/cover.jpg") is None
+        assert not cover.vorhanden(tmp_path)
+
+    def test_vorhandenes_foto_wuerde_ueberschrieben_wenn_aufgerufen(
+        self, tmp_path, monkeypatch
+    ):
+        """von_url_holen() selbst prüft das nicht -- das Nicht-Überschreiben
+        eines fotografierten Covers ist Sache des Aufrufers (routes.choose()),
+        nicht dieser Funktion. Dokumentiert das bewusst als Vertrag."""
+        cover.speichern(tmp_path, JPEG)
+        neu = b"\xff\xd8\xff\xe0" + b"neu" * 50
+
+        class FakeResponse:
+            content = neu
+
+            def raise_for_status(self) -> None:
+                pass
+
+        monkeypatch.setattr(
+            cover.requests, "get", lambda url, **kw: FakeResponse()
+        )
+        cover.von_url_holen(tmp_path, "https://example.invalid/cover.jpg")
+        assert (tmp_path / cover.COVER_DATEI).read_bytes() == neu

@@ -12,7 +12,7 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
-from backend import beets_env, matching, sessions
+from backend import beets_env, cover, matching, sessions
 from backend.main import app
 from tests.flacfixture import write_album, write_flac
 
@@ -42,7 +42,14 @@ def album_session(tmp_path):
     return session
 
 
-def _fake_match(*, missing: int = 0, unmatched_paths: list | None = None):
+def _fake_match(
+    *,
+    missing: int = 0,
+    unmatched_paths: list | None = None,
+    data_source: str = "MusicBrainz",
+    album_id: str = "964e8152-d86d-4b88-9b79-2f561db6c124",
+    cover_art_url: str | None = None,
+):
     """Baut einen ``AlbumMatch`` über echte Dateien der Session."""
     from beets.autotag import AlbumInfo, Distance, TrackInfo
 
@@ -57,7 +64,7 @@ def _fake_match(*, missing: int = 0, unmatched_paths: list | None = None):
     ]
     info = AlbumInfo(
         album="Abbey Road",
-        album_id="964e8152-d86d-4b88-9b79-2f561db6c124",
+        album_id=album_id,
         artist="The Beatles",
         artist_id="b10bbbfc-cf9e-42e0-be17-e2c3e1d2600d",
         tracks=tracks + extra_tracks,
@@ -67,18 +74,32 @@ def _fake_match(*, missing: int = 0, unmatched_paths: list | None = None):
         catalognum="PCS 7088",
         media="CD",
         mediums=1,
-        data_source="MusicBrainz",
+        data_source=data_source,
     )
+    if cover_art_url:
+        info.cover_art_url = cover_art_url
     distance = Distance()
     if missing:
         distance.add("missing_tracks", 0.6)
     return info, tracks, extra_tracks, distance
 
 
-def _album_match_for(paths, *, missing: int = 0):
+def _album_match_for(
+    paths,
+    *,
+    missing: int = 0,
+    data_source: str = "MusicBrainz",
+    album_id: str = "964e8152-d86d-4b88-9b79-2f561db6c124",
+    cover_art_url: str | None = None,
+):
     from beets.autotag import AlbumMatch
 
-    info, tracks, extra_tracks, distance = _fake_match(missing=missing)
+    info, tracks, extra_tracks, distance = _fake_match(
+        missing=missing,
+        data_source=data_source,
+        album_id=album_id,
+        cover_art_url=cover_art_url,
+    )
     items = matching.load_items(paths)
     return AlbumMatch(
         distance=distance,
@@ -251,6 +272,70 @@ class TestUebernehmenUndImport:
         assert mediafile.MediaFile(erste).mb_albumid == (
             "964e8152-d86d-4b88-9b79-2f561db6c124"
         )
+
+    def test_discogs_kandidat_laedt_sein_cover_selbst(
+        self, client, album_session, monkeypatch
+    ):
+        """Discogs hat keine automatische fetchart-Quelle wie MusicBrainz --
+        mimport muss das Cover deshalb selbst herunterladen, siehe
+        backend.cover.von_url_holen()."""
+        match = _album_match_for(
+            album_session.audio_paths,
+            data_source="Discogs",
+            album_id="249504",
+            cover_art_url="https://example.invalid/cover.jpg",
+        )
+        monkeypatch.setattr(
+            matching, "find_candidate_by_id", lambda paths, album_id, **kw: match
+        )
+
+        gerufen_mit = {}
+
+        class FakeResponse:
+            content = b"\xff\xd8\xff\xe0" + b"echtes bild" * 20
+
+            def raise_for_status(self) -> None:
+                pass
+
+        def fake_get(url, **kwargs):
+            gerufen_mit["url"] = url
+            return FakeResponse()
+
+        monkeypatch.setattr(cover.requests, "get", fake_get)
+
+        response = client.post(
+            f"/choose/{album_session.session_id}",
+            data={"album_id": "249504"},
+        )
+        assert response.status_code == 200
+        assert gerufen_mit["url"] == "https://example.invalid/cover.jpg"
+        assert cover.vorhanden(album_session.directory)
+        assert (
+            album_session.directory / cover.COVER_DATEI
+        ).read_bytes() == FakeResponse.content
+
+    def test_musicbrainz_kandidat_ohne_cover_art_url_laedt_nichts_herunter(
+        self, client, album_session, monkeypatch
+    ):
+        """Der Download ist Discogs-spezifisch (kein cover_art_url-Feld bei
+        MusicBrainz) -- ein fehlender Aufruf hier zeigt, dass die
+        MusicBrainz-eigene fetchart-Quelle unangetastet bleibt."""
+        match = _album_match_for(album_session.audio_paths)
+        monkeypatch.setattr(
+            matching, "find_candidate_by_id", lambda paths, album_id, **kw: match
+        )
+
+        def fail(*a, **kw):
+            raise AssertionError("kein Cover-Download ohne cover_art_url erwartet")
+
+        monkeypatch.setattr(cover.requests, "get", fail)
+
+        response = client.post(
+            f"/choose/{album_session.session_id}",
+            data={"album_id": "964e8152-d86d-4b88-9b79-2f561db6c124"},
+        )
+        assert response.status_code == 200
+        assert not cover.vorhanden(album_session.directory)
 
     def test_handgesetzte_tags_landen_in_den_dateien(self, client, album_session):
         response = client.post(

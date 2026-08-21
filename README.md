@@ -927,6 +927,47 @@ MusicBrainz bewusst auf dem eingebauten Standardwert bleibt statt auf einen
 eigens auf 0 gesetzten Wert, der Treffer hätte künstlich aufwerten können).
 Das ist eine Eigenheit von beets selbst, keine mimport-Besonderheit.
 
+### Warum Discogs sein Cover selbst mitbringt
+
+Ein MusicBrainz-Kandidat bekommt sein Cover automatisch beim späteren
+`beet import -A` — fetchart fragt dort mit der übernommenen Release-ID die
+Cover Art Archive ab (siehe `fetch_for_asis` weiter oben). Für Discogs gibt es
+diesen Weg nicht: Die Release-ID allein reicht dort nicht, das Bild kommt aus
+dem Suchergebnis selbst (`AlbumInfo.cover_art_url`) — und dieses Feld ist kein
+einbettbarer Tag. mimport trennt Tag-Schreiben und den `beet import -A`-Lauf
+aber bewusst in zwei Prozesse (siehe "Wie der Import abläuft" unten); dazwischen
+wäre das Feld verloren.
+
+Deshalb lädt mimport das Bild bei einem Discogs-Match direkt beim Übernehmen
+des Kandidaten selbst herunter und legt es als `cover.jpg` in die Session —
+genau dort, wo auch ein abfotografiertes Cover landet. Die ganz normale
+`filesystem`-Quelle von fetchart übernimmt es dann beim Import, ohne eigene
+Anbindung. Ein bereits abfotografiertes Cover geht immer vor und wird nicht
+überschrieben; schlägt der Download fehl (Netzausfall, kein Bild bei diesem
+Release), bleibt es beim manuellen Fotografieren — siehe `backend/cover.py`,
+`von_url_holen()`.
+
+### Wenn bei MusicBrainz mal kein Cover ankommt
+
+Das ist kein Rate-Limit und kein Hinweis auf zu viele Anfragen: Die Cover Art
+Archive (`coverartarchive.org`, gehostet über archive.org) antwortet
+gelegentlich mit einem transienten `5xx`, und beets' `fetchart`-Plugin hat für
+genau diese Quelle **keine** eingebaute Wiederholung — anders als das
+`musicbrainz`-Plugin, das für seine eigenen Anfragen automatisch erneut
+versucht. Ein einzelner Fehlschlag bedeutet also dauerhaft kein Cover für
+dieses Album, obwohl MusicBrainz eins hat.
+
+Deshalb ruft `/import/{session_id}` nach einem erfolgreichen Import mit
+MusicBrainz-Release-ID zusätzlich `albums.retry_missing_cover()` auf: fehlt
+das Cover, versucht es bis zu dreimal erneut mit ein paar Sekunden Abstand
+(`beet fetchart id:<Album>`), bevor es aufgibt. Das kostet nur im
+Fehlerfall Zeit — hat das Cover schon beim ersten Versuch geklappt (der
+Normalfall), passiert nichts weiter außer einer einzelnen `beet
+list`-Abfrage, um das nachzuprüfen. Reichen auch die Wiederholungen nicht,
+bleibt am Ende immer noch: von Hand nachtragen über die Album-Seite (siehe
+„Cover abfotografieren" oben) — ein erneuter, kompletter Import ist dafür
+nicht nötig.
+
 ## Wie der Import abläuft
 
 Der Punkt, an dem es leicht schiefgeht, und warum es hier so gelöst ist:

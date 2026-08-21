@@ -8,12 +8,12 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}mimport{% endblock %}</title>
-    <link rel="stylesheet" href="/static/app.css">
+    <link rel="stylesheet" href="/static/app.css?v={{ asset_version }}">
     <script src="/static/htmx.min.js" defer></script>
     <script src="/static/htmx-sse.js" defer></script>
-    <script src="/static/index.js" defer></script>
-    <script src="/static/notify.js" defer></script>
-    <script src="/static/cover.js" defer></script>
+    <script src="/static/index.js?v={{ asset_version }}" defer></script>
+    <script src="/static/notify.js?v={{ asset_version }}" defer></script>
+    <script src="/static/cover.js?v={{ asset_version }}" defer></script>
 </head>
 <body>
 <header class="page-head">

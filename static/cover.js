@@ -468,8 +468,12 @@ document.addEventListener("DOMContentLoaded", () => {
   d.querySelector(".cover-uebernehmen").addEventListener("click", () => uebernehmen());
   d.querySelector(".cover-ganzes-bild").addEventListener("click", ganzesBildUebernehmen);
   d.querySelector(".cover-abbrechen").addEventListener("click", schliessen);
-  d.querySelector(".cover-neu").addEventListener("click", () =>
-    d.querySelector("input[type=file]").click()
+  // Zwei Buttons tragen die Klasse "cover-neu" (Schritt 1 "Foto aufnehmen"
+  // und Schritt 2 "Neues Foto") -- querySelector träfe nur den ersten.
+  d.querySelectorAll(".cover-neu").forEach((knopf) =>
+    knopf.addEventListener("click", () =>
+      d.querySelector("input[type=file]").click()
+    )
   );
 });
 

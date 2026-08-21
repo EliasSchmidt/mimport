@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
 from fastapi.templating import Jinja2Templates
@@ -9,6 +10,13 @@ from fastapi.templating import Jinja2Templates
 TEMPLATE_DIR = Path(__file__).resolve().parent.parent / "templates"
 
 templates = Jinja2Templates(directory=str(TEMPLATE_DIR))
+
+#: Cache-Buster für /static/*.js und .css: Anders als Cover-Bilder (die ihr
+#: eigenes ?v= tragen) hatten die <script>-Tags keinen -- ein Deploy landete
+#: dadurch erst nach hartem Neuladen wirklich im Browser. Der Prozessstart
+#: reicht als Version, weil ein Deploy hier immer den Container neu startet.
+ASSET_VERSION = str(int(time.time()))
+templates.env.globals["asset_version"] = ASSET_VERSION
 
 
 def human_bytes(value: float | None) -> str:

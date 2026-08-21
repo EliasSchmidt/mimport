@@ -52,6 +52,15 @@ PENALTY_LABELS: dict[str, str] = {
     "year": "Jahr weicht ab",
 }
 
+#: Release-URL je Datenquelle, für den Link auf der Kandidatenkarte. Der
+#: Schlüssel ist ``data_source.lower()`` -- beets liefert "MusicBrainz" bzw.
+#: "Discogs" (aus dem Klassennamen ohne "Plugin" abgeleitet), nicht die
+#: Kleinschreibung des Plugin-Namens.
+_RELEASE_URL_TEMPLATES: dict[str, str] = {
+    "musicbrainz": "https://musicbrainz.org/release/{album_id}",
+    "discogs": "https://www.discogs.com/release/{album_id}",
+}
+
 #: MusicBrainz-Release-ID: 8-4-4-4-12 Hexzeichen.
 _MBID_RE = re.compile(
     r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", re.IGNORECASE
@@ -208,8 +217,10 @@ def serialize_candidate(match: Any, index: int) -> Candidate:
 
     album_id = str(info.album_id or "")
     url = ""
-    if album_id and (info.data_source or "").lower() == "musicbrainz":
-        url = f"https://musicbrainz.org/release/{album_id}"
+    if album_id:
+        template = _RELEASE_URL_TEMPLATES.get((info.data_source or "").lower())
+        if template:
+            url = template.format(album_id=album_id)
 
     return Candidate(
         index=index,

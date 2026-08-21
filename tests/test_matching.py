@@ -49,7 +49,14 @@ class TestExtractMbid:
         assert matching.extract_mbid(raw) is None
 
 
-def _album_match(*, missing: int = 0, unmatched: int = 0, penalty: float = 0.0):
+def _album_match(
+    *,
+    missing: int = 0,
+    unmatched: int = 0,
+    penalty: float = 0.0,
+    data_source: str = "MusicBrainz",
+    album_id: str = "964e8152-d86d-4b88-9b79-2f561db6c124",
+):
     """Baut einen echten ``AlbumMatch`` mit einstellbaren Lücken."""
     from beets.autotag import AlbumInfo, AlbumMatch, Distance, TrackInfo
     from beets.library import Item
@@ -65,7 +72,7 @@ def _album_match(*, missing: int = 0, unmatched: int = 0, penalty: float = 0.0):
 
     info = AlbumInfo(
         album="Abbey Road",
-        album_id="964e8152-d86d-4b88-9b79-2f561db6c124",
+        album_id=album_id,
         artist="The Beatles",
         artist_id="a1",
         tracks=tracks + extra_tracks,
@@ -74,7 +81,7 @@ def _album_match(*, missing: int = 0, unmatched: int = 0, penalty: float = 0.0):
         label="Apple Records",
         media="CD",
         mediums=1,
-        data_source="MusicBrainz",
+        data_source=data_source,
     )
 
     items = [
@@ -270,7 +277,21 @@ class TestSerializeCandidate:
 
     def test_musicbrainz_link_wird_gebaut(self):
         candidate = matching.serialize_candidate(_album_match(), 0)
-        assert candidate.url.endswith("964e8152-d86d-4b88-9b79-2f561db6c124")
+        assert candidate.url == (
+            "https://musicbrainz.org/release/964e8152-d86d-4b88-9b79-2f561db6c124"
+        )
+
+    def test_discogs_link_wird_gebaut(self):
+        candidate = matching.serialize_candidate(
+            _album_match(data_source="Discogs", album_id="249504"), 0
+        )
+        assert candidate.url == "https://www.discogs.com/release/249504"
+
+    def test_unbekannte_quelle_bekommt_keinen_link(self):
+        candidate = matching.serialize_candidate(
+            _album_match(data_source="Beatport", album_id="123"), 0
+        )
+        assert candidate.url == ""
 
     def test_gegenueberstellung_zeigt_aenderungen(self):
         candidate = matching.serialize_candidate(_album_match(), 0)

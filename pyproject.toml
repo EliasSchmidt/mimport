@@ -11,7 +11,12 @@ dependencies = [
     # migrieren das Schema der library.db gegeneinander.
     # Das Extra 'lastgenre' zieht pylast nach, ohne das ist das gleichnamige
     # Plugin nicht ladbar. fetchart und embedart brauchen nichts Zusätzliches.
-    "beets[lastgenre]>=2.13.1,<3",
+    # 'discogs' zieht python3-discogs-client (reine Python-Bibliothek, keine
+    # Binärabhängigkeit wie fpcalc bei chroma) -- steht hier, damit das Plugin
+    # per MIMPORT_DISCOGS_TOKEN sofort aktivierbar ist, siehe
+    # beets/config.yaml. Ohne Token bleibt es ungeladen und kostet nichts
+    # außer dem einen zusätzlichen Paket im Image.
+    "beets[lastgenre,discogs]>=2.13.1,<3",
     "fastapi[standard]>=0.141.1",
     # Für die DiscID-Abfrage bei MusicBrainz. Kommt ohnehin mit beets, wird
     # hier aber direkt benutzt und deshalb auch direkt genannt.

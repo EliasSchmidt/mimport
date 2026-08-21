@@ -38,6 +38,17 @@ plugins:
   # - lyrics        # Liedtexte
   # - replaygain    # Lautheit angleichen (braucht ffmpeg im Container)
   # - chroma        # AcoustID-Fingerprints (braucht fpcalc, siehe README)
+  #
+  # 'discogs' steht bewusst NICHT hier: backend/beets_env.py trägt es zur
+  # Laufzeit selbst ein, aber nur wenn MIMPORT_DISCOGS_TOKEN gesetzt ist.
+  # Ohne Token fragt das Plugin beim Laden interaktiv nach einem OAuth-Code
+  # (beets.ui.input_) -- in einem Prozess ohne Terminal ein Absturz oder ein
+  # für immer hängender Request, und das bei jedem Request, nicht nur bei
+  # Discogs-Suchen. Aktivieren: auf discogs.com unter Einstellungen ->
+  # Entwickler einen persönlichen Zugriffstoken erzeugen und ihn dem
+  # Container als MIMPORT_DISCOGS_TOKEN übergeben (z. B. über eine lokale,
+  # nicht versionierte .env-Datei neben docker-compose.yml) -- niemals hier
+  # eintragen, diese Datei wird ins Image gebacken und liegt im Git-Repo.
 
 # Benennungsschema der Zielstruktur.
 paths:
@@ -128,3 +139,19 @@ fetchart:
   sources:
     - filesystem
     - coverart
+
+# Discogs als zweite, sekundäre Metadatenquelle -- greift nur, wenn
+# backend/beets_env.py das Plugin überhaupt aktiviert (siehe der Kommentar
+# oben bei 'plugins'). Dieser Block ist trotzdem immer hier, weil der Wert
+# kein Geheimnis ist und beim Aktivieren nicht vergessen werden soll.
+#
+# 'data_source_mismatch_penalty' ist der Abzug, den ein Discogs-Kandidat
+# gegenüber einem sonst gleichwertigen MusicBrainz-Kandidaten bekommt --
+# 1.0 ist das Maximum, das beets zulässt. MusicBrainz bleibt bewusst
+# unangetastet beim eingebauten Standardwert (0.5): ein eigener Wert von 0
+# würde MusicBrainz-Treffer künstlich aufwerten, sobald zwei Quellen aktiv
+# sind (beets rechnet die Datenquelle dann grundsätzlich mit ein, auch ohne
+# Abzug) -- und ein zu Unrecht aufgewerteter Treffer ist die gefährlichere
+# Richtung als ein zu vorsichtig eingestufter.
+discogs:
+  data_source_mismatch_penalty: 1.0

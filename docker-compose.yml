@@ -61,6 +61,14 @@ services:
       MIMPORT_MAX_STAGING_BYTES: "21474836480"
       MIMPORT_SESSION_TTL_HOURS: "24"
 
+      # Discogs als zweite, sekundäre Metadatenquelle -- ohne Token bleibt
+      # sie schlicht aus (siehe backend/config.py, backend/beets_env.py).
+      # Der Token gehört NICHT in diese Datei (sie liegt im Git-Repo),
+      # sondern in eine lokale, nicht versionierte '.env' neben dieser Datei
+      # -- docker compose liest sie automatisch. Erzeugen unter
+      # discogs.com -> Einstellungen -> Entwickler -> "Generate new token".
+      MIMPORT_DISCOGS_TOKEN: ${MIMPORT_DISCOGS_TOKEN:-}
+
       # OCR-Modelle einmalig laden und im Daten-Volume behalten. RapidOCR läuft
       # auf CPU deutlich sparsamer als der Paddle-Stack; die Bildkante wird vor
       # der Inferenz begrenzt, um RAM-Spitzen zu drücken.

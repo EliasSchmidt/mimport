@@ -26,8 +26,23 @@ from backend.artist_ids import USER_AGENT
 
 log = logging.getLogger(__name__)
 
-#: Der Name, unter dem beets und Audiobookshelf ein Cover erwarten.
+#: Der Name, unter dem beets und Audiobookshelf ein Cover erwarten -- und
+#: unter dem mimport selbst jedes Cover ablegt, das es schreibt (siehe
+#: speichern()).
 COVER_DATEI = "cover.jpg"
+
+#: Erweiterungen, unter denen im Album-Ordner ein Cover liegen kann,
+#: absteigend nach Vorrang. 'jpg' zuerst: das ist der Name, den mimport selbst
+#: vergibt (abfotografiertes Cover, per URL geholtes Discogs-Bild) -- ein
+#: frisches Foto soll immer vor einem älteren, von fetchart heruntergeladenen
+#: Bild gewinnen. Die übrigen sind die Formate, die beets' fetchart-Plugin je
+#: nach Content-Type der Quelle selbst wählt (``Album.art_destination``
+#: übernimmt die Erweiterung der heruntergeladenen Datei) -- bei der Cover Art
+#: Archive ist PNG keine Seltenheit. Ohne diese Liste prüfte mimport
+#: ausschließlich auf 'cover.jpg' und hielt ein von fetchart erfolgreich
+#: geladenes PNG-Cover für nicht vorhanden, obwohl es im Ordner lag (Navidrome
+#: fand es trotzdem, weil es nicht auf einen festen Dateinamen besteht).
+_ERWEITERUNGEN = ("jpg", "jpeg", "png", "webp")
 
 #: Obergrenze für ein einzelnes Bild. Ein entzerrtes Cover liegt bei ein paar
 #: hundert Kilobyte; alles darüber ist kein Cover mehr.
@@ -90,8 +105,47 @@ def speichern(ordner: Path, daten: bytes) -> Path:
     return ziel
 
 
+def andere_erweiterungen_entfernen(ordner: Path) -> None:
+    """Räumt ein älteres Cover unter anderer Erweiterung weg, nachdem
+    ``cover.jpg`` gerade neu geschrieben wurde.
+
+    Bewusst NICHT Teil von ``speichern()`` selbst: das speichert auch in die
+    Upload-Session (und über ``von_url_holen`` einen Discogs-Kandidaten),
+    beides Orte, an denen niemals ein ``cover.png`` von fetchart liegt und ein
+    unbedingtes Aufräumen dort ein unerwarteter Seiteneffekt eines
+    "speichern"-Aufrufs wäre. Sinn ergibt das Aufräumen nur beim Ersetzen des
+    Covers eines *schon importierten* Albums (siehe
+    ``routes.update_album_cover``) -- dort läge sonst neben dem neuen Foto ein
+    verwaistes ``cover.png`` von fetchart, und welches der beiden Bilder ein
+    Player dann anzeigt, ist Zufall. Best effort: ein einzelnes
+    Aufräumproblem soll das eigentliche Speichern des neuen Covers nicht zu
+    Fall bringen.
+    """
+    for ext in _ERWEITERUNGEN:
+        if ext == "jpg":
+            continue
+        pfad = ordner / f"cover.{ext}"
+        if pfad.is_file():
+            try:
+                pfad.unlink()
+            except OSError as exc:
+                log.warning("Altes Cover %s ließ sich nicht entfernen: %s", pfad, exc)
+
+
+def gefunden(ordner: Path) -> Path | None:
+    """Das Cover im Ordner, unabhängig davon, welche Erweiterung es trägt.
+
+    Siehe ``_ERWEITERUNGEN`` für die Reihenfolge und die Begründung.
+    """
+    for ext in _ERWEITERUNGEN:
+        kandidat = ordner / f"cover.{ext}"
+        if kandidat.is_file():
+            return kandidat
+    return None
+
+
 def vorhanden(ordner: Path) -> bool:
-    return (ordner / COVER_DATEI).is_file()
+    return gefunden(ordner) is not None
 
 
 def von_url_holen(ordner: Path, url: str, *, timeout: float = 10.0) -> Path | None:

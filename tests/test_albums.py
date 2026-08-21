@@ -256,7 +256,10 @@ class TestRetryMissingCover:
 
         assert albums.retry_missing_cover("mbid-123") is True
         assert len(aufrufe) == 1
-        assert aufrufe[0][1] == "fetchart"
+        # '-v' ist bei beets eine globale Option und muss vor dem Subcommand
+        # stehen -- erst damit protokolliert fetchart Quelle und Fehlergrund.
+        assert aufrufe[0][1] == "-v"
+        assert aufrufe[0][2] == "fetchart"
         # 'id:', nicht 'album_id:' -- Letzteres wäre bei mehreren Alben eine
         # Substring-Suche und träfe auch fremde Alben (z. B. 17, 27, ...).
         assert aufrufe[0][-1] == "id:7"
@@ -350,9 +353,24 @@ class TestRetryMissingCover:
 
 
 class TestAlbumProperties:
-    def test_cover_path_ist_cover_jpg_im_ordner(self, tmp_path):
+    def test_cover_path_ohne_datei_ist_none(self, tmp_path):
+        album = albums.Album(id=1, albumartist="X", album="Y", year="2020", path=tmp_path)
+        assert album.cover_path is None
+
+    def test_cover_path_findet_cover_jpg_im_ordner(self, tmp_path):
+        (tmp_path / "cover.jpg").write_bytes(b"x")
         album = albums.Album(id=1, albumartist="X", album="Y", year="2020", path=tmp_path)
         assert album.cover_path == tmp_path / "cover.jpg"
+
+    def test_cover_path_findet_auch_von_fetchart_heruntergeladenes_png(self, tmp_path):
+        # fetchart benennt das heruntergeladene Cover nach dem Content-Type
+        # der Quelle, nicht immer 'cover.jpg' -- die Cover Art Archive liefert
+        # oft PNG. Ohne Erkennung dafür hielt mimport ein erfolgreich
+        # geladenes Cover für nicht vorhanden.
+        (tmp_path / "cover.png").write_bytes(b"x")
+        album = albums.Album(id=1, albumartist="X", album="Y", year="2020", path=tmp_path)
+        assert album.cover_path == tmp_path / "cover.png"
+        assert album.has_cover
 
     def test_has_cover_ohne_datei(self, tmp_path):
         album = albums.Album(id=1, albumartist="X", album="Y", year="2020", path=tmp_path)

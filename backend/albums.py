@@ -8,9 +8,12 @@ angefasst: dieselbe Begründung wie in ``backend.importer`` -- ein zweiter,
 eigener Zugriff auf dieselbe ``library.db`` wäre eine zweite Möglichkeit,
 Schema oder Sperren gegeneinander laufen zu lassen.
 
-Das Cover selbst landet wie überall in mimport als ``cover.jpg`` im Ordner
-(``backend.cover``). Für ein *neu* importiertes Album reicht das: beets holt
-es beim nächsten Import über ``fetchart``. Für ein *schon* importiertes Album
+Ein von mimport selbst geschriebenes Cover landet als ``cover.jpg`` im Ordner
+(``backend.cover``); ein von fetchart heruntergeladenes kann je nach
+Content-Type der Quelle auch ``cover.png`` oder ``cover.webp`` heißen --
+``cover.gefunden()`` findet beide. Für ein *neu* importiertes Album reicht
+das: beets holt es beim nächsten Import über ``fetchart``. Für ein *schon*
+importiertes Album
 gibt es diesen Automatismus nicht mehr -- die Datei im Ordner ändert sich,
 aber die schon vorhandenen Audiodateien tragen ihr altes Cover noch in den
 eigenen Tags. Deshalb bettet ``update_cover`` es zusätzlich explizit über
@@ -151,18 +154,26 @@ class Album:
         return self.year if self.year and self.year != "0000" else ""
 
     @property
-    def cover_path(self) -> Path:
-        return self.path / cover.COVER_DATEI
+    def cover_path(self) -> Path | None:
+        """Das Cover im Album-Ordner, unabhängig von seiner Erweiterung.
+
+        ``None``, wenn keins da ist -- fetchart legt ein heruntergeladenes
+        Cover nicht zwingend als ``cover.jpg`` ab, siehe ``backend.cover``.
+        """
+        return cover.gefunden(self.path)
 
     @property
     def has_cover(self) -> bool:
-        return cover.vorhanden(self.path)
+        return self.cover_path is not None
 
     @property
     def cover_version(self) -> str:
         """Änderungszeit des Covers, fürs Cache-Busting in der Bild-URL."""
+        pfad = self.cover_path
+        if pfad is None:
+            return ""
         try:
-            return str(int(self.cover_path.stat().st_mtime_ns))
+            return str(int(pfad.stat().st_mtime_ns))
         except OSError:
             return ""
 
@@ -438,7 +449,24 @@ def retry_missing_cover(
                 # (siehe get_album()) und beim 'fetchart'-Kommando eine
                 # Substring-Suche: 'album_id:1' träfe auch die Alben 10, 11,
                 # 21, .... Empirisch geprüft an einer Library mit elf Alben.
-                proc = _lauf(["fetchart", f"id:{album.id}"], timeout=60)
+                # '-v' ist bei beets eine globale Option und muss vor dem
+                # Subcommand stehen -- erst damit nennt fetchart die versuchte
+                # Quelle und den genauen Fehler (HTTP-Code, "no art found",
+                # ...) statt nur schweigend nichts zu tun.
+                proc = _lauf(["-v", "fetchart", f"id:{album.id}"], timeout=60)
+            ausgabe = (proc.stdout.strip() + "\n" + proc.stderr.strip()).strip() or "(keine Ausgabe)"
+            # WARNING zusätzlich zur INFO-Zeile bei einem Rückgabewert != 0:
+            # sonst geht ein echter fetchart-Fehler im INFO-Rauschen der
+            # übrigen (meist folgenlosen) Versuche unter.
+            pegel = log.warning if proc.returncode != 0 else log.info
+            pegel(
+                "fetchart-Wiederholung %d/%d für Album %d (Rückgabewert %d): %s",
+                versuch + 1,
+                attempts,
+                album.id,
+                proc.returncode,
+                ausgabe,
+            )
         except AlbumError as exc:
             # _lauf() wirft z. B. bei einem hängenden Subprozess (60s-Timeout)
             # oder einem plötzlich verschwundenen beet-Binary. Ein Bestcase-
@@ -454,14 +482,6 @@ def retry_missing_cover(
                 exc,
             )
             continue
-        if proc.returncode != 0:
-            log.warning(
-                "fetchart-Wiederholung %d/%d für Album %d fehlgeschlagen: %s",
-                versuch + 1,
-                attempts,
-                album.id,
-                proc.stderr.strip(),
-            )
         if cover.vorhanden(album.path):
             log.info(
                 "Cover für Album %d nach %d Wiederholung(en) doch noch geladen",

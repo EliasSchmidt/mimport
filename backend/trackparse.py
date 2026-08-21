@@ -140,6 +140,40 @@ def _gruppenwerte(gruppe: list[str], felder: tuple[Feld, ...]) -> dict[str, str]
     return {"title": gruppe[0].strip()}
 
 
+def _tracknummer_und_dauer(
+    gruppe: list[str], *, tracknummer: bool, dauer: bool
+) -> tuple[str, str, list[str]]:
+    """Sucht Tracknummer und Dauer in den Zeilen einer Gruppe.
+
+    Bei "jedes Feld in eigener Zeile" steht die Titel-Zeile nicht zwingend an
+    erster Stelle -- die Reihenfolge der Felder ist frei wählbar (siehe
+    ``ParseFlags.felder``). Beide Angaben werden deshalb in jeder Zeile der
+    Gruppe gesucht, statt blind die erste zu nehmen, und aus der ersten Zeile
+    entfernt, in der sie gefunden werden. Bei einer einzeiligen Gruppe (kein
+    ``zeilenweise``) bleibt das Verhalten unverändert: dort gibt es nur diese
+    eine Zeile zu prüfen.
+    """
+    rest = list(gruppe)
+
+    number = ""
+    if tracknummer:
+        for i, zeile in enumerate(rest):
+            gefunden, uebrig = _strip_track_prefix(zeile)
+            if gefunden:
+                number, rest[i] = gefunden, uebrig
+                break
+
+    duration = ""
+    if dauer:
+        for i, zeile in enumerate(rest):
+            uebrig, gefunden = _extract_duration(zeile)
+            if gefunden:
+                duration, rest[i] = gefunden, uebrig
+                break
+
+    return number, duration, rest
+
+
 def parse_text(text: str, flags: ParseFlags) -> list[ParsedTrack]:
     """Wendet die gewählten Schalter auf OCR-Rohtext an."""
     felder = flags.felder or ("titel",)
@@ -149,19 +183,14 @@ def parse_text(text: str, flags: ParseFlags) -> list[ParsedTrack]:
 
     result: list[ParsedTrack] = []
     for gruppe in gruppen:
-        kopf = gruppe[0]
-        duration = ""
-        if flags.dauer:
-            kopf, duration = _extract_duration(kopf)
-
-        number = ""
-        if flags.tracknummer:
-            number, kopf = _strip_track_prefix(kopf)
+        number, duration, rest = _tracknummer_und_dauer(
+            gruppe, tracknummer=flags.tracknummer, dauer=flags.dauer
+        )
 
         if zeilenweise:
-            werte = _gruppenwerte([kopf, *gruppe[1:]], felder)
+            werte = _gruppenwerte(rest, felder)
         else:
-            werte = _teile_werte(kopf, felder, flags.trenner)
+            werte = _teile_werte(rest[0], felder, flags.trenner)
 
         result.append(
             ParsedTrack(

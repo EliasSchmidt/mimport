@@ -402,4 +402,7 @@ def find_candidate_by_id(
     for match in proposal.candidates:
         if str(match.info.album_id) == str(album_id):
             return match
-    return proposal.candidates[0] if proposal.candidates else None
+    # Kein Kandidat trägt die gewünschte ID -- lieber "nicht gefunden" melden
+    # (siehe routes.choose()) als stillschweigend ein anderes Album zu
+    # übernehmen, das der Nutzer gar nicht ausgewählt hat.
+    return None

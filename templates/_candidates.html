@@ -192,7 +192,8 @@
             <form hx-post="/choose/{{ session_id }}"
                   hx-target="#result"
                   hx-swap="innerHTML"
-                  hx-indicator="#choose-spinner-{{ candidate.index }}">
+                  hx-indicator="#choose-spinner-{{ candidate.index }}"
+                  hx-disabled-elt="button">
                 <input type="hidden" name="album_id" value="{{ candidate.album_id }}">
                 <label class="checkbox" title="Vorhandene Tags vorher komplett leeren">
                     <input type="checkbox" name="from_scratch" value="1">

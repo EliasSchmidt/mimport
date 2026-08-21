@@ -20,7 +20,8 @@
                     hx-target="#manual-ocr-{{ session_id }}"
                     hx-swap="outerHTML"
                     hx-encoding="multipart/form-data"
-                    hx-indicator="#ocr-spinner-{{ session_id }}">
+                    hx-indicator="#ocr-spinner-{{ session_id }}"
+                    hx-disabled-elt="this">
                 Text erkennen
             </button>
             <span id="ocr-spinner-{{ session_id }}" class="htmx-indicator spinner">lese Backcover …</span>
@@ -81,7 +82,8 @@
                     hx-post="/ocr/parse/{{ session_id }}"
                     hx-include="closest [data-manual-form]"
                     hx-target="#manual-ocr-{{ session_id }}"
-                    hx-swap="outerHTML">
+                    hx-swap="outerHTML"
+                    hx-disabled-elt="this">
                 Parser anwenden
             </button>
         </div>

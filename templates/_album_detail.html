@@ -48,7 +48,14 @@
        target="_blank" rel="noopener" title="{{ mbid }}">MB</a>
     {% else %}
     <details class="artist-fix">
-        <summary class="button secondary">MB-Link fixen</summary>
+        {# Icon statt Text -- "MB-Link fixen" als ausgeschriebener Button
+           passte in der Titelliste nicht neben die Eingabe und wich je nach
+           Zeile mal daneben, mal darunter aus. Dieselbe Lupe wie beim
+           Handtagging-Suchen-Knopf, damit es nicht wie ein neues Icon
+           aussieht. #}
+        <summary class="button secondary" aria-label="MB-Link fixen" title="MB-Link fixen">
+            <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M11 11l4 4M7.2 12.4a5.2 5.2 0 1 0 0-10.4 5.2 5.2 0 0 0 0 10.4z"/></svg>
+        </summary>
         <form hx-post="{{ lookup_pfad }}/{{ loop.index0 }}"
               hx-target="#{{ match_id_praefix }}-{{ loop.index0 }}" hx-swap="innerHTML"
               class="picker">

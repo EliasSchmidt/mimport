@@ -219,8 +219,22 @@ main, .page-head, .page-foot { max-width: 62rem; margin: 0 auto; }
 .artist-fix[open] summary { margin-bottom: 0.5rem; }
 .artist-fix .picker { margin-bottom: 0.4rem; }
 .artist-fix .picker input[type="text"] { width: 12rem; }
+/* Icon statt Fließtext -- "MB-Link fixen" als ausgeschriebener Knopf war in
+   der Titelliste zu breit, um neben die Eingabe zu passen (siehe
+   .feld-mit-kuenstler-link unten), und wich darum je nach Zeile aus. */
+.kuenstler-link-zeile .artist-fix summary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.9rem;
+    height: 1.9rem;
+    padding: 0;
+    border-radius: 50%;
+}
+.kuenstler-link-zeile .artist-fix summary .icon { width: 0.85rem; height: 0.85rem; }
 
 input[type="text"],
+input[type="number"],
 select,
 textarea {
     padding: 0.45rem 0.6rem;
@@ -234,7 +248,13 @@ textarea {
 
 textarea { width: 100%; resize: vertical; }
 
+/* Ganzzahl-Felder (Jahr, Monat, Tag, Tracknummer, ...) brauchen nie die
+   volle Zellbreite eines Grid-Feldes -- 5 Stellen reichen für jeden
+   plausiblen Wert. */
+input[type="number"] { max-width: 6rem; }
+
 input[type="text"]:focus-visible,
+input[type="number"]:focus-visible,
 select:focus-visible,
 textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
@@ -927,6 +947,13 @@ pre.output { max-height: 22rem; overflow-y: auto; }
 .felder-gruppe {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+    /* "dense": ein zweispaltiges Feld (.feld-breit), das nicht mehr in die
+       laufende Reihe passt, sollte die Lücke, die es in einer früheren
+       Reihe hinterlässt, nicht bis zum Ende offen lassen -- ohne "dense"
+       bleiben Zellen wie unter "Jahr" für mehrere Reihen leer. Bricht die
+       strikte Reihenfolge im Layout, ist bei voneinander unabhängigen
+       Formularfeldern aber unproblematisch. */
+    grid-auto-flow: dense;
     gap: 0.6rem 1rem;
     margin: 0.6rem 0;
 }

@@ -71,12 +71,21 @@ class Feld:
     #: taugliche Einzelform existiert (z. B. ``remixers``).
     einzelform: str | None = None
     mehrwertig_art: MehrwertigArt = None
-    typ: Literal["text", "bool"] = "text"
+    #: "zahl" rendert ein <input type="number"> -- nur für Felder, die
+    #: tatsächlich reine Ganzzahlen sind (Jahr, Tracknummer, ...). Codes wie
+    #: Katalognummer oder Barcode bleiben "text", auch wenn sie nur Ziffern
+    #: enthalten: führende Nullen und Trennzeichen dürfen nicht verloren
+    #: gehen, und ein Spinner-Feld wäre dafür ohnehin unpassend.
+    typ: Literal["text", "bool", "zahl"] = "text"
     #: Interpret/Album-Künstler: eigenes UI (Link zu MusicBrainz oder
     #: Suchwidget je Namen, siehe ``Album.kuenstler_links``) statt eines
     #: normalen Texteingabefelds -- das Feld selbst bleibt trotzdem Teil des
     #: Katalogs, damit es nicht doppelt gepflegt werden muss.
     kuenstler_link: bool = False
+    #: Nimmt im Grid zwei Zellen statt einer -- für Felder, die typischerweise
+    #: längeren Freitext tragen (Album, Interpret, Genre, ...). Reine
+    #: Darstellungssache, ändert nichts am Schreibverhalten.
+    breit: bool = False
     hinweis: str = ""
 
     @property
@@ -90,18 +99,18 @@ ALBUM_FELDER: tuple[Feld, ...] = (
     # trotzdem so benannt wie überall sonst -- das hält _MEHRWERTIG in
     # tagging.py mit dem heutigen, hartcodierten Dict deckungsgleich.
     Feld("albumartists", "Interpret", "basis", einzelform="albumartist",
-         mehrwertig_art="kuenstler", kuenstler_link=True),
-    Feld("album", "Album", "basis"),
-    Feld("year", "Jahr", "basis"),
-    Feld("month", "Monat", "basis"),
-    Feld("day", "Tag", "basis"),
+         mehrwertig_art="kuenstler", kuenstler_link=True, breit=True),
+    Feld("album", "Album", "basis", breit=True),
+    Feld("year", "Jahr", "basis", typ="zahl"),
+    Feld("month", "Monat", "basis", typ="zahl"),
+    Feld("day", "Tag", "basis", typ="zahl"),
     Feld("genres", "Genre", "basis", einzelform="genre", mehrwertig_art="genre",
-         hinweis="Mehrere mit ;"),
-    Feld("label", "Label", "basis"),
+         breit=True, hinweis="Mehrere mit ;"),
+    Feld("label", "Label", "basis", breit=True),
     Feld("comp", "Sampler (Various Artists)", "basis", typ="bool"),
     Feld("catalognum", "Katalognummer", "basis"),
     Feld("country", "Land", "basis"),
-    Feld("disctotal", "Anzahl CDs", "basis"),
+    Feld("disctotal", "Anzahl CDs", "basis", typ="zahl"),
     # -- MusicBrainz -----------------------------------------------------
     Feld("mb_albumartistids", "MB-Interpret-ID", "musicbrainz", einzelform="mb_albumartistid",
          mehrwertig_art="liste", kuenstler_link=True),
@@ -120,9 +129,9 @@ ALBUM_FELDER: tuple[Feld, ...] = (
     Feld("asin", "ASIN", "erweitert"),
     Feld("barcode", "Barcode", "erweitert"),
     Feld("language", "Sprache", "erweitert"),
-    Feld("original_year", "Original-Jahr", "erweitert"),
-    Feld("original_month", "Original-Monat", "erweitert"),
-    Feld("original_day", "Original-Tag", "erweitert"),
+    Feld("original_year", "Original-Jahr", "erweitert", typ="zahl"),
+    Feld("original_month", "Original-Monat", "erweitert", typ="zahl"),
+    Feld("original_day", "Original-Tag", "erweitert", typ="zahl"),
     Feld("script", "Schriftsystem", "erweitert"),
 )
 
@@ -131,8 +140,8 @@ TRACK_FELDER: tuple[Feld, ...] = (
     Feld("artists", "Interpret", "basis", einzelform="artist", mehrwertig_art="kuenstler",
          kuenstler_link=True),
     Feld("title", "Titel", "basis"),
-    Feld("track", "Tracknummer", "basis"),
-    Feld("disc", "CD-Nummer", "basis", hinweis="Bei Mehrfach-CD-Alben"),
+    Feld("track", "Tracknummer", "basis", typ="zahl"),
+    Feld("disc", "CD-Nummer", "basis", typ="zahl", hinweis="Bei Mehrfach-CD-Alben"),
     Feld("composers", "Komponist", "basis", einzelform="composer", mehrwertig_art="kuenstler",
          hinweis="Mehrere mit / oder ;"),
     # -- MusicBrainz -----------------------------------------------------
@@ -155,9 +164,9 @@ TRACK_FELDER: tuple[Feld, ...] = (
     Feld("arrangers", "Arrangeur", "erweitert", einzelform="arranger", mehrwertig_art="kuenstler"),
     Feld("remixers", "Remixer", "erweitert", mehrwertig_art="kuenstler"),
     Feld("subtitle", "Untertitel", "erweitert"),
-    Feld("tracktotal", "Titel gesamt", "erweitert"),
+    Feld("tracktotal", "Titel gesamt", "erweitert", typ="zahl"),
     Feld("media", "Medium", "erweitert", hinweis="z. B. CD, Vinyl, Digital Media"),
-    Feld("bpm", "BPM", "erweitert"),
+    Feld("bpm", "BPM", "erweitert", typ="zahl"),
 )
 
 

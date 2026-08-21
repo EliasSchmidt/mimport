@@ -9,12 +9,15 @@
    (htmx:configRequest), damit ein Klick nicht für jedes Feld jedes Titels
    einen eigenen ``beet modify``-Aufruf verbrät. #}
 {% macro feld_zeile(praefix, feld, wert) %}
-<div class="feld-zeile">
+<div class="feld-zeile{% if feld.breit %} feld-breit{% endif %}">
     <label class="feld-label">{{ feld.label }}</label>
     {% if feld.typ == "bool" %}
     <input type="checkbox" name="{{ praefix }}{{ feld.key }}" value="True" data-feld-eingabe
            data-original="{{ wert }}"
            {% if wert == "True" %}checked{% endif %}>
+    {% elif feld.typ == "zahl" %}
+    <input type="number" inputmode="numeric" name="{{ praefix }}{{ feld.key }}" value="{{ wert }}"
+           data-feld-eingabe data-original="{{ wert }}">
     {% else %}
     <input type="text" name="{{ praefix }}{{ feld.key }}" value="{{ wert }}" data-feld-eingabe
            data-original="{{ wert }}"
@@ -27,8 +30,13 @@
 {# Bare Eingabe ohne Label/Hinweis -- für Tabellenzellen, deren Spaltenkopf
    die Beschriftung schon liefert (siehe Titelliste unten). #}
 {% macro feld_kompakt(praefix, feld, wert) %}
+{% if feld.typ == "zahl" %}
+<input type="number" inputmode="numeric" name="{{ praefix }}{{ feld.key }}" value="{{ wert }}"
+       data-feld-eingabe data-original="{{ wert }}">
+{% else %}
 <input type="text" name="{{ praefix }}{{ feld.key }}" value="{{ wert }}" data-feld-eingabe
        data-original="{{ wert }}">
+{% endif %}
 {% endmacro %}
 
 {% macro kuenstler_zeile(links, lookup_pfad, match_id_praefix) %}
@@ -108,11 +116,13 @@
             {# Der Name -- die MBID-Zeile ("mb_albumartistids", auch
                kuenstler_link) ist hier schon mit erledigt und bekommt keine
                eigene Zeile, siehe unten. #}
-            <div class="feld-zeile">
+            <div class="feld-zeile{% if feld.breit %} feld-breit{% endif %}">
                 <label class="feld-label">{{ feld.label }}</label>
-                <input type="text" name="album:albumartists" value="{{ album.albumartist }}" data-feld-eingabe
-                       data-original="{{ album.albumartist }}">
-                {{ kuenstler_zeile(album.kuenstler_links, "/albums/" ~ album.id ~ "/artist-lookup", "artist-match-album") }}
+                <div class="feld-mit-kuenstler-link">
+                    <input type="text" name="album:albumartists" value="{{ album.albumartist }}" data-feld-eingabe
+                           data-original="{{ album.albumartist }}">
+                    {{ kuenstler_zeile(album.kuenstler_links, "/albums/" ~ album.id ~ "/artist-lookup", "artist-match-album") }}
+                </div>
             </div>
             {% elif not feld.kuenstler_link %}
             {{ feld_zeile("album:", feld, album.alle_werte.get(feld.key, "")) }}
@@ -156,7 +166,7 @@
                         {{ feld_kompakt(track_praefix, track_feld_titel, t.alle_werte.get("title", "")) }}
                     </td>
                     <td data-spalte="Interpret">
-                        <div class="feld-zeile">
+                        <div class="feld-mit-kuenstler-link">
                             <input type="text" name="{{ track_praefix }}artists" value="{{ t.artist }}" data-feld-eingabe
                                    data-original="{{ t.artist }}">
                             {{ kuenstler_zeile(t.kuenstler_links, "/albums/" ~ album.id ~ "/tracks/" ~ t.id ~ "/artist-lookup", "track-match-" ~ t.id) }}

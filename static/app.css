@@ -918,9 +918,22 @@ pre.output { max-height: 22rem; overflow-y: auto; }
 
 /* Eine Gruppe direkt editierbarer Tag-Felder (Album- oder Track-Ebene) --
    löst die frühere Kombination aus Nur-Lese-Tabelle und separat
-   eingeklapptem Bearbeiten-Formular ab. */
-.felder-gruppe { display: flex; flex-direction: column; gap: 0.6rem; margin: 0.6rem 0; }
-.feld-zeile { display: flex; flex-direction: column; gap: 0.2rem; }
+   eingeklapptem Bearbeiten-Formular ab. Grid statt einer Spalte: ein
+   normales Feld braucht selten mehr als ~30 % Breite, und ohne das stand
+   auf einem 16:9-Monitor Jahr/Monat/Tag/Land je auf einer eigenen, fast
+   leeren Zeile. "auto-fill" packt so viele Zellen nebeneinander, wie
+   reinpassen, und verteilt den Rest gleichmäßig -- kein hartes "3 pro
+   Reihe", das auf einem schmalen Fenster wieder umbricht. */
+.felder-gruppe {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+    gap: 0.6rem 1rem;
+    margin: 0.6rem 0;
+}
+/* Für Felder mit typischerweise längerem Freitext (Album, Interpret,
+   Genre, Label) -- nimmt zwei Grid-Zellen statt einer. */
+.feld-breit { grid-column: span 2; }
+.feld-zeile { display: flex; flex-direction: column; gap: 0.2rem; min-width: 0; }
 .feld-label {
     font-size: 0.8rem;
     font-weight: 600;
@@ -938,7 +951,7 @@ pre.output { max-height: 22rem; overflow-y: auto; }
    bleibt die einzige Spalte ohne feste Breite und holt sich den Rest. */
 .titelliste { table-layout: fixed; width: 100%; }
 .titelliste .sp-nr { width: 3.6rem; }
-.titelliste .sp-interpret { width: 11rem; }
+.titelliste .sp-interpret { width: 13rem; }
 .titelliste .sp-komponist { width: 10rem; }
 .titelliste .sp-weitere { width: 7.5rem; }
 
@@ -976,8 +989,15 @@ pre.output { max-height: 22rem; overflow-y: auto; }
     text-decoration: none;
 }
 
+/* Name-Feld + MB-Verknüpfung (Badge oder "MB-Link fixen") nebeneinander in
+   einer Zeile, statt dass Letzteres darunter eine eigene Zeile braucht --
+   genau das ließ die Titelliste unnötig hoch werden. Bei mehreren Namen
+   ("A feat. B") wickelt es dank flex-wrap einfach um, statt stur
+   nebeneinander gequetscht zu werden. */
+.feld-mit-kuenstler-link { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.feld-mit-kuenstler-link input[type="text"] { flex: 1; min-width: 8rem; }
+
 /* Eine Zeile je Interpret, wenn ein Album/Titel mehrere hat ("A feat. B"):
    verbundene bekommen einen Link statt eines Suchwidgets, unverbundene
    bleiben einzeln durchsuchbar. */
-.kuenstler-link-zeile { display: flex; align-items: center; justify-content: flex-end; gap: 0.4rem; }
-.kuenstler-link-zeile + .kuenstler-link-zeile { margin-top: 0.35rem; }
+.kuenstler-link-zeile { display: flex; align-items: center; gap: 0.4rem; }

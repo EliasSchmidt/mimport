@@ -2770,7 +2770,7 @@ class TestAlbenBearbeiten:
         )
         monkeypatch.setattr(routes.albums, "list_tracks", lambda album_id: [])
         response = client.get("/albums/2")
-        assert 'name="album:year" value="" data-feld-eingabe' in response.text
+        assert 'name="album:year" value=""' in response.text
         assert 'data-original=""' in response.text
 
     def test_geaendertes_album_feld_wird_geschrieben(self, client, album, monkeypatch):

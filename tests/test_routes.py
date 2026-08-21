@@ -405,6 +405,7 @@ class TestCoverRetryNachImport:
             "retry_missing_cover",
             lambda mbid, **kw: gesehen.setdefault("mbid", mbid) or True,
         )
+        monkeypatch.setattr(albums, "refresh_genre_after_import", lambda **kw: True)
 
         session = sessions.create_session()
         path = write_flac(session.directory / "a.flac")
@@ -456,6 +457,112 @@ class TestCoverRetryNachImport:
         media.save()
 
         client.post(f"/import/{session.session_id}", data={"pretend": "1"})
+        assert aufgerufen == []
+
+
+class TestGenreNachschlagNachImport:
+    """``albums.refresh_genre_after_import`` soll nach einem echten Import
+    laufen -- mit der MusicBrainz-Release-ID, wenn vorhanden, sonst mit
+    Albumkünstler/Album aus den Dateien (Handtag-Import ohne Release-ID).
+    Hintergrund: lastgenre lief bislang als automatische Import-Stufe, deren
+    Ergebnis strukturell nie in die Datei geschrieben wurde (siehe Moduldoc
+    von ``albums.refresh_genre_after_import``)."""
+
+    def _health_ok(self):
+        return {
+            "beets_version": "2.13.1",
+            "beet_cli_version": "2.13.1",
+            "metadata_sources": ["musicbrainz"],
+            "fingerprint": False,
+            "problems": [],
+            "import_ready": True,
+        }
+
+    def _erfolgreicher_import(self, directory, pretend=False):
+        from backend import importer
+
+        return importer.ImportResult(
+            command=["beet", "import", "-A", str(directory)],
+            returncode=0,
+            stdout="importiert",
+        )
+
+    def test_mit_release_id_wird_die_mbid_verwendet(self, client, monkeypatch):
+        import mediafile
+
+        from backend import albums, beets_env, importer
+        from tests.flacfixture import write_flac
+
+        monkeypatch.setattr(beets_env, "health", self._health_ok)
+        monkeypatch.setattr(importer, "run_import", self._erfolgreicher_import)
+        monkeypatch.setattr(albums, "retry_missing_cover", lambda *a, **kw: True)
+
+        gesehen = {}
+        monkeypatch.setattr(
+            albums,
+            "refresh_genre_after_import",
+            lambda **kw: gesehen.update(kw) or True,
+        )
+
+        session = sessions.create_session()
+        path = write_flac(session.directory / "a.flac")
+        media = mediafile.MediaFile(path)
+        media.mb_albumid = "964e8152-d86d-4b88-9b79-2f561db6c124"
+        media.save()
+
+        client.post(f"/import/{session.session_id}", data={})
+        assert gesehen == {"mb_albumid": "964e8152-d86d-4b88-9b79-2f561db6c124"}
+
+    def test_ohne_release_id_wird_albumkuenstler_und_album_verwendet(
+        self, client, monkeypatch
+    ):
+        """Handtag-Import über /musik setzt nie eine Release-ID (siehe
+        backend.tagging-Moduldoc) -- der Nachschlag braucht deshalb einen
+        anderen Ankerpunkt."""
+        from backend import albums, beets_env, importer
+        from tests.flacfixture import write_album
+
+        monkeypatch.setattr(beets_env, "health", self._health_ok)
+        monkeypatch.setattr(importer, "run_import", self._erfolgreicher_import)
+        monkeypatch.setattr(albums, "retry_missing_cover", lambda *a, **kw: True)
+
+        gesehen = {}
+        monkeypatch.setattr(
+            albums,
+            "refresh_genre_after_import",
+            lambda **kw: gesehen.update(kw) or True,
+        )
+
+        session = sessions.create_session()
+        write_album(
+            session.directory,
+            [("Luna rossa", 1, 180.0)],
+            artist="Quadro Nuevo",
+            album="Luna rossa",
+        )
+
+        client.post(f"/import/{session.session_id}", data={})
+        assert gesehen == {"albumartist": "Quadro Nuevo", "album": "Luna rossa"}
+
+    def test_ohne_jegliche_kennung_wird_nichts_versucht(self, client, monkeypatch):
+        from backend import albums, beets_env, importer
+        from tests.flacfixture import write_flac
+
+        monkeypatch.setattr(beets_env, "health", self._health_ok)
+        monkeypatch.setattr(importer, "run_import", self._erfolgreicher_import)
+        monkeypatch.setattr(albums, "retry_missing_cover", lambda *a, **kw: True)
+
+        aufgerufen = []
+        monkeypatch.setattr(
+            albums,
+            "refresh_genre_after_import",
+            lambda **kw: aufgerufen.append(kw),
+        )
+
+        session = sessions.create_session()
+        write_flac(session.directory / "a.flac")  # ohne mb_albumid, ohne Album-Tags
+
+        client.post(f"/import/{session.session_id}", data={})
         assert aufgerufen == []
 
 

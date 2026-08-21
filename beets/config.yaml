@@ -101,16 +101,28 @@ per_disc_numbering: no
 # (dort steht 'genres: False'), lastgenre tritt also nicht gegen MusicBrainz an,
 # sondern füllt eine Lücke -- nur wenn eine Datei noch KEIN Genre hat.
 #
-# 'force: yes' überschrieb vorher jedes manuell gesetzte Genre durch
-# Last.fm-Tags, 'canonical: yes' filtert diese Tags zusätzlich gegen eine
-# kanonische Liste. Findet Last.fm für ein Album nichts Kanonisierbares (z. B.
-# eine Nischen-Compilation mit Tango/Jazz/World Music), blieb ohne
-# 'fallback'-Konfiguration eine LEERE Liste übrig -- das Genre-Feld wurde
-# komplett geleert statt unverändert zu bleiben. Mit 'force: no' bleiben
-# manuell gesetzte Genres immer erhalten; Last.fm ergänzt nur, wo noch keins
-# steht.
+# 'force: yes' überschrieb früher jedes manuell gesetzte Genre durch
+# Last.fm-Tags; mit 'force: no' bleiben manuell gesetzte Genres unangetastet.
+#
+# 'auto: no', weil die automatische Import-Stufe von lastgenre strukturell nie
+# in die Datei schreiben konnte: sie ruft laut Plugin-Quellcode immer
+# try_sync(write=False) auf, und beets' eigene Import-Pipeline schreibt unter
+# '-A' (as-is, das mimport immer nutzt) ohnehin nichts zurück
+# (ImportTask.manipulate_files: nur bei Action.APPLY/RETAG). Ein von Last.fm
+# gefundenes Genre landete dadurch zuverlässig nur in der Datenbank -- an
+# Album 36 (Cecilia Bartoli) nachgewiesen: 'beet ls' zeigte "Opera; Classical"
+# für alle 21 Titel, keine einzige Datei hatte ein Genre-Tag. Dass es bei
+# anderen Alben "funktionierte", war ein Nebeneffekt von retry_missing_cover:
+# ein erfolgreich eingebettetes Cover schreibt über embedart beiläufig alle
+# Feldwerte inklusive Genre mit in die Datei.
+#
+# lastgenre läuft deshalb jetzt nicht mehr automatisch, sondern explizit über
+# 'beet lastgenre --no-force' direkt nach dem Import
+# (albums.refresh_genre_after_import) -- das Kommando benutzt
+# ui.should_write() statt eines hartkodierten write=False und schreibt damit
+# tatsächlich in die Datei.
 lastgenre:
-  auto: yes
+  auto: no
   force: no
   keep_existing: no
   source: album

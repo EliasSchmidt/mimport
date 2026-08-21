@@ -480,6 +480,63 @@ def retry_missing_cover(
     return False
 
 
+def refresh_genre_after_import(
+    *, mb_albumid: str | None = None, albumartist: str = "", album: str = ""
+) -> bool:
+    """Holt für ein frisch importiertes Album ein Last.fm-Genre nach und
+    schreibt es diesmal tatsächlich in die Datei.
+
+    Hintergrund, an Album 36 (Cecilia Bartoli, "Arie antiche") nachgewiesen:
+    ``beet ls`` zeigte "Opera; Classical" für alle 21 Titel, keine einzige
+    Datei hatte ein Genre-Tag. Ursache: ``lastgenre`` lief bislang als
+    automatische Import-Stufe (``auto: yes``); die ruft laut eigenem
+    Quellcode aber immer ``try_sync(write=False)`` auf -- schreibt also NIE
+    in die Datei, egal wie ``force``/``canonical`` konfiguriert sind. Und
+    selbst unabhängig davon schreibt beets' Import-Pipeline unter ``-A``
+    (as-is, das mimport immer nutzt) grundsätzlich nichts zurück
+    (``ImportTask.manipulate_files``: der Schreibschritt läuft nur bei
+    ``Action.APPLY`` oder ``RETAG``, nie bei ``Action.ASIS``). Ein von
+    Last.fm gefundenes Genre landete also zuverlässig nur in der Datenbank.
+    Dass es bei anderen Alben trotzdem "funktionierte", war ein Nebeneffekt
+    von ``retry_missing_cover``: ein erfolgreich eingebettetes Cover schreibt
+    über ``embedart`` beiläufig alle aktuellen Feldwerte mit in die Datei,
+    Genre eingeschlossen -- deshalb blieb gerade Album 36 betroffen, dessen
+    Cover-Nachschlag scheiterte.
+
+    ``lastgenre`` läuft deshalb nicht mehr automatisch (``auto: no`` in der
+    Konfiguration), sondern explizit hier, direkt nach dem Import. Das
+    ``lastgenre``-Kommando selbst schreibt (anders als der automatische Hook)
+    tatsächlich in die Datei -- es benutzt ``ui.should_write()`` statt eines
+    hartkodierten ``write=False``. ``--no-force`` sorgt dafür, dass ein im
+    Formular manuell getipptes Genre unangetastet bleibt; Last.fm füllt nur
+    eine bislang leere Lücke.
+
+    Braucht entweder ``mb_albumid`` (MusicBrainz-Match) oder
+    ``albumartist``+``album`` (Handtag-Import ohne Release-ID, siehe
+    ``routes._album_kernfelder_der_session``) als Ankerpunkt. Wie
+    ``retry_missing_cover``: ein Bestcase-Versuch nach dem Import. Last.fm
+    nicht erreichbar oder ohne Treffer darf den sonst erfolgreichen Import
+    nicht als fehlgeschlagen erscheinen lassen -- kein Fehler, nur ``False``.
+    """
+    if mb_albumid:
+        query = [f"mb_albumid:{mb_albumid}"]
+    elif albumartist and album:
+        query = [f"albumartist:{albumartist}", f"album:{album}"]
+    else:
+        return False
+
+    try:
+        with library_lock():
+            proc = _lauf(["lastgenre", "--no-force", *query], timeout=60)
+    except AlbumError as exc:
+        log.warning("Genre-Nachschlag übersprungen: %s", exc)
+        return False
+    if proc.returncode != 0:
+        log.warning("Genre-Nachschlag fehlgeschlagen: %s", proc.stderr.strip())
+        return False
+    return True
+
+
 def _modify(vorwahl: list[str], query: str, felder: dict[str, str], *, timeout: int) -> None:
     """``beet modify -y <vorwahl> <query> feld=wert …``, Fehler als ``AlbumError``.
 

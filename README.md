@@ -737,6 +737,19 @@ auf. Weicht dessen Version von der hier installierten ab, warnt die Oberfläche
 und **sperrt den Import** — genau wegen der Datenbank-Migration oben. Der
 Probelauf funktioniert weiterhin.
 
+### Mit erfundenen Alben ausprobieren, ohne die echte Library anzufassen
+
+```bash
+uv run python scripts/mock.py            # baut .mock/ (falls nötig) und startet den Server
+uv run python scripts/mock.py --reset    # .mock/ verwerfen und neu aufbauen
+```
+
+Legt vier erfundene Alben (kein Treffer bei MusicBrainz möglich, ein Sampler,
+ein Featuring-Track, eins mit schon gesetztem Label/Katalognummer) in einer
+komplett isolierten, gitignorten beets-Bibliothek unter `.mock/` an und startet
+den Server direkt darauf (`http://127.0.0.1:8000/albums`). Rührt nicht an
+`~/.config/beets` oder eine echte Library.
+
 ### Einstellungen
 
 | Variable | Standard | Bedeutung |

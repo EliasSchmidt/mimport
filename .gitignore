@@ -17,3 +17,6 @@ staging/
 data/
 *.db
 :memory:.ses
+
+# Erfundene Mock-Bibliothek für scripts/mock.py -- lokal, nicht fürs Repo.
+.mock/

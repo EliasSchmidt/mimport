@@ -37,6 +37,35 @@ class TagWriteResult:
         return bool(self.written) and not self.failed
 
 
+#: Felder, die beets' ``AlbumInfo``/``TrackInfo`` quellenunabhängig unter
+#: MusicBrainz-Namen ablegt (``MEDIA_FIELD_MAP`` in
+#: ``beets/autotag/hooks.py``): ``album_id`` etwa landet immer in
+#: ``mb_albumid``, ob die Quelle nun MusicBrainz oder Discogs war. Für Discogs
+#: trägt das Discogs' eigene numerische Release-ID ein -- keine MB-UUID, aber
+#: unter einem Tag-Namen, den ``mediafile`` (und jeder Player, der ihn liest)
+#: als "MusicBrainz Release Id" o. Ä. beschriftet. Ohne Korrektur würde das
+#: also nicht nur in der Datei falsch beschriftete IDs hinterlassen, sondern
+#: auch ``retry_missing_cover`` (siehe ``albums.py``) dazu bringen, für ein
+#: Discogs-Album einen MusicBrainz-Cover-Nachschlag zu versuchen, der nie
+#: treffen kann.
+_MB_TEXTFELDER = (
+    "mb_albumid",
+    "mb_releasegroupid",
+    "mb_trackid",
+    "mb_releasetrackid",
+    "mb_workid",
+)
+_MB_LISTENFELDER = ("mb_artistids", "mb_albumartistids")
+
+
+def _mb_ids_ohne_musicbrainz_entfernen(items: Any) -> None:
+    for item in items:
+        for feld in _MB_TEXTFELDER:
+            item[feld] = ""
+        for feld in _MB_LISTENFELDER:
+            item[feld] = []
+
+
 def apply_album_match(match: Any, *, from_scratch: bool = False) -> TagWriteResult:
     """Schreibt die Metadaten eines gewählten ``AlbumMatch`` in die Dateien.
 
@@ -47,6 +76,9 @@ def apply_album_match(match: Any, *, from_scratch: bool = False) -> TagWriteResu
     result = TagWriteResult()
 
     match.apply_metadata(from_scratch=from_scratch)
+
+    if match.info.data_source != "MusicBrainz":
+        _mb_ids_ohne_musicbrainz_entfernen(match.mapping)
 
     for item in match.mapping:
         name = _display(item)

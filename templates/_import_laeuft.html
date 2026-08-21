@@ -1,0 +1,18 @@
+{# Ein echter Import läuft im Hintergrund -- per SSE statt Polling, dasselbe
+   Muster wie beim Rip (siehe templates/_rip.html). Ein "fortschritt"-Event
+   aktualisiert den Text, ein "fertig"-Event schließt die Verbindung
+   (sse-close) und stößt den einen vollen Refresh an, der auf das Ergebnis
+   umschaltet. #}
+<div hx-ext="sse" sse-connect="/import/{{ job.session_id }}/events" sse-close="fertig"
+     hx-trigger="sse:fertig" hx-get="/import/{{ job.session_id }}"
+     hx-target="#import-output" hx-swap="innerHTML">
+    {# hx-target="this" ist Pflicht: ohne eigenes hx-target erbt dieser Div
+       das hx-target="#import-output" des Eltern-Divs -- dann swapt der erste
+       "fortschritt"-Tick #import-output komplett und reißt diesen Div samt
+       seinem SSE-Listener aus dem DOM. Der Folge-Tick findet ihn nicht mehr,
+       meldet sich still ab -- genau ein Event, dann für immer Stille, ohne
+       Fehler. #}
+    <div sse-swap="fortschritt" hx-target="this" hx-swap="innerHTML">
+        {% include "_import_fortschritt.html" %}
+    </div>
+</div>

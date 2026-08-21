@@ -1,0 +1,8 @@
+{# Nur der Fortschrittstext eines laufenden Imports. Eigenes Template, damit
+   das Erst-Rendering in _import_laeuft.html und der SSE-Push aus
+   /import/{id}/events garantiert dasselbe Markup erzeugen -- siehe
+   _rip_fortschritt.html für dasselbe Muster. #}
+<div class="banner info">
+    <strong>{{ job.schritt }}</strong>
+    <p class="hint">läuft seit {{ job.dauer_text }} · die Seite kann offen bleiben</p>
+</div>

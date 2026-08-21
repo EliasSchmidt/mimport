@@ -18,7 +18,9 @@ from __future__ import annotations
 import fcntl
 import logging
 import subprocess
-from collections.abc import Iterator
+import threading
+import time
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -189,3 +191,85 @@ def run_import(directory: Path, *, pretend: bool = False) -> ImportResult:
     if result.returncode != 0 and not result.error:
         result.error = f"beets endete mit Rückgabewert {result.returncode}"
     return result
+
+
+@dataclass
+class ImportJob:
+    """Ein echter Import, der im Hintergrund läuft.
+
+    Der Probelauf braucht das nicht -- er schreibt nichts, lädt kein Cover
+    nach und passt locker in eine einzelne Anfrage. Ein echter Import kann
+    dagegen an der Library-Sperre warten, ein großes Album verschieben und
+    ein Cover nachladen; ohne Hintergrundauftrag hinge die Anfrage die ganze
+    Zeit reglos, und die Oberfläche zeigte bis zum Schluss nichts als einen
+    Spinner-Text.
+    """
+
+    session_id: str
+    #: Grobe Phase, nicht Zeile für Zeile -- ``run_import`` liefert seine
+    #: Ausgabe erst am Ende, es gibt also nur "läuft" und "fertig, räumt auf".
+    schritt: str = "beets importiert: Tags übernehmen, Dateien einsortieren, Cover laden …"
+    fertig: bool = False
+    result: ImportResult | None = None
+    started: float = field(default_factory=time.monotonic)
+    thread: threading.Thread | None = field(default=None, repr=False)
+
+    @property
+    def dauer_text(self) -> str:
+        sekunden = int(time.monotonic() - self.started)
+        minuten, sek = divmod(sekunden, 60)
+        return f"{minuten}:{sek:02d}"
+
+
+_jobs: dict[str, ImportJob] = {}
+_jobs_lock = threading.Lock()
+
+
+def current(session_id: str) -> ImportJob | None:
+    """Der zuletzt gestartete Hintergrund-Import dieser Session, falls es einen gibt."""
+    with _jobs_lock:
+        return _jobs.get(session_id)
+
+
+def start_job(
+    directory: Path,
+    *,
+    session_id: str,
+    on_done: Callable[[ImportResult], None] | None = None,
+) -> ImportJob:
+    """Startet den echten Import im Hintergrund und kehrt sofort zurück.
+
+    ``on_done`` läuft nur bei Erfolg, im Hintergrundthread selbst -- dorthin
+    gehören Cover-Nachladen und Aufräumen (siehe ``backend.routes``), damit
+    die Anfrage, die den Import ausgelöst hat, nicht auch noch darauf warten
+    muss.
+
+    Wirft nichts: Ein Absturz im Hintergrundthread bliebe sonst unbemerkt und
+    der Auftrag stünde für immer auf "läuft" -- genau die Falle, die einst
+    beim m4b-Bau schon mal zuschlug (siehe README, "Wenn ffmpeg hängen
+    bleibt"). Der Fehler landet stattdessen sichtbar im Ergebnis.
+    """
+    job = ImportJob(session_id=session_id)
+    with _jobs_lock:
+        _jobs[session_id] = job
+
+    def _arbeite() -> None:
+        try:
+            result = run_import(directory, pretend=False)
+            job.result = result
+            if result.ok and on_done is not None:
+                job.schritt = "Import fertig, prüfe Cover und räume auf …"
+                on_done(result)
+        except Exception as exc:
+            log.exception("Import-Auftrag für Session %s abgebrochen", session_id)
+            job.result = ImportResult(
+                command=build_command(directory, pretend=False),
+                error=f"Import unerwartet abgebrochen: {exc}",
+            )
+        finally:
+            job.fertig = True
+
+    thread = threading.Thread(target=_arbeite, name=f"import-{session_id}", daemon=True)
+    job.thread = thread
+    thread.start()
+    return job

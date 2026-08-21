@@ -29,6 +29,17 @@ def isolierte_hoerbuecher(tmp_path, monkeypatch):
     return wurzel
 
 
+def _warte_auf_import(session_id: str) -> None:
+    """Ein echter (nicht simulierter) Import läuft im Hintergrund -- siehe
+    ``importer.start_job``. Tests, die den Endzustand prüfen wollen, müssen
+    erst den Hintergrundthread abwarten."""
+    from backend import importer
+
+    job = importer.current(session_id)
+    assert job is not None
+    job.thread.join(timeout=5)
+
+
 class TestIndex:
     """Die Startseite stellt nur die eine Frage, die beiden Wege sind getrennt."""
 
@@ -317,7 +328,9 @@ class TestImportSperre:
 
         session = sessions.create_session()
         (session.directory / "a.flac").write_bytes(b"fLaC\x00\x00\x00\x22")
-        response = client.post(f"/import/{session.session_id}", data={})
+        client.post(f"/import/{session.session_id}", data={})
+        _warte_auf_import(session.session_id)
+        response = client.get(f"/import/{session.session_id}")
 
         assert "Import abgeschlossen" in response.text
         assert 'href="/musik"' in response.text
@@ -359,6 +372,7 @@ class TestImportSperre:
         monkeypatch.setattr(rip, "_job", job)
 
         client.post(f"/import/{session.session_id}", data={})
+        _warte_auf_import(session.session_id)
 
         assert rip.current() is None
 
@@ -413,6 +427,7 @@ class TestCoverRetryNachImport:
         media.save()
 
         client.post(f"/import/{session.session_id}", data={})
+        _warte_auf_import(session.session_id)
         assert gesehen.get("mbid") == "964e8152-d86d-4b88-9b79-2f561db6c124"
 
     def test_ohne_release_id_wird_nichts_versucht(self, client, monkeypatch):
@@ -433,6 +448,7 @@ class TestCoverRetryNachImport:
         write_flac(session.directory / "a.flac")  # ohne mb_albumid-Tag
 
         client.post(f"/import/{session.session_id}", data={})
+        _warte_auf_import(session.session_id)
         assert aufgerufen == []
 
     def test_im_probelauf_wird_nichts_versucht(self, client, monkeypatch):

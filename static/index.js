@@ -371,6 +371,58 @@ function initSamplerZustand(root = document) {
 }
 initSamplerZustand();
 
+/* ----------------------------------- MusicBrainz-Suche für Album/Titel -----
+ *
+ * "MB-Link fixen" (kuenstler_zeile in _album_detail.html) öffnete früher pro
+ * Zeile ein eigenes <details> mit Eingabefeld+Suchen-Button+Ergebnisbereich --
+ * bei vielen Titeln entsprechend viel Markup, und der Klick auf die Lupe
+ * zeigte erst ein zweites Feld statt gleich ein Ergebnis. Ein einziger,
+ * gemeinsam genutzter Dialog (#mb-such-dialog) ersetzt das: die Lupe öffnet
+ * ihn, füllt das weiterhin editierbare Suchfeld mit dem aktuellen Namen und
+ * sucht sofort -- Korrigieren (Tippfehler, "feat. X") bleibt einen Klick
+ * entfernt, ohne dass erst ein zweites Feld auftauchen muss.
+ */
+function mbSucheAusfuehren(name, lookupPfad) {
+  if (!window.htmx || !lookupPfad) return;
+  window.htmx.ajax("POST", lookupPfad, {
+    target: "#mb-such-ergebnisse",
+    swap: "innerHTML",
+    values: { name },
+  });
+}
+
+document.body.addEventListener("click", (event) => {
+  const knopf = event.target.closest("[data-mb-suchen]");
+  if (!knopf) return;
+
+  const dialog = document.getElementById("mb-such-dialog");
+  const eingabe = document.getElementById("mb-such-eingabe");
+  const ergebnisse = document.getElementById("mb-such-ergebnisse");
+  if (!dialog || !eingabe || !ergebnisse) return;
+
+  const name = knopf.dataset.name || "";
+  const lookupPfad = knopf.dataset.lookupPfad || "";
+  dialog.dataset.lookupPfad = lookupPfad;
+  eingabe.value = name;
+  ergebnisse.innerHTML = "";
+  dialog.showModal();
+  mbSucheAusfuehren(name, lookupPfad);
+});
+
+// Delegiert, weil #mb-such-form nach einem "Übernehmen" (voller Neu-Render
+// von #album-detail) als neuer Knoten zurückkommt -- eine direkt gebundene
+// Listener-Referenz auf den alten Knoten wäre dann verwaist.
+document.body.addEventListener("submit", (event) => {
+  const form = event.target.closest("#mb-such-form");
+  if (!form) return;
+  event.preventDefault();
+
+  const dialog = document.getElementById("mb-such-dialog");
+  const eingabe = document.getElementById("mb-such-eingabe");
+  if (!dialog || !eingabe) return;
+  mbSucheAusfuehren(eingabe.value, dialog.dataset.lookupPfad || "");
+});
+
 /* ------------------------------------------ MusicBrainz-Künstlerwahl -----
  *
  * Die Suche liefert nur Vorschläge. Erst mit „Übernehmen“ wird klar, welcher

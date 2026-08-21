@@ -2627,6 +2627,23 @@ class TestAlbenArtistMbid:
         assert "mb-badge" in response.text  # Something hat den Link schon
         assert 'artist-lookup' in response.text  # Come Together bekommt die Suche
 
+    def test_lupe_traegt_position_pro_interpret(self, client, album, monkeypatch):
+        # Der gemeinsame Such-Dialog (mbSucheOeffnen in static/index.js) bekommt
+        # den Suchpfad -- inklusive Position -- erst beim Klick über
+        # data-lookup-pfad. Bei mehreren Interpreten ("A feat. B") muss jede
+        # Lupe weiterhin ihre eigene Position tragen, sonst würde "Übernehmen"
+        # im Dialog immer nur den ersten Namen treffen.
+        from backend import albums
+
+        mehrfach = albums.Track(
+            id=10, track="01", title="...", artist="Bill Evans feat. Scott LaFaro"
+        )
+        monkeypatch.setattr(routes.albums, "list_tracks", lambda album_id: [mehrfach])
+        response = client.get("/albums/1")
+        assert 'data-lookup-pfad="/albums/1/tracks/10/artist-lookup/0"' in response.text
+        assert 'data-lookup-pfad="/albums/1/tracks/10/artist-lookup/1"' in response.text
+        assert 'data-lookup-pfad="/albums/1/artist-lookup/0"' in response.text
+
     def test_album_suche_zeigt_treffer(self, client, album, monkeypatch):
         monkeypatch.setattr(routes.artist_ids, "search", lambda name: (self.MATCH,))
         response = client.post(

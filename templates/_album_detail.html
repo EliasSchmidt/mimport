@@ -39,7 +39,13 @@
 {% endif %}
 {% endmacro %}
 
-{% macro kuenstler_zeile(links, lookup_pfad, match_id_praefix) %}
+{# Lupe öffnet den einen gemeinsamen Such-Dialog (siehe #mb-such-dialog weiter
+   unten) statt pro Zeile ein eigenes Eingabefeld+Suchen-Formular aufzuklappen
+   -- bei vielen Titeln war das viel Markup, und der Klick zeigte erst ein
+   zweites Feld statt gleich ein Ergebnis. data-lookup-pfad trägt die Position
+   in der Interpretenliste ("A feat. B") schon mit, damit "Übernehmen" im
+   Dialog weiterhin den richtigen Namen trifft. #}
+{% macro kuenstler_zeile(links, lookup_pfad) %}
 {% for name, mbid in links %}
 <div class="kuenstler-link-zeile">
     {% if links|length > 1 %}<span class="small">{{ name }}</span>{% endif %}
@@ -47,23 +53,10 @@
     <a class="mb-badge" href="https://musicbrainz.org/artist/{{ mbid }}"
        target="_blank" rel="noopener" title="{{ mbid }}">MB</a>
     {% else %}
-    <details class="artist-fix">
-        {# Icon statt Text -- "MB-Link fixen" als ausgeschriebener Button
-           passte in der Titelliste nicht neben die Eingabe und wich je nach
-           Zeile mal daneben, mal darunter aus. Dieselbe Lupe wie beim
-           Handtagging-Suchen-Knopf, damit es nicht wie ein neues Icon
-           aussieht. #}
-        <summary class="button secondary" aria-label="MB-Link fixen" title="MB-Link fixen">
-            <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M11 11l4 4M7.2 12.4a5.2 5.2 0 1 0 0-10.4 5.2 5.2 0 0 0 0 10.4z"/></svg>
-        </summary>
-        <form hx-post="{{ lookup_pfad }}/{{ loop.index0 }}"
-              hx-target="#{{ match_id_praefix }}-{{ loop.index0 }}" hx-swap="innerHTML"
-              class="picker">
-            <input type="text" name="name" value="{{ name }}">
-            <button type="submit" class="button">Suchen</button>
-        </form>
-        <div id="{{ match_id_praefix }}-{{ loop.index0 }}"></div>
-    </details>
+    <button type="button" class="button secondary mb-such-knopf" aria-label="MB-Link fixen" title="MB-Link fixen"
+            data-mb-suchen data-name="{{ name }}" data-lookup-pfad="{{ lookup_pfad }}/{{ loop.index0 }}">
+        <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M11 11l4 4M7.2 12.4a5.2 5.2 0 1 0 0-10.4 5.2 5.2 0 0 0 0 10.4z"/></svg>
+    </button>
     {% endif %}
 </div>
 {% endfor %}
@@ -128,7 +121,7 @@
                 <div class="feld-mit-kuenstler-link">
                     <input type="text" name="album:albumartists" value="{{ album.albumartist }}" data-feld-eingabe
                            data-original="{{ album.albumartist }}">
-                    {{ kuenstler_zeile(album.kuenstler_links, "/albums/" ~ album.id ~ "/artist-lookup", "artist-match-album") }}
+                    {{ kuenstler_zeile(album.kuenstler_links, "/albums/" ~ album.id ~ "/artist-lookup") }}
                 </div>
             </div>
             {% elif not feld.kuenstler_link %}
@@ -176,17 +169,15 @@
                         <div class="feld-mit-kuenstler-link">
                             <input type="text" name="{{ track_praefix }}artists" value="{{ t.artist }}" data-feld-eingabe
                                    data-original="{{ t.artist }}">
-                            {{ kuenstler_zeile(t.kuenstler_links, "/albums/" ~ album.id ~ "/tracks/" ~ t.id ~ "/artist-lookup", "track-match-" ~ t.id) }}
+                            {{ kuenstler_zeile(t.kuenstler_links, "/albums/" ~ album.id ~ "/tracks/" ~ t.id ~ "/artist-lookup") }}
                         </div>
                     </td>
                     <td data-spalte="Komponist">
                         {{ feld_kompakt(track_praefix, track_feld_komponist, t.alle_werte.get("composers", "")) }}
                     </td>
                     <td>
-                        <button type="button" class="button secondary"
-                                onclick="document.getElementById('weitere-track-{{ t.id }}').showModal()">
-                            Weitere Felder
-                        </button>
+                        <button type="button" class="button secondary weitere-knopf" aria-label="Weitere Felder" title="Weitere Felder"
+                                onclick="document.getElementById('weitere-track-{{ t.id }}').showModal()">…</button>
                         <dialog id="weitere-track-{{ t.id }}" class="felder-dialog">
                             <h3>Weitere Felder -- {{ t.alle_werte.get("title", "") }}</h3>
                             <div class="felder-gruppe">
@@ -210,6 +201,23 @@
         {% endif %}
     </section>
 </div>
+
+{# Ein einziger Dialog für alle Lupen-Knöpfe (kuenstler_zeile) statt einem je
+   Zeile -- mbSucheOeffnen (static/index.js) füllt ihn beim Öffnen und sucht
+   sofort mit dem aktuellen Namen. Das Suchfeld bleibt editierbar: der Tag-Wert
+   ist oft genau das, was nicht matcht ("feat. X", ein Tippfehler), und das
+   Künstlerfeld selbst soll man dafür nicht anfassen müssen. #}
+<dialog id="mb-such-dialog" class="mb-such-dialog">
+    <h3>MusicBrainz-Suche</h3>
+    <form id="mb-such-form" class="picker">
+        <input type="text" id="mb-such-eingabe" name="name">
+        <button type="submit" class="button">Suchen</button>
+    </form>
+    <div id="mb-such-ergebnisse"></div>
+    <div class="actions">
+        <button type="button" class="button secondary" onclick="this.closest('dialog').close()">Schließen</button>
+    </div>
+</dialog>
 
 <div class="actions album-form-actions">
     <button type="button" class="button primary" data-album-speichern

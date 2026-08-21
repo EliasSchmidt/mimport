@@ -5,6 +5,7 @@
    Attributzugriff, und bricht deshalb nicht wie ein direktes draft.feld es
    bei einem undefinierten draft täte. #}
 {% set draft = draft or {} %}
+{% import "_genre_feld.html" as genre_komponente %}
 {# Ein vorhandener Entwurf beweist, dass hier schon von Hand getaggt wurde --
    dann soll die Karte offen dastehen, statt die gerade nachgeladenen Felder
    (Fortsetzen, Refresh-Knopf) hinter einem erneuten Klick auf die Summary zu
@@ -141,15 +142,8 @@
                     <input type="text" name="year" inputmode="numeric" placeholder="1969"
                            value="{{ draft.year or '' }}" required>
                 </label>
-                <label>Genre <span class="pflicht">*</span> <small>(mehrere mit <span class="mono">;</span>)</small>
-                    <input type="text"
-                           name="genre"
-                           placeholder="z. B. Jazz; Fusion"
-                           list="genre-vorschlaege-{{ session_id }}"
-                           autocomplete="off"
-                           data-genre-input
-                           value="{{ draft.genre or '' }}"
-                           required>
+                <label>Genre <span class="pflicht">*</span>
+                    {{ genre_komponente.genre_feld("genre", draft.genre or "", genre_vorschlaege) }}
                     <small>Beim Tippen erscheinen Vorschläge aus dem Projektkatalog; Freitext bleibt erlaubt.</small>
                 </label>
                 {% for feld in manual_basis_zusatz %}
@@ -159,12 +153,6 @@
                 </label>
                 {% endfor %}
             </div>
-
-            <datalist id="genre-vorschlaege-{{ session_id }}" data-genre-vorschlaege>
-                {% for genre in genre_vorschlaege %}
-                <option value="{{ genre }}"></option>
-                {% endfor %}
-            </datalist>
 
             <label class="checkbox">
                 <input type="checkbox" name="compilation" value="true" data-sampler {% if draft.compilation %}checked{% endif %}>

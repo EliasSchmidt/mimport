@@ -1057,3 +1057,64 @@ pre.output { max-height: 22rem; overflow-y: auto; }
    verbundene bekommen einen Link statt eines Suchwidgets, unverbundene
    bleiben einzeln durchsuchbar. */
 .kuenstler-link-zeile { display: flex; align-items: center; gap: 0.4rem; }
+
+/* Genre-Feld (siehe _genre_feld.html): Suchfeld mit Vorschlags-Dropdown
+   darüber, ausgewählte Genres als Chips darunter. Ersetzt das frühere
+   Freitextfeld mit Semikolon-Trennung -- der tatsächliche Formularwert
+   steckt weiterhin in einem versteckten Feld, hier gibt es dafür also
+   keinen eigenen Stil. */
+.genre-feld { display: flex; flex-direction: column; gap: 0.4rem; }
+.genre-eingabe-wrap { position: relative; }
+.genre-suche { width: 100%; }
+
+.genre-vorschlaege {
+    position: absolute;
+    z-index: 5;
+    top: calc(100% + 0.2rem);
+    left: 0;
+    right: 0;
+    margin: 0;
+    padding: 0.25rem;
+    list-style: none;
+    max-height: 12rem;
+    overflow-y: auto;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+}
+.genre-vorschlaege li {
+    padding: 0.35rem 0.5rem;
+    border-radius: 6px;
+    cursor: pointer;
+}
+.genre-vorschlaege li.aktiv,
+.genre-vorschlaege li:hover { background: var(--surface-alt); }
+
+.genre-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.genre-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.2rem 0.3rem 0.2rem 0.6rem;
+    border-radius: 999px;
+    background: var(--ok-bg);
+    color: var(--ok);
+    font-size: 0.85rem;
+}
+.genre-chip-entfernen {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.1rem;
+    height: 1.1rem;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+    color: inherit;
+    font-size: 0.9rem;
+    line-height: 1;
+    cursor: pointer;
+}
+.genre-chip-entfernen:hover { background: rgba(0, 0, 0, 0.12); }

@@ -760,7 +760,8 @@ def test_offenes_sitzungen_dropdown_sprengt_die_seite_nicht(browser, server):
 
 
 def test_genre_vorschlaege_werden_beim_tippen_aktualisiert(browser, server):
-    """Auch nach einem ersten Genre sollen sinnvolle Vorschläge übrig bleiben."""
+    """Tippen filtert die Vorschläge, ein Klick übernimmt sie als Chip -- auch
+    nach einem ersten ausgewählten Genre soll das noch klappen."""
     seite = browser.new_page(viewport={"width": 900, "height": 800})
     try:
         seite.goto(server + "/musik", wait_until="networkidle")
@@ -775,18 +776,16 @@ def test_genre_vorschlaege_werden_beim_tippen_aktualisiert(browser, server):
         seite.wait_for_selector("details.manual > summary")
         seite.click("details.manual > summary")
 
-        genre = seite.locator("[data-genre-input]")
-        genre.fill("ja")
-        vorschlaege = seite.evaluate(
-            "Array.from(document.querySelector('[data-genre-vorschlaege]').options).map((o) => o.value)",
-        )
-        assert "Jazz" in vorschlaege
+        suche = seite.locator("[data-genre-suche]")
+        suche.fill("ja")
+        seite.locator("[data-genre-vorschlaege-liste] li", has_text="Jazz").first.click()
+        assert seite.locator("[data-genre-chips] .genre-chip").first.inner_text().strip().startswith("Jazz")
 
-        genre.fill("Jazz; cl")
-        vorschlaege = seite.evaluate(
-            "Array.from(document.querySelector('[data-genre-vorschlaege]').options).map((o) => o.value)",
-        )
-        assert "Jazz; Classical" in vorschlaege
+        suche.fill("cl")
+        seite.locator("[data-genre-vorschlaege-liste] li", has_text="Classical").first.click()
+
+        wert = seite.locator("[data-genre-wert]")
+        assert wert.input_value() == "Jazz; Classical"
     finally:
         seite.close()
 

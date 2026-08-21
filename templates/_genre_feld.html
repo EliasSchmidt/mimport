@@ -1,0 +1,34 @@
+{# Genre-Feld als gemeinsame Komponente für /albums (_album_detail.html) und
+   /musik (_manual.html) -- vorher gab es das Feld zweimal fast identisch,
+   je als reines Textfeld mit nativem <datalist>. Ein natives <datalist>
+   konnte aber immer nur den kompletten Feldwert vorschlagen, nicht nur das
+   gerade getippte Genre -- unhandlich sobald mehr als eins gesetzt war.
+
+   Diese Komponente ersetzt das durch Chips: das Suchfeld filtert den
+   Katalog beim Tippen, ein Klick (oder Enter) auf einen Treffer übernimmt
+   ihn als Chip, Freitext bleibt weiter möglich (Enter ohne Treffer). Der
+   tatsächlich übermittelte Formularwert ist ein verstecktes Feld mit
+   ``name``/``data-original`` wie jedes andere Tag-Feld -- static/index.js
+   hält es beim Ändern der Chips Semikolon-getrennt synchron, damit Backend
+   und beets weiterhin denselben String wie vorher sehen. #}
+{% macro genre_feld(name, wert, genre_vorschlaege) %}
+<div class="genre-feld" data-genre-feld>
+    <input type="hidden" name="{{ name }}" value="{{ wert }}" data-feld-eingabe
+           data-original="{{ wert }}" data-genre-wert>
+    <div class="genre-eingabe-wrap">
+        <input type="text" class="genre-suche" data-genre-suche autocomplete="off"
+               placeholder="Genre eingeben …" role="combobox" aria-expanded="false"
+               aria-autocomplete="list">
+        <ul class="genre-vorschlaege" data-genre-vorschlaege-liste role="listbox" hidden></ul>
+    </div>
+    <div class="genre-chips" data-genre-chips aria-label="Ausgewählte Genres"></div>
+    {# Kein sichtbares <datalist>-Verhalten -- ohne ``list=``-Verknüpfung zu
+       einem Eingabefeld rendert der Browser das nie, es dient hier nur als
+       Container für den Katalog, den static/index.js ausliest. #}
+    <datalist data-genre-katalog>
+        {% for genre in genre_vorschlaege %}
+        <option value="{{ genre }}"></option>
+        {% endfor %}
+    </datalist>
+</div>
+{% endmacro %}

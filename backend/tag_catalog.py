@@ -105,7 +105,7 @@ ALBUM_FELDER: tuple[Feld, ...] = (
     Feld("month", "Monat", "basis", typ="zahl"),
     Feld("day", "Tag", "basis", typ="zahl"),
     Feld("genres", "Genre", "basis", einzelform="genre", mehrwertig_art="genre",
-         breit=True, hinweis="Mehrere mit ;"),
+         breit=True),
     Feld("label", "Label", "basis", breit=True),
     Feld("comp", "Sampler (Various Artists)", "basis", typ="bool"),
     Feld("catalognum", "Katalognummer", "basis"),

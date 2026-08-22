@@ -182,6 +182,20 @@ main, .page-head, .page-foot { max-width: 62rem; margin: 0 auto; }
     transition: width 0.4s ease;
 }
 
+/* Schmaler zweiter Balken über dem Gesamtfortschritt beim Rip: zeigt den
+   Fortschritt innerhalb des gerade laufenden Tracks, tickt viel schneller
+   als der äußere Balken, deshalb eigene, kürzere Transition. */
+.progress-track {
+    height: 0.25rem;
+    margin: 0.6rem 0 0.25rem;
+    opacity: 0.7;
+}
+
+.progress-track .progress-bar {
+    background: var(--text-dim);
+    transition: width 0.15s linear;
+}
+
 .progress-indeterminate .progress-bar {
     width: 35%;
     animation: progress-indeterminate 1.2s ease-in-out infinite;

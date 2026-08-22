@@ -134,6 +134,11 @@ class RipJob:
         return min(100, round(100 * fertig / self.tracks_gesamt))
 
     @property
+    def track_prozent(self) -> int:
+        """Fortschritt innerhalb des gerade laufenden Tracks, 0 bis 100."""
+        return round(100 * min(1.0, max(0.0, self.track_anteil)))
+
+    @property
     def dauer(self) -> float:
         """Sekunden seit dem Start, beim fertigen Auftrag die Gesamtzeit."""
         ende = self.beendet if self.beendet is not None else time.monotonic()

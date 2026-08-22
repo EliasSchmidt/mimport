@@ -44,6 +44,12 @@
 
 * { box-sizing: border-box; }
 
+/* [hidden] hat kaum Spezifität -- eine spätere Regel mit Klasse (etwa
+   ".stapelbar tr { display: block }" für die mobile Kartenansicht) gewinnt
+   sonst, und clientseitig ausgefilterte Tabellenzeilen blieben trotzdem
+   sichtbar. */
+[hidden] { display: none !important; }
+
 body {
     margin: 0;
     padding: 0 1.25rem 4rem;
@@ -247,6 +253,7 @@ main, .page-head, .page-foot { max-width: 62rem; margin: 0 auto; }
 
 input[type="text"],
 input[type="number"],
+input[type="search"],
 select,
 textarea {
     padding: 0.45rem 0.6rem;
@@ -256,6 +263,15 @@ textarea {
     color: var(--text);
     font: inherit;
     font-size: 0.92rem;
+}
+
+/* Safari gibt Suchfeldern von sich aus ein natives Aussehen, das Padding,
+   Rand und Radius von oben sonst ignoriert. */
+input[type="search"] {
+    appearance: none;
+    -webkit-appearance: none;
+    flex: 1 1 auto;
+    min-width: 12rem;
 }
 
 textarea { width: 100%; resize: vertical; }
@@ -276,6 +292,7 @@ input[type="number"]::-webkit-inner-spin-button {
 
 input[type="text"]:focus-visible,
 input[type="number"]:focus-visible,
+input[type="search"]:focus-visible,
 select:focus-visible,
 textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 

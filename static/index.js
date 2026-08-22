@@ -290,6 +290,14 @@ document.body.addEventListener("htmx:afterSwap", (event) => {
   bindGenreInputs(document);
   initSamplerZustand(document);
 
+  // Die Albentabelle kommt asynchron nach (langsamer beet-Subprozess) -- wer
+  // vorher schon ins Suchfeld getippt hat, soll nicht kurz die volle,
+  // ungefilterte Liste sehen.
+  if (event.detail.target.id === "albums-liste") {
+    const suchfeld = document.querySelector("[data-albumsuche]");
+    if (suchfeld) albumZeilenFiltern(suchfeld);
+  }
+
   const reveal = { candidates: "match-step", result: "result-step" };
   const stepId = reveal[event.detail.target.id];
   if (!stepId) return;
@@ -839,3 +847,44 @@ document.body.addEventListener("click", (event) => {
 });
 
 bindGenreInputs();
+
+/* ---------------------------------------------------- Albensuche (/albums) --
+ *
+ * Die Tabelle steht schon vollständig im DOM (ein einziger beet-Subprozess
+ * beim Laden über /albums/liste) -- jeder Tastendruck filtert nur noch die
+ * schon vorhandenen Zeilen, statt erneut die gesamte Library abzufragen.
+ */
+function albumZeilenFiltern(suchfeld) {
+  const container = document.getElementById("albums-liste");
+  const zeilen = container ? [...container.querySelectorAll("tbody tr")] : [];
+  if (zeilen.length === 0) return;
+
+  const wert = suchfeld.value.trim().toLowerCase();
+  let treffer = 0;
+  zeilen.forEach((zeile) => {
+    const interpret = zeile.querySelector('[data-spalte="Interpret"]')?.textContent ?? "";
+    const album = zeile.querySelector('[data-spalte="Album"]')?.textContent ?? "";
+    const passt =
+      !wert || interpret.toLowerCase().includes(wert) || album.toLowerCase().includes(wert);
+    zeile.hidden = !passt;
+    if (passt) treffer += 1;
+  });
+
+  const leerHinweis = container.querySelector("[data-albumsuche-leer]");
+  if (leerHinweis) leerHinweis.hidden = treffer > 0;
+}
+
+document.body.addEventListener("input", (event) => {
+  if (!event.target.matches("[data-albumsuche]")) return;
+  albumZeilenFiltern(event.target);
+});
+
+document.body.addEventListener("click", (event) => {
+  const knopf = event.target.closest("[data-albumsuche-reset]");
+  if (!knopf) return;
+  const suchfeld = document.querySelector("[data-albumsuche]");
+  if (!suchfeld) return;
+  suchfeld.value = "";
+  albumZeilenFiltern(suchfeld);
+  suchfeld.focus();
+});

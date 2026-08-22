@@ -18,7 +18,6 @@ import logging
 import shutil
 from collections.abc import AsyncIterator
 from pathlib import Path
-from urllib.parse import urlencode
 
 from fastapi import APIRouter, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
@@ -2008,9 +2007,9 @@ def health_fragment(request: Request) -> HTMLResponse:
     return _fragment(request, "_health.html", health=beets_env.health())
 
 
-def _alben_oder_fehler(q: str = "") -> tuple[list[albums.Album], str]:
+def _alben_oder_fehler() -> tuple[list[albums.Album], str]:
     try:
-        return albums.list_albums(q), ""
+        return albums.list_albums(), ""
     except albums.AlbumError as exc:
         return [], str(exc)
 
@@ -2024,17 +2023,18 @@ def album_list(request: Request, q: str = "") -> HTMLResponse:
     dauert spürbar. Ungebremst hätte das jede Navigation auf diese Seite
     blockiert, auch wenn man nur vorbeischaut. So steht das Gerüst sofort,
     die Liste blendet mit Ladeanzeige nach.
+
+    ``q`` befüllt nur das Suchfeld vorab (Deep-Link) -- gefiltert wird danach
+    clientseitig im schon geladenen DOM (static/index.js), nicht mehr per
+    erneutem beet-Subprozess.
     """
-    liste_url = "/albums/liste"
-    if q:
-        liste_url += "?" + urlencode({"q": q})
-    return _seite(request, "albums.html", "alben", q=q, liste_url=liste_url)
+    return _seite(request, "albums.html", "alben", q=q)
 
 
 @router.get("/albums/liste", response_class=HTMLResponse)
-def album_list_fragment(request: Request, q: str = "") -> HTMLResponse:
+def album_list_fragment(request: Request) -> HTMLResponse:
     """Nur die Albentabelle -- Ziel des lazy-load auf ``/albums``."""
-    treffer, fehler = _alben_oder_fehler(q)
+    treffer, fehler = _alben_oder_fehler()
     return _fragment(request, "_albums_liste.html", alben=treffer, fehler=fehler)
 
 

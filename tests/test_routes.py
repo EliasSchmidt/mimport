@@ -2765,12 +2765,18 @@ class TestAlbenCover:
         assert 'hx-get="/albums/liste"' in response.text
         assert 'hx-trigger="load"' in response.text
         assert 'id="cover-dialog"' in response.text
+        # Markup-Vertrag für die clientseitige Suche in static/index.js.
+        assert "data-albumsuche" in response.text
 
-    def test_liste_haengt_suchbegriff_an_den_hx_get_an(self, client, monkeypatch):
+    def test_suchfeld_wird_mit_query_vorbefuellt(self, client, monkeypatch):
+        """Gefiltert wird clientseitig (static/index.js) -- der hx-get bleibt
+        deshalb immer derselbe, ``q`` befüllt nur das Suchfeld vorab, für
+        Deep-Links wie ``/albums?q=Beatles``."""
         monkeypatch.setattr(routes.albums, "list_albums", lambda q="": [])
         response = client.get("/albums?q=Beatles")
         assert response.status_code == 200
-        assert 'hx-get="/albums/liste?q=Beatles"' in response.text
+        assert 'hx-get="/albums/liste"' in response.text
+        assert 'value="Beatles"' in response.text
 
     def test_seite_listet_alben(self, client, album, monkeypatch):
         monkeypatch.setattr(routes.albums, "list_albums", lambda q="": [album])
@@ -2778,6 +2784,9 @@ class TestAlbenCover:
         assert response.status_code == 200
         assert "Abbey Road" in response.text
         assert "The Beatles" in response.text
+        # Markup-Vertrag für die clientseitige Suche in static/index.js.
+        assert 'data-spalte="Interpret"' in response.text
+        assert 'data-spalte="Album"' in response.text
 
     def test_fehler_beim_listen_wird_angezeigt(self, client, monkeypatch):
         from backend import albums

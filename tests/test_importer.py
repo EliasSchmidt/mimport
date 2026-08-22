@@ -27,7 +27,10 @@ class TestBuildCommand:
 
     def test_import_unterbefehl(self):
         command = importer.build_command(Path("/staging/abc"))
-        assert command[1] == "import"
+        # '-v' ist bei beets eine globale Option und muss vor dem Subcommand
+        # stehen, sonst bleibt die Ausgabe der Plugins genauso knapp wie ohne.
+        assert command[1] == "-v"
+        assert command[2] == "import"
 
     def test_verschieben_ist_standard(self, monkeypatch):
         monkeypatch.setattr(importer.settings, "move_on_import", True)

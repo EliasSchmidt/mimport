@@ -1866,12 +1866,32 @@ def run_import(
         # siehe albums.retry_missing_cover(). Verzögert die Rückmeldung nur,
         # wenn tatsächlich ein Cover fehlt; der Normalfall (Cover schon da)
         # kostet nichts außer einer einzelnen beet-list-Abfrage.
+        #
+        # Fehlt mb_albumid, läuft der Nachschlag gar nicht erst -- ohne
+        # dieses Log wäre "kein Cover trotz MusicBrainz-Match" von "gar kein
+        # MusicBrainz-Match für diese Session" im Log nicht zu unterscheiden.
         if mb_albumid:
             albums.retry_missing_cover(mb_albumid)
             albums.refresh_genre_after_import(mb_albumid=mb_albumid)
         elif album_kernfelder:
+            # Kein Cover-Nachschlag hier -- der braucht zwingend eine
+            # MusicBrainz-Release-ID (siehe retry_missing_cover()), anders als
+            # der Genre-Refresh, der über Albumkünstler+Album einen
+            # Fallback-Ankerpunkt hat.
             albumartist, album = album_kernfelder
             albums.refresh_genre_after_import(albumartist=albumartist, album=album)
+            log.info(
+                "Kein Cover-Nachschlag für Session %s: keine MusicBrainz-Release-ID "
+                "(as-is-Import ohne Match oder Discogs-Kandidat).",
+                session_id,
+            )
+        else:
+            log.warning(
+                "Weder Cover-Nachschlag noch Genre-Refresh für Session %s möglich: "
+                "keine MusicBrainz-Release-ID und kein Albumkünstler/Album aus den "
+                "Dateien lesbar.",
+                session_id,
+            )
 
         # Nach einem Verschiebe-Import ist der Ordner leer; dann kann er weg.
         sessions.cleanup_if_empty(session)
@@ -2001,12 +2021,13 @@ def album_cover(album_id: int, v: str = "") -> FileResponse:
     album = albums.get_album(album_id)
     if album is None:
         raise HTTPException(status_code=404, detail="Album nicht gefunden.")
-    if not album.has_cover:
+    pfad = album.cover_path
+    if pfad is None:
         raise HTTPException(
             status_code=404, detail="Für dieses Album gibt es kein Cover."
         )
     return FileResponse(
-        album.cover_path,
+        pfad,
         headers={"Cache-Control": "public, max-age=31536000, immutable"},
     )
 
@@ -2027,6 +2048,10 @@ async def update_album_cover(
         raise HTTPException(status_code=404, detail="Album nicht gefunden.")
     try:
         bild_pfad = cover.speichern(album.path, await bild.read())
+        # Nur hier, nicht in cover.speichern() selbst: ein von fetchart
+        # heruntergeladenes 'cover.png' kann ausschließlich im Album-Ordner
+        # einer schon importierten Library liegen, siehe cover.py.
+        cover.andere_erweiterungen_entfernen(album.path)
         albums.update_cover(album, bild_pfad)
     except (cover.CoverError, albums.AlbumError) as exc:
         return _album_detail_fragment(request, album_id, fehler=str(exc))

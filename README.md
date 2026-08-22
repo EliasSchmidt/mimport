@@ -985,6 +985,36 @@ bleibt am Ende immer noch: von Hand nachtragen über die Album-Seite (siehe
 „Cover abfotografieren" oben) — ein erneuter, kompletter Import ist dafür
 nicht nötig.
 
+**„Fehlt das Cover" heißt nicht zwingend: keine Bilddatei im Ordner.** beets
+benennt ein heruntergeladenes Cover nach dem Content-Type der Quelle
+(`Album.art_destination` in beets selbst) — die Cover Art Archive liefert
+neben JPEG regelmäßig auch PNG. Ein erfolgreich geladenes Cover kann also
+durchaus als `cover.png` im Ordner liegen, nicht als `cover.jpg`. `beet
+fetchart` selbst kommt damit klar (es fragt die Datenbank, nicht den
+Dateinamen) — eine Prüfung, die stur nach `cover.jpg` sucht, hielte ein
+vorhandenes Cover dagegen für fehlend. Das war lange Zeit sowohl bei
+`Album.has_cover` als auch beim Retry hier der Fall, unabhängig davon, ob es
+im Einzelfall auch die Ursache für ein konkret fehlendes Cover war.
+`backend/cover.py` sucht deshalb unter mehreren Erweiterungen (`gefunden()`),
+und ein Ersetzen des Covers über die Album-Seite räumt danach eine ältere,
+andersnamige Datei aus demselben Ordner weg (`andere_erweiterungen_entfernen()`),
+damit nicht `cover.jpg` und ein verwaistes `cover.png` nebeneinander liegen.
+
+Bleibt ein Cover trotzdem aus, hilft zur Unterscheidung ein Blick in die
+Library selbst — auf dem Server:
+
+```
+docker compose exec mimport-cd sqlite3 /data/library.db \
+  "SELECT id, album, artpath FROM albums
+   WHERE artpath IS NULL OR artpath = '' OR artpath NOT LIKE '%cover.jpg';"
+```
+
+Zeilen mit einem `artpath`, der auf `cover.png`/`.webp` endet, sind der oben
+beschriebene Fall (durch das Aufräumen jetzt behoben). Ein leerer `artpath`
+heißt dagegen, dass fetchart wirklich nichts gefunden hat oder gar nicht erst
+lief — dafür liegt jetzt die vollständige `beet import`/`fetchart`-Ausgabe im
+Log (`-v`, siehe unten), statt dass nur „kein Cover" ohne Grund dasteht.
+
 ## Wie der Import abläuft
 
 Der Punkt, an dem es leicht schiefgeht, und warum es hier so gelöst ist:

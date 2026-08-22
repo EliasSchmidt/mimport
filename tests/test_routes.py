@@ -2730,6 +2730,22 @@ class TestAlbenCover:
         # der Dialog ersetzt #album-detail auf der Detailseite.
         assert "Abbey Road" in response.text
 
+    def test_neues_foto_raeumt_altes_fetchart_cover_anderer_erweiterung_weg(
+        self, client, album, monkeypatch
+    ):
+        """fetchart kann beim Import ein 'cover.png' abgelegt haben (Cover Art
+        Archive liefert oft PNG) -- ein neu abfotografiertes Cover soll das
+        ersetzen, nicht danebenliegen lassen."""
+        monkeypatch.setattr(routes.albums, "update_cover", lambda a, pfad: None)
+        (album.path / "cover.png").write_bytes(b"altes fetchart-cover")
+
+        response = client.post(
+            "/cover/album/1", files={"bild": ("cover.jpg", self.JPEG, "image/jpeg")}
+        )
+        assert response.status_code == 200
+        namen = sorted(p.name for p in album.path.iterdir())
+        assert namen == ["cover.jpg"]
+
     def test_unbekanntes_album_beim_hochladen_gibt_es_404(self, client, album):
         response = client.post(
             "/cover/album/999", files={"bild": ("cover.jpg", self.JPEG, "image/jpeg")}

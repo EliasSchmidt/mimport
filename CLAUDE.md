@@ -129,8 +129,27 @@ Metadatenquelle, die Oberfläche bliebe leer.
 
 `lastgenre` liefert selbst dann kein Genre, wenn `musicbrainz` es nicht
 tut (`genres: False` bei `musicbrainz`) -- die beiden Plugins konkurrieren
-also nicht. Mit `force: yes` und `keep_existing: no` überschreibt
-`lastgenre` aber ein Genre, das schon **in der hochgeladenen Datei** stand.
+also nicht.
+
+**`lastgenre` läuft nicht mehr automatisch beim Import (`auto: no`),
+sondern explizit danach** (`albums.refresh_genre_after_import()`, aufgerufen
+aus `routes.run_import()`). Grund: Die automatische Import-Stufe ruft laut
+eigenem Quellcode immer `try_sync(write=False)` auf, und beets' Pipeline
+schreibt unter `-A` (as-is, das mimport immer nutzt) ohnehin nichts zurück
+(`ImportTask.manipulate_files` nur bei `Action.APPLY`/`RETAG`, nie bei
+`ASIS`). Ein von Last.fm gefundenes Genre landete also zuverlässig nur in
+der Datenbank, nie in der Datei -- nachgewiesen an Album 36 (Cecilia
+Bartoli): `beet ls` zeigte für alle 21 Titel ein Genre, keine einzige Datei
+hatte eins. Dass es bei anderen Alben trotzdem "funktionierte", war ein
+Nebeneffekt von `retry_missing_cover()`: ein erfolgreich eingebettetes
+Cover schreibt über `embedart` beiläufig alle Feldwerte inklusive Genre mit
+in die Datei. Der explizite `beet lastgenre --no-force`-Aufruf benutzt
+dagegen `ui.should_write()` und schreibt tatsächlich. Anker ist die
+MusicBrainz-Release-ID, wenn vorhanden, sonst Albumkünstler+Album aus den
+Dateien (Handtag-Import über `/musik` setzt nie eine Release-ID, siehe
+`routes._album_kernfelder_der_session`). `force: no` und `keep_existing:
+no` sorgen dafür, dass ein manuell gesetztes Genre unangetastet bleibt --
+Last.fm füllt nur eine bislang leere Lücke.
 
 ## `mb_albumartistid` vs. `mb_albumartistids`
 

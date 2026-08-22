@@ -804,6 +804,30 @@ def rip_reset(request: Request, sitzung_loeschen: bool = True) -> HTMLResponse:
     return _rip_fragment(request)
 
 
+@router.post("/rip/abbruch", response_class=HTMLResponse)
+def rip_abbruch(request: Request) -> HTMLResponse:
+    """Beendet einen laufenden Rip von Hand.
+
+    Der Ausweg für den Fall, dass cdparanoia sich an einer beschädigten
+    Stelle festfrisst: vorher blieb nur, den Container neu zu starten, weil
+    ein Auftrag auf „läuft" das Laufwerk dauerhaft sperrte. Es gibt nur ein
+    Laufwerk und damit einen Auftrag, angezeigt wird aber je nach
+    ``job.modus`` eine von zwei Seiten -- dieselbe Unterscheidung wie in
+    ``_rip_fragment()``.
+    """
+    job = rip.current()
+    hoerbuch = job is not None and job.modus == "hoerbuch"
+    try:
+        hinweis = rip.abbrechen_rip()
+    except rip.RipError as exc:
+        if hoerbuch:
+            return _audiobook_fragment(request, fehler=str(exc))
+        return _fragment(request, "_error.html", message=str(exc))
+    if hoerbuch:
+        return _audiobook_fragment(request, meldung=hinweis)
+    return _rip_fragment(request)
+
+
 @router.get("/rip/files", response_class=HTMLResponse)
 def rip_files(request: Request) -> HTMLResponse:
     """Die Dateiliste des fertigen Rips -- ab hier wie Upload und Daten-CD."""

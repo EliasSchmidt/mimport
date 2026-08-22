@@ -257,7 +257,7 @@ class TestAblauf:
     def test_erfolgreicher_rip(self, monkeypatch, toc):
         gelesen = []
 
-        def fake_track(nummer, ziel, **kwargs):
+        def fake_track(job, nummer, ziel, **kwargs):
             gelesen.append(nummer)
             ziel.write_bytes(b"fLaC\x00\x00\x00\x22")
 
@@ -281,7 +281,7 @@ class TestAblauf:
         """Beide Discs vergeben dieselben Dateinamen -- die dürfen sich nicht
         gegenseitig überschreiben, wenn sie in derselben Session landen."""
         monkeypatch.setattr(
-            rip, "_rip_track", lambda n, z, **kw: z.write_bytes(f"a{n}".encode())
+            rip, "_rip_track", lambda j, n, z, **kw: z.write_bytes(f"a{n}".encode())
         )
         monkeypatch.setattr(rip.discid, "lookup", lambda *a, **k: [])
 
@@ -295,7 +295,7 @@ class TestAblauf:
         assert len(session.audio_paths) == 6
 
         monkeypatch.setattr(
-            rip, "_rip_track", lambda n, z, **kw: z.write_bytes(f"b{n}".encode())
+            rip, "_rip_track", lambda j, n, z, **kw: z.write_bytes(f"b{n}".encode())
         )
         zielordner = rip._naechste_disc(session.directory)
         zweite = rip.RipJob(
@@ -310,7 +310,7 @@ class TestAblauf:
 
     def test_releases_werden_uebernommen(self, monkeypatch, toc):
         monkeypatch.setattr(
-            rip, "_rip_track", lambda n, z, **kw: z.write_bytes(b"fLaC\x00\x00\x00\x22")
+            rip, "_rip_track", lambda j, n, z, **kw: z.write_bytes(b"fLaC\x00\x00\x00\x22")
         )
         hinweis = discid.ReleaseHint(mbid="x" * 36, title="Album", date="", country="")
         monkeypatch.setattr(rip.discid, "lookup", lambda *a, **k: [hinweis])
@@ -328,7 +328,7 @@ class TestAblauf:
     def test_musicbrainz_ausfall_verwirft_den_rip_nicht(self, monkeypatch, toc):
         """Die Tracks sind gelesen -- die Suche geht notfalls von Hand."""
         monkeypatch.setattr(
-            rip, "_rip_track", lambda n, z, **kw: z.write_bytes(b"fLaC\x00\x00\x00\x22")
+            rip, "_rip_track", lambda j, n, z, **kw: z.write_bytes(b"fLaC\x00\x00\x00\x22")
         )
 
         def kaputt(*args, **kwargs):
@@ -350,7 +350,7 @@ class TestAblauf:
     def test_lesefehler_raeumt_die_session_weg(
         self, monkeypatch, toc, isoliertes_staging
     ):
-        def kaputt(nummer, ziel, **kwargs):
+        def kaputt(job, nummer, ziel, **kwargs):
             if nummer == 3:
                 raise rip.RipError("Track 3 ließ sich nicht lesen.")
             ziel.write_bytes(b"fLaC\x00\x00\x00\x22")
@@ -371,12 +371,38 @@ class TestAblauf:
         assert list(isoliertes_staging.iterdir()) == []
         assert job.session_id is None
 
+    def test_abbruch_zeigt_die_eigene_meldung_statt_der_generischen(
+        self, monkeypatch, toc, isoliertes_staging
+    ):
+        """Wird von Hand abgebrochen, soll das auch in der Fehlermeldung
+        stehen -- nicht die generische "Track N ließ sich nicht lesen", die
+        hier nicht stimmt: cdparanoia hat den Track nicht selbst aufgegeben.
+        """
+
+        def abgebrochen(job, nummer, w, fortschritt):
+            job.abbruchgrund = "Der Rip wurde von Hand abgebrochen."
+            return 1  # wie ein von SIGTERM/SIGKILL beendeter Prozess
+
+        monkeypatch.setattr(rip, "_lesen", abgebrochen)
+
+        job = rip.RipJob(disc_id=VEKTOR_ID)
+        session = sessions.create_session()
+        job.session_id = session.session_id
+        rip._arbeite(
+            job, toc, session.directory,
+            bei_fehler=lambda: rip._session_verwerfen(job),
+        )
+
+        assert job.zustand == "fehler"
+        assert "von Hand abgebrochen" in (job.fehler or "")
+        assert "ließ sich nicht lesen" not in (job.fehler or "")
+
     def test_unerwarteter_fehler_bleibt_nicht_stumm(
         self, monkeypatch, toc, isoliertes_staging
     ):
         """Ein Thread, der still stirbt, hinterlässt eine hängende Anzeige."""
 
-        def platzt(nummer, ziel, **kwargs):
+        def platzt(job, nummer, ziel, **kwargs):
             raise ValueError("etwas ganz anderes")
 
         monkeypatch.setattr(rip, "_rip_track", platzt)
@@ -400,7 +426,7 @@ class TestRipTrack:
         ziel = tmp_path / "01 Track 1.flac"
         wav = ziel.with_suffix(".wav")
 
-        def fake_lesen(nummer, w, fortschritt):
+        def fake_lesen(job, nummer, w, fortschritt):
             w.write_bytes(b"RIFF....WAVE")
             return 0
 
@@ -410,7 +436,7 @@ class TestRipTrack:
 
         monkeypatch.setattr(rip, "_lesen", fake_lesen)
         monkeypatch.setattr(rip, "_run", fake_run)
-        rip._rip_track(1, ziel)
+        rip._rip_track(rip.RipJob(), 1, ziel)
 
         assert ziel.exists()
         assert not wav.exists()
@@ -419,13 +445,13 @@ class TestRipTrack:
         ziel = tmp_path / "01 Track 1.flac"
         wav = ziel.with_suffix(".wav")
 
-        def fake_lesen(nummer, w, fortschritt):
+        def fake_lesen(job, nummer, w, fortschritt):
             w.write_bytes(b"RIFF....WAVE")
             return 1  # Leseschaden
 
         monkeypatch.setattr(rip, "_lesen", fake_lesen)
         with pytest.raises(rip.RipError):
-            rip._rip_track(1, ziel)
+            rip._rip_track(rip.RipJob(), 1, ziel)
 
         assert not wav.exists()
 
@@ -447,6 +473,97 @@ class TestReset:
 
         rip.reset()
         assert rip.current() is None
+
+
+class _FakeProzess:
+    """Ein Prozesshandle, das nichts wirklich startet -- nur Terminate/Kill
+    mitzählt, so wie ``_beenden`` sie aufruft."""
+
+    def __init__(self):
+        self.terminiert = False
+        self.getoetet = False
+
+    def terminate(self):
+        self.terminiert = True
+
+    def wait(self, timeout=None):
+        return 0
+
+    def kill(self):
+        self.getoetet = True
+
+
+class TestAbbrechen:
+    """Der Knopf für den Fall, dass cdparanoia sich an einem Track festfrisst."""
+
+    def test_ohne_laufenden_rip(self):
+        with pytest.raises(rip.RipError, match="kein Rip"):
+            rip.abbrechen_rip()
+
+    def test_zwischen_zwei_tracks_wird_abgelehnt(self):
+        """Zwischen Tracks (und beim TOC-Lesen) gibt es kein Prozesshandle --
+        ein Klick soll dann zum Nochmal-Versuchen auffordern statt ins Leere
+        zu laufen."""
+        rip._job = rip.RipJob(zustand="rippt")
+        with pytest.raises(rip.RipError, match="Moment warten"):
+            rip.abbrechen_rip()
+
+    def test_beendet_den_laufenden_prozess(self):
+        job = rip.RipJob(zustand="rippt")
+        prozess = _FakeProzess()
+        job.prozess = prozess
+        rip._job = job
+
+        hinweis = rip.abbrechen_rip()
+
+        assert prozess.terminiert
+        assert not prozess.getoetet
+        assert "abgebrochen" in hinweis.lower()
+        assert job.abbruchgrund == hinweis
+
+    def test_sigkill_wenn_sigterm_nicht_reicht(self, monkeypatch):
+        """SIGTERM allein reicht nicht -- _beenden() eskaliert auf SIGKILL."""
+        job = rip.RipJob(zustand="rippt")
+        prozess = _FakeProzess()
+
+        anlaeufe = []
+
+        def erst_haengt_dann_stirbt(timeout=None):
+            anlaeufe.append(1)
+            if len(anlaeufe) == 1:
+                raise subprocess.TimeoutExpired(cmd="cdparanoia", timeout=timeout)
+            return 0
+
+        prozess.wait = erst_haengt_dann_stirbt
+        job.prozess = prozess
+        rip._job = job
+
+        hinweis = rip.abbrechen_rip()
+
+        assert prozess.terminiert
+        assert prozess.getoetet
+        assert "abgebrochen" in hinweis.lower()
+
+    def test_ueberlebt_auch_sigkill_meldet_fehler_statt_erfolg(self):
+        """Ein Prozess, der im Kernel an einem toten Laufwerk hängt, kann
+        auch SIGKILL überstehen (D-State). Eine Erfolgsmeldung wäre hier
+        schlimmer als eine Absage -- das Laufwerk bleibt gesperrt, nur ein
+        Container-Neustart hilft, und das muss die Antwort auch sagen."""
+        job = rip.RipJob(zustand="rippt")
+        prozess = _FakeProzess()
+
+        def haengt_fuer_immer(timeout=None):
+            raise subprocess.TimeoutExpired(cmd="cdparanoia", timeout=timeout)
+
+        prozess.wait = haengt_fuer_immer
+        job.prozess = prozess
+        rip._job = job
+
+        with pytest.raises(rip.RipError, match="reagiert nicht mehr"):
+            rip.abbrechen_rip()
+
+        assert prozess.terminiert
+        assert prozess.getoetet
 
 
 class TestGeraeteschalter:
@@ -559,7 +676,7 @@ class TestHoerbuchZiel:
         assert dritte.name == "CD 3"
         dritte.mkdir(parents=True)
 
-        def kaputt(nummer, ziel, **kwargs):
+        def kaputt(job, nummer, ziel, **kwargs):
             raise rip.RipError("Track 1 ließ sich nicht lesen.")
 
         monkeypatch.setattr(rip, "_rip_track", kaputt)
@@ -588,7 +705,7 @@ class TestHoerbuchZiel:
             rip.discid, "lookup", lambda *a, **k: gefragt.append(1) or []
         )
         monkeypatch.setattr(
-            rip, "_rip_track", lambda n, z, **kw: z.write_bytes(b"fLaC\x00\x00\x00\x22")
+            rip, "_rip_track", lambda j, n, z, **kw: z.write_bytes(b"fLaC\x00\x00\x00\x22")
         )
 
         from backend import audiobook
@@ -724,7 +841,7 @@ class TestRipDauer:
         from backend import sessions
 
         monkeypatch.setattr(
-            rip, "_rip_track", lambda n, z, **kw: z.write_bytes(b"fLaC\x00\x00\x00\x22")
+            rip, "_rip_track", lambda j, n, z, **kw: z.write_bytes(b"fLaC\x00\x00\x00\x22")
         )
         monkeypatch.setattr(rip.discid, "lookup", lambda *a, **k: [])
 
@@ -761,7 +878,7 @@ class TestFortschrittUeberDieGanzeCD:
 
         verlauf = []
 
-        def fake(nummer, ziel, fortschritt=None):
+        def fake(_job, nummer, ziel, fortschritt=None):
             for zustand, sektor in meldungen_je_track(nummer):
                 if fortschritt:
                     fortschritt(zustand, sektor)

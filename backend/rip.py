@@ -30,6 +30,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from backend import discid, sessions
 from backend.config import AUDIO_EXTENSIONS, settings
@@ -105,6 +106,16 @@ class RipJob:
     #: erkannt", „liest langsamer" und Ähnliches.
     muehsam: str = ""
 
+    #: Der laufende cdparanoia-Prozess, damit sich ein festgefrorener Track
+    #: von Hand beenden lässt. Nur gesetzt, während tatsächlich gelesen wird
+    #: -- zwischen zwei Tracks und beim TOC-Lesen ist hier nichts zu holen.
+    prozess: Any = None
+
+    #: Gesetzt, wenn nicht cdparanoia selbst aufgehört hat, sondern der Nutzer
+    #: abgebrochen hat -- sonst wäre "cdparanoia endete mit -15" alles, was
+    #: davon in der Fehlermeldung zu sehen wäre.
+    abbruchgrund: str | None = None
+
     @property
     def prozent(self) -> int:
         """Fortschritt über die ganze CD.
@@ -175,7 +186,10 @@ def current() -> RipJob | None:
 
 
 def _lesen(
-    nummer: int, wav: Path, fortschritt: Callable[[str, int], None] | None
+    job: RipJob,
+    nummer: int,
+    wav: Path,
+    fortschritt: Callable[[str, int], None] | None,
 ) -> int:
     """Ruft cdparanoia auf und verfolgt seine Meldungen mit.
 
@@ -206,27 +220,31 @@ def _lesen(
             f"„{settings.cdparanoia_bin}“ wurde nicht gefunden."
         ) from exc
 
-    letzte: list[str] = []
-    assert prozess.stderr is not None
-    for zeile in prozess.stderr:
-        stand = parse_progress(zeile)
-        if stand is not None:
-            if fortschritt is not None:
-                fortschritt(*stand)
-            continue
-        # Alles, was keine Fortschrittsmeldung ist, kann eine Fehlerursache
-        # sein -- die letzten Zeilen genügen dafür.
-        if zeile.strip():
-            letzte.append(zeile.strip())
-            del letzte[:-10]
-
+    job.prozess = prozess
     try:
-        prozess.wait(timeout=settings.rip_track_timeout)
-    except subprocess.TimeoutExpired as exc:
-        prozess.kill()
-        raise RipError(
-            f"Track {nummer} dauerte zu lange. Ist die CD stark zerkratzt?"
-        ) from exc
+        letzte: list[str] = []
+        assert prozess.stderr is not None
+        for zeile in prozess.stderr:
+            stand = parse_progress(zeile)
+            if stand is not None:
+                if fortschritt is not None:
+                    fortschritt(*stand)
+                continue
+            # Alles, was keine Fortschrittsmeldung ist, kann eine
+            # Fehlerursache sein -- die letzten Zeilen genügen dafür.
+            if zeile.strip():
+                letzte.append(zeile.strip())
+                del letzte[:-10]
+
+        try:
+            prozess.wait(timeout=settings.rip_track_timeout)
+        except subprocess.TimeoutExpired as exc:
+            prozess.kill()
+            raise RipError(
+                f"Track {nummer} dauerte zu lange. Ist die CD stark zerkratzt?"
+            ) from exc
+    finally:
+        job.prozess = None
 
     if prozess.returncode != 0:
         log.warning("cdparanoia (Track %s): %s", nummer, " | ".join(letzte))
@@ -311,7 +329,11 @@ def parse_progress(zeile: str) -> tuple[str, int] | None:
 
 
 def _rip_track(
-    nummer: int, ziel: Path, *, fortschritt: Callable[[str, int], None] | None = None
+    job: RipJob,
+    nummer: int,
+    ziel: Path,
+    *,
+    fortschritt: Callable[[str, int], None] | None = None,
 ) -> None:
     """Liest einen Track und schreibt ihn als FLAC nach ``ziel``.
 
@@ -323,8 +345,10 @@ def _rip_track(
     """
     wav = ziel.with_suffix(".wav")
     try:
-        ergebnis = _lesen(nummer, wav, fortschritt)
+        ergebnis = _lesen(job, nummer, wav, fortschritt)
         if ergebnis != 0 or not wav.exists():
+            if job.abbruchgrund:
+                raise RipError(job.abbruchgrund)
             raise RipError(f"Track {nummer} ließ sich nicht lesen.")
 
         # Die Tracknummer muss mit. Sie ist das Einzige, was eine frisch
@@ -413,7 +437,7 @@ def _arbeite(
                     job.track_anteil = max(job.track_anteil, anteil)
                 job.muehsam = _MUEHSAM.get(zustand, "")
 
-            _rip_track(nummer, ziel, fortschritt=melden)
+            _rip_track(job, nummer, ziel, fortschritt=melden)
             job.track = index
             job.track_anteil = 0.0
             job.muehsam = ""
@@ -673,6 +697,81 @@ def reset() -> None:
         if _job is not None and _job.laeuft:
             raise RipError("Der laufende Rip lässt sich nicht verwerfen.")
         _job = None
+
+
+def _beenden(prozess: subprocess.Popen[str]) -> bool:
+    """SIGTERM, und wenn das nicht reicht, SIGKILL.
+
+    Dieselbe Eskalation wie beim m4b-Bau (``backend.audiobook._beenden``):
+    cdparanoia räumt bei SIGTERM auf, hängt es aber im Kernel fest -- ein
+    Laufwerk, das nicht mehr antwortet --, kommt es dort nicht heraus, und
+    dann muss der härtere Weg her. Ein Prozess in diesem Zustand (D/
+    uninterruptible sleep, festhängend an einer Geräte-I/O) übersteht auch
+    SIGKILL -- deshalb der Rückgabewert: ohne ihn hätte der Aufrufer keine
+    Möglichkeit, "erledigt" von "auch das half nichts" zu unterscheiden.
+
+    Gibt zurück, ob der Prozess danach nachweislich fort ist.
+    """
+    try:
+        prozess.terminate()
+        prozess.wait(timeout=10)
+        return True
+    except subprocess.TimeoutExpired:
+        pass
+    except Exception:  # noqa: BLE001, S110 -- der Prozess war schon fort
+        return True
+
+    prozess.kill()
+    try:
+        prozess.wait(timeout=10)
+        return True
+    except subprocess.TimeoutExpired:
+        log.error("cdparanoia reagiert auch auf SIGKILL nicht.")
+        return False
+    except Exception:  # noqa: BLE001, S110 -- der Prozess war schon fort
+        return True
+
+
+def abbrechen_rip() -> str:
+    """Beendet den laufenden Track-Read auf Wunsch des Nutzers.
+
+    Der Ausweg, den es vorher nicht gab: friert sich cdparanoia an einer
+    beschädigten Stelle fest (Kratzer, klemmendes Laufwerk), blieb der
+    Auftrag für immer auf „läuft" -- ``rip_track_timeout`` greift zwar, ist
+    aber bewusst großzügig bemessen, damit eine CD mit viel Fehlerkorrektur
+    nicht vorzeitig abbricht. Bis dahin half nur ein Container-Neustart.
+
+    Betroffen ist immer nur der angefangene Track bzw. die angefangene Disc
+    -- dieselbe Fehlerbehandlung wie bei einem unlesbaren Track räumt danach
+    entweder die ganze (frische) Session weg oder nur den Disc-Ordner, siehe
+    ``bei_fehler`` in ``start()``.
+
+    Wichtig: Eine Antwort, auf die niemand mehr hört, ist schlimmer als eine
+    Absage (dieselbe Regel wie bei ``audiobook.abbrechen_m4b()``). Überlebt
+    cdparanoia auch SIGKILL -- ein Prozess, der im Kernel an einem nicht
+    mehr antwortenden Laufwerk hängt, kann das --, meldet diese Funktion das
+    als Fehler statt Erfolg vorzutäuschen; das Laufwerk bleibt dann gesperrt,
+    und nur ein Container-Neustart hilft.
+    """
+    with _job_lock:
+        job = _job
+        if job is None or not job.laeuft:
+            raise RipError("Es läuft gerade kein Rip.")
+        prozess = job.prozess
+        if prozess is None:
+            raise RipError(
+                "Gerade wird kein Track gelesen -- bitte einen Moment warten "
+                "und erneut versuchen."
+            )
+        job.abbruchgrund = "Der Rip wurde von Hand abgebrochen."
+
+    if not _beenden(prozess):
+        raise RipError(
+            "cdparanoia reagiert nicht mehr, auch nicht auf ein hartes "
+            "Beenden -- das Laufwerk antwortet nicht. Nur ein Neustart des "
+            "Containers löst das."
+        )
+    return job.abbruchgrund
 
 
 def tools_available() -> dict[str, bool]:

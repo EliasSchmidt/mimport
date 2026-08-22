@@ -19,3 +19,11 @@
         läuft seit {{ job.dauer_text }} · die Seite kann offen bleiben
     </p>
 </div>
+<div class="actions">
+    <button type="button" class="button secondary"
+            hx-post="/rip/abbruch"
+            hx-target="#rip" hx-swap="innerHTML"
+            hx-confirm="Den Rip abbrechen? Der angefangene Track bzw. die angefangene Disc geht dabei verloren.">
+        Rip abbrechen
+    </button>
+</div>

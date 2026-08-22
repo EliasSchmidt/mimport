@@ -16,3 +16,11 @@
     <div class="progress"><div class="progress-bar"
          style="width: {{ job.prozent }}%"></div></div>
 </div>
+<div class="actions">
+    <button type="button" class="button secondary"
+            hx-post="/rip/abbruch"
+            hx-target="#audiobook" hx-swap="innerHTML"
+            hx-confirm="Den Rip abbrechen? Der angefangene Track bzw. die angefangene Disc geht dabei verloren.">
+        Rip abbrechen
+    </button>
+</div>

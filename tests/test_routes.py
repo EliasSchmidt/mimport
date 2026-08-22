@@ -2803,6 +2803,16 @@ class TestAlbenCover:
         assert antwort.content == self.JPEG
         assert "immutable" in antwort.headers["cache-control"]
 
+    def test_cover_anderer_erweiterung_wird_ausgeliefert(self, client, album):
+        """fetchart legt ein heruntergeladenes Cover nicht zwingend als
+        ``cover.jpg`` ab (Cover Art Archive liefert oft PNG) -- die Route muss
+        wie ``Album.cover_path`` über ``cover.gefunden()`` suchen, nicht nur
+        die eine feste Datei kennen."""
+        (album.path / "cover.png").write_bytes(self.JPEG)
+        antwort = client.get("/cover/album/1?v=123")
+        assert antwort.status_code == 200
+        assert antwort.content == self.JPEG
+
     def test_neues_cover_landet_im_albumordner_und_wird_eingebettet(
         self, client, album, monkeypatch
     ):

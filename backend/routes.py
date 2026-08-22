@@ -2109,8 +2109,8 @@ def album_cover(album_id: int, v: str = "") -> FileResponse:
     ordner = albums.album_ordner(album_id)
     if ordner is None:
         raise HTTPException(status_code=404, detail="Album nicht gefunden.")
-    pfad = ordner / cover.COVER_DATEI
-    if not pfad.is_file():
+    pfad = cover.gefunden(ordner)
+    if pfad is None:
         raise HTTPException(
             status_code=404, detail="Für dieses Album gibt es kein Cover."
         )

@@ -214,22 +214,13 @@
                         <button type="submit" class="button danger">Neu bauen</button>
                     </form>
                     {% elif b.file_count and not b.has_m4b %}
-                    <form hx-post="/audiobook/m4b" hx-target="#audiobook"
+                    <form id="audiobook-m4b-{{ loop.index }}" hx-post="/audiobook/m4b" hx-target="#audiobook"
                           hx-swap="innerHTML"
                           hx-confirm="m4b bauen? Danach werden die Quelldateien gelöscht – aber nur, wenn die Laufzeit passt.">
                         <input type="hidden" name="buch" value="{{ b.relative }}">
                         {% if b.lossy %}
                         <input type="hidden" name="force" value="true">
                         {% endif %}
-
-                        {# Kapitelnamen: bei einem Rip gibt es keine Tags, und
-                           der Dateiname taugt nicht -- jede Disc fängt wieder
-                           bei 01 an. Leer lassen heißt deshalb "durchzählen". #}
-                        <details class="kapitel">
-                            <summary>Kapitel benennen ({{ b.file_count }})</summary>
-                            <textarea name="kapitel" rows="6"
-                                      placeholder="Eine Zeile je Kapitel, in der Reihenfolge der Tracks.&#10;Leer lassen: Titel-Tags, sonst „Kapitel 1“ … „Kapitel {{ b.file_count }}“."></textarea>
-                        </details>
 
                         <button type="submit" class="button {{ '' if b.lossy else 'primary' }}">
                             {{ "Trotzdem bündeln" if b.lossy else "m4b bauen" }}
@@ -256,6 +247,19 @@
                             <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4"/></svg>
                         </summary>
                         <div class="row-menu-panel">
+                            {% if b.file_count and not b.has_m4b and not b.unstimmig %}
+                            {# Kapitelnamen: bei einem Rip gibt es keine Tags, und
+                               der Dateiname taugt nicht -- jede Disc fängt wieder
+                               bei 01 an. Leer lassen heißt deshalb "durchzählen".
+                               Das Textfeld hängt über form="…" am m4b-Formular
+                               oben, obwohl es hier im "Mehr"-Menü steht. #}
+                            <details class="kapitel">
+                                <summary>Kapitel benennen ({{ b.file_count }})</summary>
+                                <textarea name="kapitel" rows="6" form="audiobook-m4b-{{ loop.index }}"
+                                          placeholder="Eine Zeile je Kapitel, in der Reihenfolge der Tracks.&#10;Leer lassen: Titel-Tags, sonst „Kapitel 1“ … „Kapitel {{ b.file_count }}“."></textarea>
+                            </details>
+                            {% endif %}
+
                             {% if not b.has_m4b %}
                             <form data-upload-widget data-upload-autosubmit="true"
                                   data-upload-endpoint="/audiobook/upload"

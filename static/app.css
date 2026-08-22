@@ -751,6 +751,17 @@ pre.output { max-height: 22rem; overflow-y: auto; }
     .sessions-panel { position: static; width: auto; max-width: none; margin-top: 0.6rem; box-shadow: none; }
 }
 
+/* Aktionsknöpfe der Hörbuch-Tabelle (Nächste CD / m4b bauen / Von vorn
+   einlesen / Mehr) nebeneinander statt untereinander -- Formulare und
+   <details> sind von Haus aus block-level, ohne diese Regel stapeln sie
+   sich in der Zelle auch auf breiten Bildschirmen. */
+#audiobook-inner .files td:last-child {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: center;
+}
+
 /* --- Zeilen-Menü (Hörbuch-Tabelle: "Mehr") ----------------------------- */
 /* Seltenere Aktionen (Dateien nachreichen, Cover) wandern hinter "Mehr",
    die primäre Handlung der Zeile bleibt direkt klickbar. */
@@ -774,7 +785,7 @@ pre.output { max-height: 22rem; overflow-y: auto; }
     display: flex;
     flex-direction: column;
     gap: 0.4rem;
-    min-width: 11rem;
+    width: 16rem;
     padding: 0.5rem;
     border: 1px solid var(--border);
     border-radius: 6px;

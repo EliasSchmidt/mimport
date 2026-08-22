@@ -394,6 +394,81 @@ class TestAblauf:
         assert list(isoliertes_staging.iterdir()) == []
 
 
+class TestAuswerfen:
+    def test_ohne_eject_bleibt_es_beim_versuch(self, monkeypatch):
+        """Fehlt das Programm im Image, soll das nicht auffallen."""
+        monkeypatch.setattr(rip.shutil, "which", lambda _: None)
+
+        def fake_run(command, **kwargs):
+            raise AssertionError("eject hätte nicht aufgerufen werden dürfen")
+
+        monkeypatch.setattr(rip, "_run", fake_run)
+        rip._auswerfen()
+
+    def test_ruft_eject_mit_dem_laufwerk_auf(self, monkeypatch):
+        monkeypatch.setattr(rip.shutil, "which", lambda _: "/usr/bin/eject")
+        aufrufe = []
+
+        def fake_run(command, **kwargs):
+            aufrufe.append(command)
+            return subprocess.CompletedProcess(command, 0, "", "")
+
+        monkeypatch.setattr(rip, "_run", fake_run)
+        rip._auswerfen()
+
+        assert aufrufe == [[rip.settings.eject_bin, rip.settings.cdrom_device]]
+
+    def test_fehlschlag_wird_nur_geloggt(self, monkeypatch, caplog):
+        """Der Rip ist zu diesem Zeitpunkt schon erfolgreich -- kein Grund,
+        deswegen den Auftrag als Fehler zu markieren."""
+        monkeypatch.setattr(rip.shutil, "which", lambda _: "/usr/bin/eject")
+        monkeypatch.setattr(
+            rip, "_run",
+            lambda command, **kw: subprocess.CompletedProcess(
+                command, 1, "", "device is busy"
+            ),
+        )
+
+        with caplog.at_level("WARNING"):
+            rip._auswerfen()
+
+        assert "konnte die CD nicht auswerfen" in caplog.text
+
+    def test_ausnahme_wird_nur_geloggt(self, monkeypatch, caplog):
+        monkeypatch.setattr(rip.shutil, "which", lambda _: "/usr/bin/eject")
+
+        def fake_run(command, **kwargs):
+            raise subprocess.TimeoutExpired(command, rip.EJECT_TIMEOUT)
+
+        monkeypatch.setattr(rip, "_run", fake_run)
+
+        with caplog.at_level("WARNING"):
+            rip._auswerfen()
+
+        assert "CD-Auswurf fehlgeschlagen" in caplog.text
+
+    def test_erfolgreicher_rip_ruft_auswerfen_auf(self, monkeypatch, toc):
+        """``_arbeite`` löst den Auswurf am Ende jeder erfolgreich gelesenen
+        Disc aus -- auch bei einem Hörbuch mit mehreren CDs soll das nach
+        jeder einzelnen passieren, nicht nur ganz am Ende."""
+        monkeypatch.setattr(
+            rip, "_rip_track", lambda n, z, **kw: z.write_bytes(b"fLaC\x00\x00\x00\x22")
+        )
+        monkeypatch.setattr(rip.discid, "lookup", lambda *a, **k: [])
+        aufgerufen = []
+        monkeypatch.setattr(rip, "_auswerfen", lambda: aufgerufen.append(True))
+
+        job = rip.RipJob(disc_id=VEKTOR_ID)
+        session = sessions.create_session()
+        job.session_id = session.session_id
+        rip._arbeite(
+            job, toc, session.directory,
+            bei_fehler=lambda: rip._session_verwerfen(job),
+        )
+
+        assert aufgerufen == [True]
+
+
 class TestRipTrack:
     def test_wav_wird_nach_dem_packen_entfernt(self, monkeypatch, tmp_path):
         """Das WAV belegt das Vierfache des FLAC und ist nur Zwischenprodukt."""

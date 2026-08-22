@@ -39,6 +39,10 @@ log = logging.getLogger(__name__)
 #: Zustände eines Auftrags. ``fertig`` und ``fehler`` sind Endzustände.
 ZUSTAENDE = ("liest_toc", "rippt", "fertig", "fehler")
 
+#: Zeitlimit für den Auswurf. Kurz -- ``eject`` hängt so gut wie nie, und ein
+#: hängender Auswurf soll den sonst schon fertigen Rip nicht lange aufhalten.
+EJECT_TIMEOUT = 10
+
 #: Wie ein Disc-Unterordner innerhalb einer Musik-Session heißt -- dieselbe
 #: Konvention wie bei Hörbüchern (``backend.audiobook._DISC_RE``).
 _DISC_RE = re.compile(r"^CD (\d+)$")
@@ -249,6 +253,29 @@ def _run(command: list[str], *, timeout: float) -> subprocess.CompletedProcess[s
     )
 
 
+def _auswerfen() -> None:
+    """Wirft die CD aus, wenn ``eject`` verfügbar ist.
+
+    Fehlt das Programm oder scheitert der Aufruf, wird nur geloggt -- der Rip
+    selbst ist zu diesem Zeitpunkt schon erfolgreich abgeschlossen, das darf
+    kein Grund für einen Fehlerzustand sein.
+    """
+    if shutil.which(settings.eject_bin) is None:
+        return
+    try:
+        ergebnis = _run(
+            [settings.eject_bin, settings.cdrom_device], timeout=EJECT_TIMEOUT
+        )
+        if ergebnis.returncode != 0:
+            log.warning(
+                "„%s“ konnte die CD nicht auswerfen: %s",
+                settings.eject_bin,
+                (ergebnis.stderr or ergebnis.stdout or "").strip(),
+            )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        log.warning("CD-Auswurf fehlgeschlagen: %s", exc)
+
+
 def read_toc() -> discid.Toc:
     """Liest das Inhaltsverzeichnis der eingelegten CD."""
     try:
@@ -430,6 +457,8 @@ def _arbeite(
 
         if danach is not None:
             danach()
+
+        _auswerfen()
 
         job.beendet = time.monotonic()
         job.zustand = "fertig"

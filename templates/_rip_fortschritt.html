@@ -10,6 +10,13 @@
         {{ job.prozent }} %
         {%- if job.muehsam %} · <em>{{ job.muehsam }}</em>{% endif %}
     </p>
+    {% if job.laeuft and job.track < job.tracks_gesamt %}
+    <div class="progress progress-track" role="progressbar"
+         aria-label="Fortschritt des aktuellen Tracks"
+         aria-valuenow="{{ job.track_prozent }}" aria-valuemin="0" aria-valuemax="100">
+        <div class="progress-bar" style="width: {{ job.track_prozent }}%"></div>
+    </div>
+    {% endif %}
     <div class="progress" role="progressbar"
          aria-valuenow="{{ job.prozent }}" aria-valuemin="0" aria-valuemax="100">
         <div class="progress-bar" style="width: {{ job.prozent }}%"></div>

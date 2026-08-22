@@ -280,8 +280,15 @@ document.body.addEventListener("htmx:afterSwap", (event) => {
   if (!event.detail.target) return;
 
   bindUploadWidgets(event.detail.target);
-  bindGenreInputs(event.detail.target);
-  initSamplerZustand(event.detail.target);
+  // Nicht auf event.detail.target beschränkt: _files.html liefert das
+  // Handtagging-Formular teils als Out-of-Band-Swap auf #candidates (siehe
+  // dortiger Kommentar), während event.detail.target nur #files ist --
+  // #candidates ist dabei kein Nachfahre von #files, ein auf target
+  // beschränktes bindGenreInputs würde das Genre-Feld also nie binden. Beide
+  // Funktionen sind idempotent (data-genreBound/data-sampler prüfen), ein
+  // Scan des ganzen Dokuments kostet bei der Handvoll Felder pro Seite nichts.
+  bindGenreInputs(document);
+  initSamplerZustand(document);
 
   const reveal = { candidates: "match-step", result: "result-step" };
   const stepId = reveal[event.detail.target.id];

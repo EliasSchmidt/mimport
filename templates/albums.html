@@ -8,14 +8,15 @@
 
 {% block inhalt %}
 <section class="step">
-    <form method="get" action="/albums" class="picker">
-        <input type="search" name="q" value="{{ q }}"
-               placeholder="Interpret oder Album …">
-        <button type="submit" class="button">Suchen</button>
-        {% if q %}<a class="button secondary" href="/albums">Zurücksetzen</a>{% endif %}
-    </form>
+    {# Filtert clientseitig im schon geladenen DOM (static/index.js) -- kein
+       erneuter beet-Subprozess über die gesamte Library pro Tastendruck. #}
+    <div class="picker">
+        <input type="search" data-albumsuche value="{{ q }}"
+               placeholder="Interpret oder Album …" aria-label="Alben durchsuchen">
+        <button type="button" class="button secondary" data-albumsuche-reset>Zurücksetzen</button>
+    </div>
 
-    <div id="albums-liste" hx-get="{{ liste_url }}" hx-trigger="load" hx-swap="innerHTML">
+    <div id="albums-liste" hx-get="/albums/liste" hx-trigger="load" hx-swap="innerHTML">
         <p class="hint">lade …</p>
     </div>
 </section>

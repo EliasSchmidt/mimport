@@ -237,6 +237,22 @@ class TestZeilenweise:
         assert track.duration == "3:12"
         assert track.artist == "William Byrd"
 
+    def test_tracknummer_und_dauer_auch_wenn_interpret_zuerst_steht(self):
+        """Dieselbe Kombination wie oben, nur mit vertauschter Feldreihenfolge
+        (Interpret vor Titel) -- Tracknummer und Dauer stehen dann auf der
+        zweiten Zeile der Gruppe, nicht auf der ersten. Vorher wurden beide
+        nur in der ersten Zeile gesucht und blieben deshalb unbemerkt am
+        Titel kleben."""
+        text = "William Byrd\n01 The Earl of Oxfords March 3:12"
+        flags = trackparse.ParseFlags(
+            tracknummer=True, dauer=True, felder=("interpret", "titel"), zeilenweise=True
+        )
+        [track] = trackparse.parse_text(text, flags)
+        assert track.number == "01"
+        assert track.title == "The Earl of Oxfords March"
+        assert track.duration == "3:12"
+        assert track.artist == "William Byrd"
+
     def test_mehrere_titel_ohne_zwischenzeile_werden_falsch_gepaart(self):
         """Bekannte Grenze: ein Medley ohne Komponistenzeile zwischen den
         Sätzen wird trotzdem als (Titel, Interpret) gepaart -- die Oberfläche

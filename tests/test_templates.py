@@ -385,7 +385,15 @@ class TestUebernehmenUndImport:
                 "import_ready": True,
             },
         )
-        response = client.post(f"/import/{album_session.session_id}", data={})
+        client.post(f"/import/{album_session.session_id}", data={})
+
+        # Ein echter (nicht simulierter) Import läuft im Hintergrund -- siehe
+        # importer.start_job --, den Auftrag erst zu Ende laufen lassen.
+        job = importer.current(album_session.session_id)
+        assert job is not None
+        job.thread.join(timeout=5)
+        response = client.get(f"/import/{album_session.session_id}")
+
         assert "Import fehlgeschlagen" in response.text
 
 

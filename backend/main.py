@@ -17,7 +17,8 @@ Quiet-Modus wendet ``_summary_judgment`` einen Match nur bei
 oder unverändert importiert. Ein bewusst bestätigter Match mit 64 % Sicherheit
 -- der Normalfall bei unvollständigen Uploads -- wäre also wirkungslos
 geblieben. Mit ``-A`` läuft beets über ``import_asis`` und erreicht diese
-Abfrage gar nicht. Ausführlich in der README unter „Wie der Import abläuft".
+Abfrage gar nicht. Ausführlich in CLAUDE.md unter „Wie der Import abläuft,
+und warum nicht --search-id".
 """
 
 from __future__ import annotations

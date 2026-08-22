@@ -1830,6 +1830,25 @@ async def manual(
     )
 
 
+def _import_fragment(request: Request, job: importer.ImportJob) -> HTMLResponse:
+    """Aktueller Stand eines Hintergrund-Imports -- läuft er noch oder ist er fertig."""
+    if job.fertig:
+        # job.result sollte nie None sein, wenn fertig gesetzt ist (siehe
+        # importer.start_job) -- aber ein 500 wäre hier die schlechteste
+        # aller Reaktionen, deshalb lieber ein sichtbarer Fehler als ein
+        # AssertionError.
+        result = job.result or importer.ImportResult(
+            error="Import-Auftrag ohne Ergebnis abgeschlossen -- bitte erneut versuchen."
+        )
+        return _fragment(
+            request,
+            "_import.html",
+            session_id=job.session_id,
+            result=result,
+        )
+    return _fragment(request, "_import_laeuft.html", job=job)
+
+
 @router.post("/import/{session_id}", response_class=HTMLResponse)
 def run_import(
     request: Request,
@@ -1839,7 +1858,14 @@ def run_import(
     """Übergibt den Staging-Ordner an das beets des Servers.
 
     Mit ``pretend`` wird nur gezeigt, was passieren würde -- nichts wird
-    verschoben und nichts in die Library eingetragen.
+    verschoben und nichts in die Library eingetragen; das passt in eine
+    einzelne Anfrage und bleibt deshalb synchron.
+
+    Der echte Import läuft dagegen im Hintergrund (``importer.start_job``):
+    er kann an der Library-Sperre warten, ein großes Album verschieben und
+    ein Cover nachladen, und die Anfrage soll nicht die ganze Zeit reglos
+    hängen. Die Oberfläche fragt den Stand per SSE ab (``/import/{id}/events``),
+    genau wie beim Rip und beim m4b-Bau.
     """
     session = _session_or_404(session_id)
     dry_run = bool(pretend.strip())
@@ -1852,15 +1878,23 @@ def run_import(
             message="Import ist gesperrt: " + " ".join(str(p) for p in health["problems"]),
         )
 
+    if dry_run:
+        result = importer.run_import(session.directory, pretend=True)
+        return _fragment(request, "_import.html", session_id=session_id, result=result)
+
+    # Ein Klick auf "Jetzt importieren", während der vorherige Lauf dieser
+    # Session noch nicht fertig ist (z.B. ein zweiter Tab): einfach den
+    # laufenden Auftrag weiter anzeigen statt beets ein zweites Mal aufzurufen.
+    laufender_auftrag = importer.current(session_id)
+    if laufender_auftrag is not None and not laufender_auftrag.fertig:
+        return _import_fragment(request, laufender_auftrag)
+
     # Vor dem Import lesen: hinterher liegt an diesem Ort nichts mehr
     # (verschoben oder kopiert), siehe _mb_albumid_der_session().
-    mb_albumid = None if dry_run else _mb_albumid_der_session(session)
-    album_kernfelder = (
-        None if dry_run or mb_albumid else _album_kernfelder_der_session(session)
-    )
+    mb_albumid = _mb_albumid_der_session(session)
+    album_kernfelder = None if mb_albumid else _album_kernfelder_der_session(session)
 
-    result = importer.run_import(session.directory, pretend=dry_run)
-    if result.ok and not dry_run:
+    def _nach_erfolg(result: importer.ImportResult) -> None:
         # Bestcase-Versuch: die Cover Art Archive antwortet gelegentlich mit
         # einem transienten Fehler, den fetchart nicht selbst wiederholt --
         # siehe albums.retry_missing_cover(). Verzögert die Rückmeldung nur,
@@ -1900,15 +1934,63 @@ def run_import(
         # -- sonst zeigt der Audio-CD-Reiter beim nächsten Öffnen wieder den
         # Kopf der längst importierten Session an, bis jemand von Hand auf
         # "Verwerfen" drückt.
-        job = rip.current()
-        if job is not None and not job.laeuft and job.session_id == session_id:
+        rip_job = rip.current()
+        if rip_job is not None and not rip_job.laeuft and rip_job.session_id == session_id:
             rip.reset()
 
-    return _fragment(
-        request,
-        "_import.html",
-        session_id=session_id,
-        result=result,
+    job = importer.start_job(session.directory, session_id=session_id, on_done=_nach_erfolg)
+    return _import_fragment(request, job)
+
+
+@router.get("/import/{session_id}", response_class=HTMLResponse)
+def import_status(request: Request, session_id: str) -> HTMLResponse:
+    """Stand eines laufenden oder abgeschlossenen Hintergrund-Imports.
+
+    Ziel des vollen Refresh, den ``/import/{id}/events`` per "sse:fertig"
+    anstößt (siehe ``_rip_events_strom`` für dasselbe Muster). Kennt der
+    Prozess keinen Auftrag zu dieser Session -- etwa nach einem Neustart
+    mitten im Import --, gibt es einen Hinweis statt eines 404, das htmx
+    sonst unschön in die Seite swappen würde.
+    """
+    job = importer.current(session_id)
+    if job is None:
+        return _fragment(
+            request,
+            "_error.html",
+            message=(
+                "Kein Import-Auftrag zu dieser Session bekannt -- vermutlich hat "
+                "der Dienst zwischenzeitlich neu gestartet. Bitte auf der Seite "
+                "nachsehen, ob der Import trotzdem angekommen ist, bevor er "
+                "erneut angestoßen wird."
+            ),
+        )
+    return _import_fragment(request, job)
+
+
+async def _import_events_strom(request: Request, session_id: str) -> AsyncIterator[str]:
+    """Pusht den Import-Fortschritt, statt dass die Seite ihn abholt.
+
+    Dasselbe Muster wie ``_rip_events_strom``: alle ``_SSE_INTERVALL`` Sekunden
+    ein "fortschritt"-Event, solange der Auftrag läuft, danach genau ein
+    "fertig" und Schluss -- den Rest erledigt der eine volle Refresh im
+    Browser.
+    """
+    while True:
+        if await request.is_disconnected():
+            return
+        job = importer.current(session_id)
+        if job is None or job.fertig:
+            yield _sse_event("fertig")
+            return
+        html = templates.get_template("_import_fortschritt.html").render(job=job)
+        yield _sse_event("fortschritt", html)
+        await asyncio.sleep(_SSE_INTERVALL)
+
+
+@router.get("/import/{session_id}/events")
+async def import_events(request: Request, session_id: str) -> StreamingResponse:
+    return StreamingResponse(
+        _import_events_strom(request, session_id), media_type="text/event-stream"
     )
 
 

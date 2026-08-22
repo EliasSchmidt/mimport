@@ -147,6 +147,18 @@ const standardRahmen = (breite, hoehe) => {
   ];
 };
 
+/**
+ * Dreht die vier Eckpunkte (oben-links, oben-rechts, unten-rechts,
+ * unten-links) um 90° im Uhrzeigersinn mit -- inklusive Nachrücken der
+ * Reihenfolge. Die Koordinaten allein zu drehen reicht nicht: ``entzerren``
+ * ordnet die Ecken nach Index, nicht nach Position, und ohne das Nachrücken
+ * würde die alte unten-links-Ecke als neue oben-links-Ecke behandelt.
+ */
+function eckenDrehen(ecken, altHoehe) {
+  const gedreht = ecken.map(([x, y]) => [altHoehe - y, x]);
+  return [gedreht[3], gedreht[0], gedreht[1], gedreht[2]];
+}
+
 /* ----------------------------------------------------------- Entzerren */
 
 /** Zieht das Viereck auf ein Quadrat gerade. */
@@ -263,6 +275,29 @@ function lupeZeichnen() {
   ctx.moveTo(0, mitteY);
   ctx.lineTo(lupe.width, mitteY);
   ctx.stroke();
+}
+
+/** Dreht Foto und Ecken um 90° im Uhrzeigersinn -- für Handys, die beim
+ * Draufsicht-Fotografieren (flach über der CD) die Ausrichtung falsch raten. */
+function drehen() {
+  if (!zustand) return;
+  const { foto, ecken } = zustand;
+  const altHoehe = foto.height;
+
+  const neu = document.createElement("canvas");
+  neu.width = foto.height;
+  neu.height = foto.width;
+  const ctx = neu.getContext("2d");
+  ctx.translate(neu.width, 0);
+  ctx.rotate(Math.PI / 2);
+  ctx.drawImage(foto, 0, 0);
+
+  zustand.foto = neu;
+  zustand.ecken = eckenDrehen(ecken, altHoehe);
+
+  zustand.canvas.width = neu.width;
+  zustand.canvas.height = neu.height;
+  zeichnen();
 }
 
 function naechsteEcke(x, y) {
@@ -467,6 +502,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   d.querySelector(".cover-uebernehmen").addEventListener("click", () => uebernehmen());
   d.querySelector(".cover-ganzes-bild").addEventListener("click", ganzesBildUebernehmen);
+  d.querySelector(".cover-drehen").addEventListener("click", drehen);
   d.querySelector(".cover-abbrechen").addEventListener("click", schliessen);
   d.querySelector(".cover-neu").addEventListener("click", () =>
     d.querySelector("input[type=file]").click()

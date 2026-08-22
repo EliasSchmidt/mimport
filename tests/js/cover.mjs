@@ -4,7 +4,7 @@ const quelle = readFileSync("static/cover.js", "utf8");
 // Alles ab der Oberfläche abschneiden: dort wird document angefasst.
 const mathe = quelle.split("/* ------------------------------------------------------------ Oberfläche */")[0];
 const modul = await import("data:text/javascript," + encodeURIComponent(
-  mathe + "\nexport { homographie, anwenden, eckenSchaetzen, standardRahmen };"
+  mathe + "\nexport { homographie, anwenden, eckenSchaetzen, standardRahmen, eckenDrehen };"
 ));
 
 let fehler = 0;
@@ -56,6 +56,31 @@ gefunden.forEach((g, i) => {
   const d = Math.hypot(g[0] - soll[i][0], g[1] - soll[i][1]);
   pruefe(`Ecke ${i}: (${g[0]},${g[1]})`, d < 12, `  gemalt (${soll[i]}), Abstand ${d.toFixed(1)} px`);
 });
+
+console.log("\nEckenDrehen -- Index folgt der Position, nicht nur der Koordinatenrechnung:");
+// Rechteck mit ungleichen Abständen zu jeder Kante, damit eine vertauschte
+// Reihenfolge nicht zufällig dieselben Zahlen ergibt wie die richtige.
+const ausgang = [[10, 5], [185, 5], [185, 92], [10, 92]]; // TL, TR, BR, BL
+let rahmen = [200, 100]; // [Breite, Höhe]
+let punkte = ausgang;
+for (let runde = 1; runde <= 4; runde++) {
+  punkte = modul.eckenDrehen(punkte, rahmen[1]);
+  rahmen = [rahmen[1], rahmen[0]];
+  const [breite, hoehe] = rahmen;
+  const [tl, tr, br, bl] = punkte;
+  pruefe(
+    `Runde ${runde}: Ecken sitzen an der zum Index passenden Position (Rahmen ${breite}x${hoehe})`,
+    tl[0] < breite / 2 && tl[1] < hoehe / 2 &&
+    tr[0] > breite / 2 && tr[1] < hoehe / 2 &&
+    br[0] > breite / 2 && br[1] > hoehe / 2 &&
+    bl[0] < breite / 2 && bl[1] > hoehe / 2
+  );
+}
+pruefe(
+  "nach vier Drehungen wieder am Ausgangspunkt",
+  rahmen[0] === 200 && rahmen[1] === 100 &&
+  punkte.every(([x, y], i) => Math.abs(x - ausgang[i][0]) < 1e-9 && Math.abs(y - ausgang[i][1]) < 1e-9)
+);
 
 console.log("\nOhne erkennbare Kanten kommt ein Standardrahmen:");
 const leer = new Uint8ClampedArray(W * H * 4).fill(128);

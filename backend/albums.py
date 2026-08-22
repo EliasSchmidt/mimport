@@ -319,6 +319,16 @@ def _track_sortschluessel(track: str) -> tuple[int, str]:
         return (10**9, track)
 
 
+#: Ordnerpfad je Album-ID, eingesammelt aus jedem ``list_albums()``-Ergebnis.
+#: Erspart ``album_ordner()`` (siehe unten) den vollen ``beet``-Subprozess für
+#: jedes einzelne Cover-Bild auf der Albenübersicht -- die Liste kennt die
+#: Pfade aller gezeigten Alben ja schon. Geleert bei jeder Änderung über
+#: ``_modify()``: nur Interpret/Album/Jahr könnten dabei eine Verschiebung
+#: auslösen, aber ein kompletter Reset ist billig und macht das Verhalten
+#: unabhängig davon, welche Felder im Einzelnen betroffen sind.
+_pfad_cache: dict[int, Path] = {}
+
+
 def list_albums(query: str = "") -> list[Album]:
     """Alle Alben aus der Library, alphabetisch nach Interpret und Titel.
 
@@ -336,7 +346,26 @@ def list_albums(query: str = "") -> list[Album]:
         )
     alben = [a for satz in _saetze(proc.stdout) if (a := _aus_zeile(satz))]
     alben.sort(key=lambda a: (a.albumartist.lower(), a.year, a.album.lower()))
+    for a in alben:
+        _pfad_cache[a.id] = a.path
     return alben
+
+
+def album_ordner(album_id: int) -> Path | None:
+    """Ordnerpfad eines Albums -- ``None``, wenn es die ID nicht gibt.
+
+    Erst der Cache aus ``list_albums()``, erst bei einem Fehltreffer der volle
+    ``beet``-Subprozess über ``get_album()`` (der das Ergebnis dann selbst
+    wieder einträgt). Für die Albenübersicht, deren Cover-Bilder sonst -- eins
+    pro Tabellenzeile -- je einen eigenen ``beet``-Prozess samt Plugin-Start
+    ausgelöst hätten, statt den ohnehin schon von der Liste bekannten Pfad
+    wiederzuverwenden.
+    """
+    pfad = _pfad_cache.get(album_id)
+    if pfad is not None:
+        return pfad
+    album = get_album(album_id)
+    return album.path if album is not None else None
 
 
 def get_album(album_id: int) -> Album | None:
@@ -584,6 +613,12 @@ def _modify(vorwahl: list[str], query: str, felder: dict[str, str], *, timeout: 
         raise AlbumError(
             proc.stderr.strip() or "Das Ändern der Tags ist fehlgeschlagen."
         )
+    # Interpret/Album/Jahr fließen ins Benennungsschema (siehe
+    # ``beets/config.yaml``, ``paths``) -- ``beet modify`` kann die Datei dabei
+    # verschoben haben. Ein kompletter Reset statt gezielter Prüfung, welches
+    # Feld betroffen war: billig, und _pfad_cache füllt sich beim nächsten
+    # ``list_albums()``/``album_ordner()`` von selbst wieder.
+    _pfad_cache.clear()
     if "-W" not in vorwahl:
         write_proc = _lauf(["write", query], timeout=timeout)
         if write_proc.returncode != 0:

@@ -20,6 +20,16 @@ T = albums._TRENNER
 E = albums._SATZENDE
 
 
+@pytest.fixture(autouse=True)
+def _leerer_pfad_cache():
+    """``albums._pfad_cache`` ist modulglobal -- ohne Reset könnte ein Test
+    einen Eintrag hinterlassen, den ein späterer für einen Cache-Treffer hält,
+    obwohl er ihn selbst nie gefüllt hat."""
+    albums._pfad_cache.clear()
+    yield
+    albums._pfad_cache.clear()
+
+
 def _zeile(
     id_, artist, album, year, pfad, mb_albumartistid="", genres="", label="",
     mb_albumartistids="", **erweitert,
@@ -170,6 +180,45 @@ class TestGetAlbum:
         album = albums.get_album(1)
         assert album is not None
         assert album.id == 1
+
+
+class TestAlbumOrdner:
+    """``album_ordner()`` -- erspart der Cover-Route der Albenübersicht einen
+    eigenen ``beet``-Subprozess je Bild, siehe ``_pfad_cache``."""
+
+    def test_cache_treffer_braucht_keinen_subprozess(self, monkeypatch):
+        stdout = _stdout(_zeile(1, "X", "Y", 2000, "/music/Y"))
+        monkeypatch.setattr(albums.subprocess, "run", lambda cmd, **kw: _proc(stdout=stdout))
+        albums.list_albums()
+
+        def darf_nicht_laufen(cmd, **kw):
+            raise AssertionError("Cache-Treffer hätte keinen Subprozess starten dürfen")
+
+        monkeypatch.setattr(albums.subprocess, "run", darf_nicht_laufen)
+        assert albums.album_ordner(1) == Path("/music/Y")
+
+    def test_cache_fehltreffer_faellt_auf_beet_zurueck_und_fuellt_cache(self, monkeypatch):
+        aufrufe = []
+        stdout = _stdout(_zeile(3, "X", "Y", 2000, "/music/Y"))
+
+        def fake_run(cmd, **kw):
+            aufrufe.append(cmd)
+            return _proc(stdout=stdout)
+
+        monkeypatch.setattr(albums.subprocess, "run", fake_run)
+        assert albums.album_ordner(3) == Path("/music/Y")
+        assert len(aufrufe) == 1
+
+        # Zweiter Aufruf: jetzt im Cache, kein weiterer Subprozess.
+        monkeypatch.setattr(
+            albums.subprocess, "run",
+            lambda cmd, **kw: (_ for _ in ()).throw(AssertionError("kein Cache-Treffer")),
+        )
+        assert albums.album_ordner(3) == Path("/music/Y")
+
+    def test_unbekannte_id_gibt_none(self, monkeypatch):
+        monkeypatch.setattr(albums.subprocess, "run", lambda cmd, **kw: _proc(stdout=""))
+        assert albums.album_ordner(999) is None
 
 
 class TestUpdateCover:
@@ -878,6 +927,16 @@ class TestSetAlbumField:
         feld = tag_catalog.ALBUM_FELDER_NACH_KEY["album"]
         with pytest.raises(albums.AlbumError, match="autsch"):
             albums.set_album_field(self._album(tmp_path), feld, "Neu")
+
+    def test_leert_den_pfad_cache(self, tmp_path, monkeypatch):
+        """``album`` fließt ins Benennungsschema -- ``beet modify`` kann den
+        Ordner dabei verschoben haben, ein alter ``_pfad_cache``-Eintrag wäre
+        also falsch. Siehe ``album_ordner()``."""
+        albums._pfad_cache[9] = tmp_path / "alter-ordner"
+        monkeypatch.setattr(albums.subprocess, "run", lambda cmd, **kw: _proc())
+        feld = tag_catalog.ALBUM_FELDER_NACH_KEY["album"]
+        albums.set_album_field(self._album(tmp_path), feld, "Neuer Titel")
+        assert 9 not in albums._pfad_cache
 
 
 class TestSetTrackField:

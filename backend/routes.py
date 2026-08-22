@@ -2099,12 +2099,18 @@ def album_cover(album_id: int, v: str = "") -> FileResponse:
 
     ``v`` trägt die Änderungszeit in der Adresse, damit der Browser ein neues
     Cover sofort lädt und ein altes sonst aggressiv cachen darf.
+
+    Der Ordnerpfad kommt über ``albums.album_ordner()`` -- im Normalfall aus
+    dem Cache der zuletzt geladenen Albenliste, ohne eigenen
+    ``beet``-Subprozess. Ohne das würde jedes ``<img>`` auf der Albenübersicht
+    (eins je Album mit Cover) einen vollen beets-Prozessstart samt
+    Plugin-Ladezeit auslösen -- bei einer Bildschirmseite Alben spürbar.
     """
-    album = albums.get_album(album_id)
-    if album is None:
+    ordner = albums.album_ordner(album_id)
+    if ordner is None:
         raise HTTPException(status_code=404, detail="Album nicht gefunden.")
-    pfad = album.cover_path
-    if pfad is None:
+    pfad = ordner / cover.COVER_DATEI
+    if not pfad.is_file():
         raise HTTPException(
             status_code=404, detail="Für dieses Album gibt es kein Cover."
         )

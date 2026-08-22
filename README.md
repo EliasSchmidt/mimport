@@ -213,7 +213,11 @@ nicht die Prozentzahl.
 
 Der Rip läuft im Hintergrund, die Oberfläche zeigt den Fortschritt live und
 bei zerkratzten CDs auch, wenn cdparanoia Mühe meldet („Kratzer erkannt",
-„liest langsamer", „Lesefehler").
+„liest langsamer", „Lesefehler"). Friert cdparanoia an einer beschädigten
+Stelle fest, statt mit einem Fehler abzubrechen, beendet der Knopf „Rip
+abbrechen" den Lesevorgang von Hand — betroffen ist nur der angefangene
+Track bzw. die angefangene Disc, zuvor erfolgreich gelesene Discs eines
+Mehrfach-CD-Albums bleiben erhalten.
 
 ## Hörbücher
 

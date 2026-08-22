@@ -326,6 +326,19 @@ Pfad geprüft, und Symlinks auf der CD (über Rock Ridge möglich) werden
 beim Kopieren übergangen -- sonst landete ein Link auf `/etc/passwd` als
 `track03.mp3` im Staging.
 
+**„Rip abbrechen" (`rip.abbrechen_rip()`), wenn cdparanoia sich festfrisst:**
+Dasselbe Muster wie `audiobook.abbrechen_m4b()` -- SIGTERM, bei Bedarf
+SIGKILL (`rip._beenden()`). `job.prozess` ist aber nur gesetzt, *während*
+`_lesen()` tatsächlich liest -- zwischen zwei Tracks (flac-Packen, TOC-Read)
+gibt es kein Handle, der Knopf antwortet dort ehrlich mit "bitte kurz
+warten" statt ins Leere zu laufen. Ein Prozess, der im Kernel an einem nicht
+mehr antwortenden Laufwerk hängt (D-State), übersteht auch SIGKILL --
+`_beenden()` meldet das als `False` zurück, und `abbrechen_rip()` gibt dann
+einen Fehler statt einer Erfolgsmeldung: eine Antwort, auf die niemand mehr
+hört ("Abbruch vorgemerkt", aber das Laufwerk bleibt für immer gesperrt),
+wäre schlimmer als eine ehrliche Absage. Nur ein Container-Neustart hilft in
+diesem Fall.
+
 ## Hörbuch-m4b-Bau
 
 **Warum `.mimport-unfertig/` innerhalb der Bibliothek liegt, nicht im

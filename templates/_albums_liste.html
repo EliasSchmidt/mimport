@@ -15,6 +15,7 @@
             <th>Interpret</th>
             <th>Album</th>
             <th>Jahr</th>
+            <th>Genre</th>
             <th></th>
         </tr>
     </thead>
@@ -38,6 +39,7 @@
             <td class="mono small" data-spalte="Jahr">
                 {{ a.year if a.year and a.year != "0000" else "–" }}
             </td>
+            <td class="name" data-spalte="Genre">{{ a.genres if a.genres else "–" }}</td>
             <td>
                 <a class="button" href="/albums/{{ a.id }}">Bearbeiten</a>
             </td>

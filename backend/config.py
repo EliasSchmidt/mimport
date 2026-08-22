@@ -221,6 +221,14 @@ class Settings:
         default_factory=lambda: os.environ.get("MIMPORT_FLAC", "flac")
     )
 
+    #: Wirft die CD nach einem fertigen Rip aus. Kein eigener Schalter --
+    #: fehlt das Programm im Image (z.B. weil jemand das Paket in einem
+    #: eigenen Dockerfile weggelassen hat), bleibt Auswerfen einfach aus statt
+    #: zu scheitern, siehe ``rip._auswerfen``.
+    eject_bin: str = field(
+        default_factory=lambda: os.environ.get("MIMPORT_EJECT", "eject")
+    )
+
     #: Zeitlimit für das Auslesen des Inhaltsverzeichnisses. Kurz -- ein
     #: Laufwerk ohne CD soll nicht minutenlang hängen.
     rip_toc_timeout: int = field(

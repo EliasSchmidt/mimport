@@ -10,9 +10,10 @@ FROM python:3.12-slim AS base
 # uv für reproduzierbare Installation aus uv.lock.
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
-# Zum Rippen von Audio-CDs: cdparanoia liest die Sektoren, flac packt sie.
-# Zusammen unter 2 MB -- anders als die libav*-Dekoder, die fpcalc für das
-# Fingerprinting nachziehen würde. Ohne eingelegte Audio-CD tun sie nichts.
+# Zum Rippen von Audio-CDs: cdparanoia liest die Sektoren, flac packt sie,
+# eject wirft die CD danach aus. Zusammen weit unter 2 MB -- anders als die
+# libav*-Dekoder, die fpcalc für das Fingerprinting nachziehen würde. Ohne
+# eingelegte Audio-CD tun sie nichts.
 #
 # ffmpeg kommt für die Hörbücher dazu: es bündelt die Discs zu einer m4b mit
 # Kapiteln. Es ist das mit Abstand größte Paket hier (mit den libav*-Dekodern
@@ -25,6 +26,7 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends \
     cdparanoia \
     flac \
+    eject \
     ffmpeg \
     libgl1 \
     libglib2.0-0 \

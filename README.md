@@ -360,6 +360,7 @@ echte Library.
 | `MIMPORT_CDROM` | `/dev/sr0` | Laufwerk für Audio-CDs |
 | `MIMPORT_CDPARANOIA` | `cdparanoia` | Pfad zum Ripper |
 | `MIMPORT_FLAC` | `flac` | Pfad zum FLAC-Encoder |
+| `MIMPORT_EJECT` | `eject` | Pfad zum Auswerfen; fehlt das Programm, bleibt die CD nach dem Rip einfach liegen |
 | `MIMPORT_RIP_TOC_TIMEOUT` | `60` | Zeitlimit fürs Inhaltsverzeichnis (s) |
 | `MIMPORT_RIP_TRACK_TIMEOUT` | `1200` | Zeitlimit je Track (s) |
 | `MIMPORT_AUDIOBOOKS` | `/audiobooks` | Wurzel der Hörbuch-Bibliothek |

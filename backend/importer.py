@@ -62,6 +62,12 @@ class ImportResult:
 def build_command(directory: Path, *, pretend: bool = False) -> list[str]:
     """Setzt die ``beet import``-Kommandozeile zusammen.
 
+    * ``-v`` ist bei beets eine globale Option und muss deshalb *vor* dem
+      Subcommand stehen, nicht danach -- sonst nimmt beets sie klaglos als
+      (wirkungslose) Option von ``import`` und die Ausgabe bleibt genauso
+      knapp wie ohne. Erst damit protokollieren Plugins wie fetchart und
+      lastgenre, welche Quelle sie versucht haben und warum eine davon nichts
+      lieferte -- ohne das steht im Log nur "kein Cover", nie wieso.
     * ``-q`` unterdrückt jede Rückfrage im Terminal -- die Entscheidungen sind
       bereits in der Oberfläche gefallen.
     * ``-A`` schaltet das Autotagging ab. Damit läuft beets über
@@ -70,7 +76,7 @@ def build_command(directory: Path, *, pretend: bool = False) -> list[str]:
     * ``-m`` verschiebt statt zu kopieren, sonst bleiben die Uploads im Staging
       liegen und tauchen beim nächsten Mal wieder auf.
     """
-    command = [settings.beet_bin, "import", "-q", "-A"]
+    command = [settings.beet_bin, "-v", "import", "-q", "-A"]
     if pretend:
         command.append("--pretend")
     elif settings.move_on_import:
@@ -190,6 +196,14 @@ def run_import(directory: Path, *, pretend: bool = False) -> ImportResult:
     result.stderr = proc.stderr or ""
     if result.returncode != 0 and not result.error:
         result.error = f"beets endete mit Rückgabewert {result.returncode}"
+
+    # Bislang landete diese Ausgabe nur im Fehlerfall in der Weboberfläche und
+    # nie im Docker-Log -- damit war z. B. nicht nachvollziehbar, welche
+    # fetchart-Quelle beim Import versucht wurde oder warum sie nichts fand,
+    # obwohl der Import selbst mit Erfolg endete. Jetzt geht es immer ins Log.
+    if result.output:
+        log.info("beet import Ausgabe für %s:\n%s", directory, result.output)
+
     return result
 
 

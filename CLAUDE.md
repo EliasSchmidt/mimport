@@ -217,6 +217,42 @@ erfolgreichen Import mit MusicBrainz-Release-ID `albums.retry_missing_cover()`
 auf: fehlt das Cover, bis zu drei weitere Versuche mit ein paar Sekunden
 Abstand, sonst bleibt manuelles Nachtragen über die Album-Seite.
 
+**„Fehlt das Cover" hieß lange nicht zwingend: keine Bilddatei im Ordner.**
+beets benennt ein heruntergeladenes Cover nach dem Content-Type der Quelle
+(`Album.art_destination` in beets selbst) -- die Cover Art Archive liefert
+neben JPEG regelmäßig auch PNG. Ein erfolgreich geladenes Cover konnte also
+als `cover.png` im Ordner liegen, nicht als `cover.jpg`. `beet fetchart`
+selbst kommt damit klar (es fragt die Datenbank, nicht den Dateinamen) --
+eine Prüfung, die stur nach `cover.jpg` sucht, hielt ein vorhandenes Cover
+dagegen für fehlend. Das betraf sowohl `Album.has_cover` als auch den Retry
+oben, unabhängig davon, ob es im Einzelfall auch die Ursache für ein konkret
+fehlendes Cover war. `cover.gefunden()` sucht deshalb jetzt unter mehreren
+Erweiterungen, und `album_cover()`/`update_album_cover()` in `routes.py`
+lesen über `album.cover_path` statt über ein hartkodiertes `cover.jpg`. Ein
+Ersetzen des Covers über die Album-Seite räumt danach eine ältere,
+andersnamige Datei aus demselben Ordner weg (`cover.andere_erweiterungen_entfernen()`,
+gezielt in der Route, nicht in `cover.speichern()` selbst -- das schreibt
+auch in die Upload-Session, wo niemals ein fetchart-Cover liegt), damit nicht
+`cover.jpg` und ein verwaistes `cover.png` nebeneinander liegen bleiben.
+
+Zum Unterscheiden „PNG statt JPEG gefunden" von „fetchart fand wirklich
+nichts" auf dem Server:
+
+```
+docker compose exec mimport-cd sqlite3 /data/library.db \
+  "SELECT id, album, artpath FROM albums
+   WHERE artpath IS NULL OR artpath = '' OR artpath NOT LIKE '%cover.jpg';"
+```
+
+Ein leerer `artpath` heißt: fetchart fand nichts oder lief gar nicht erst.
+Dafür steht die vollständige `beet import`/`fetchart`-Ausgabe jetzt immer im
+Log, nicht nur im Fehlerfall (`build_command()` setzt `-v` -- **vor** dem
+Subcommand, weil es bei beets eine globale Option ist; danach nimmt beets
+sie klaglos als wirkungslose `import`-Option und die Ausgabe bleibt genauso
+knapp wie ohne). `routes.run_import()` loggt zusätzlich, wenn eine Session
+ganz ohne MusicBrainz-Release-ID importiert wird, sonst ist „kein Cover
+trotz Match" von „gar kein Match" im Log nicht zu unterscheiden.
+
 ## Cover: Ecken finden ohne Bibliothek
 
 Der Trick eines Dokumentenscanners, ohne OpenCV: Bei einem Viereck sind die

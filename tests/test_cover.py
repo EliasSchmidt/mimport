@@ -69,6 +69,64 @@ class TestSpeichern:
         cover.speichern(tmp_path, JPEG)
         assert cover.vorhanden(tmp_path) is True
 
+    def test_raeumt_kein_cover_anderer_erweiterung_von_sich_aus_weg(self, tmp_path):
+        """speichern() räumt NICHT selbst auf -- es schreibt auch in die
+        Upload-Session, wo niemals ein fetchart-'cover.png' liegt. Das
+        Aufräumen ist Sache des Aufrufers, siehe TestAndereErweiterungenEntfernen."""
+        (tmp_path / "cover.png").write_bytes(b"bleibt hier stehen")
+        cover.speichern(tmp_path, JPEG)
+        namen = sorted(p.name for p in tmp_path.iterdir())
+        assert namen == ["cover.jpg", "cover.png"]
+
+
+class TestAndereErweiterungenEntfernen:
+    def test_entfernt_png_neben_frischem_jpg(self, tmp_path):
+        (tmp_path / "cover.jpg").write_bytes(JPEG)
+        (tmp_path / "cover.png").write_bytes(b"altes fetchart-cover")
+        cover.andere_erweiterungen_entfernen(tmp_path)
+        namen = sorted(p.name for p in tmp_path.iterdir())
+        assert namen == ["cover.jpg"]
+
+    def test_ohne_andere_erweiterung_passiert_nichts(self, tmp_path):
+        (tmp_path / "cover.jpg").write_bytes(JPEG)
+        cover.andere_erweiterungen_entfernen(tmp_path)
+        assert [p.name for p in tmp_path.iterdir()] == ["cover.jpg"]
+
+
+class TestGefunden:
+    """Ein von fetchart heruntergeladenes Cover landet unter der Erweiterung
+    des Content-Type der Quelle (z. B. 'cover.png'), nicht zwingend als
+    'cover.jpg' -- siehe das Docstring von _ERWEITERUNGEN."""
+
+    def test_kein_cover(self, tmp_path):
+        assert cover.gefunden(tmp_path) is None
+
+    def test_cover_jpg(self, tmp_path):
+        pfad = tmp_path / "cover.jpg"
+        pfad.write_bytes(b"x")
+        assert cover.gefunden(tmp_path) == pfad
+
+    def test_von_fetchart_heruntergeladenes_png(self, tmp_path):
+        pfad = tmp_path / "cover.png"
+        pfad.write_bytes(b"x")
+        assert cover.gefunden(tmp_path) == pfad
+        assert cover.vorhanden(tmp_path) is True
+
+    def test_webp(self, tmp_path):
+        pfad = tmp_path / "cover.webp"
+        pfad.write_bytes(b"x")
+        assert cover.gefunden(tmp_path) == pfad
+
+    def test_cover_jpg_hat_vorrang_vor_png(self, tmp_path):
+        """Ein frisches Foto (immer .jpg) soll vor einem älteren, von
+        fetchart heruntergeladenen Bild gewinnen -- kommt in der Praxis durch
+        das Aufräumen in speichern() eigentlich nicht mehr vor, aber
+        gefunden() soll auch robust sein, falls doch mal beides da liegt."""
+        (tmp_path / "cover.png").write_bytes(b"alt")
+        pfad = tmp_path / "cover.jpg"
+        pfad.write_bytes(b"neu")
+        assert cover.gefunden(tmp_path) == pfad
+
 
 class TestVonUrlHolen:
     """Für Discogs-Kandidaten: kein automatischer fetchart-Weg wie bei

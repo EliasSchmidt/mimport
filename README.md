@@ -433,3 +433,19 @@ Einschalten:
 Discogs ist bewusst als **sekundäre** Quelle eingestuft und taucht in der
 Praxis nur oben in der Liste auf, wenn MusicBrainz nichts Brauchbares
 liefert.
+
+### Wenn ein Cover ausbleibt
+
+Ein einzelner Fehlschlag bei der Cover Art Archive kann dauerhaft dazu
+führen, dass ein sonst erfolgreiches Album ohne Cover bleibt — mimport
+versucht es deshalb nach einem Import mit MusicBrainz-Treffer automatisch
+bis zu dreimal erneut. Reicht das nicht, bleibt am Ende: von Hand
+nachtragen über die Album-Seite (siehe „Cover abfotografieren" oben), ein
+erneuter, kompletter Import ist dafür nicht nötig.
+
+Ein heruntergeladenes Cover kann dabei auch als `cover.png` statt
+`cover.jpg` im Album-Ordner landen (die Cover Art Archive liefert neben
+JPEG regelmäßig auch PNG) — mimport erkennt beide Fälle gleichermaßen als
+„Cover vorhanden". Bleibt eins trotzdem aus, steht die vollständige
+`beet import`/`fetchart`-Ausgabe jetzt immer im Log (nicht nur bei einem
+Fehler), das grenzt „kein Treffer bei fetchart" von anderen Ursachen ein.
